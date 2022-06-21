@@ -1,0 +1,11 @@
+name: roz
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - pysam
+  - minimap2
+  - mappy
+  - paho-mqtt
+  - 

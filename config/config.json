@@ -1,0 +1,136 @@
+{
+    "version": "0.1",
+    "pathogen_configs": [
+        "mpx"
+    ],
+    "configs": {
+        "mpx": {
+            "file_naming": {
+                "identical": true,
+                "allowed_characters": "alphanumeric,_,-,."
+            },
+            "fasta": {
+                "header_allowed_characters": "alphanumeric,_,-, ",
+                "iupac_only": true,
+                "min_length": 100000
+            },
+            "bam": {
+                "allowed_refs": [
+                    "ON563414.3"
+                ],
+                "compound_ref_path": "mmi_compound_ref_path",
+                "compound_ref_pathogen_name": "CANONICAL_MPX",
+                "human_ref_name": "GRCh38.p14",
+                "check_dehumanised": true,
+                "max_acceptible_human": 0.01,
+                "mapping_presets": {
+                    "ILLUMINA": "sr",
+                    "OXFORD_NANOPORE": "map-ont",
+                    "PACIFIC_BIOSCIENCES": "map-pb",
+                    "ION_TORRENT": "map-ont"
+                },
+                "require_sorted": true,
+                "require_primertrimmed": false,
+                "size_limit_gb": 2,
+                "require_samtools_quickcheck": true
+            },
+            "csv": {
+                "disallow_sample_id_elsewhere": true,
+                "current_version": 1,
+                "sample_name_allowed_characters": "alphanumeric,_,-",
+                "required_fields": [
+                    "pathogen_code",
+                    "csv_template_version",
+                    "uploader",
+                    "sender_sample_id",
+                    "received_date",
+                    "sample_type",
+                    "run_sequencer",
+                    "run_seq_protocol",
+                    "run_layout",
+                    "run_selection",
+                    "seq_approach",
+                    "seq_strategy",
+                    "seq_platform",
+                    "run_name",
+                    "instrument_model",
+                    "bioinfo_pipe_name",
+                    "bioinfo_pipe_version"
+                ],
+                "optional_fields": [
+                    "collection_date",
+                    "previous_sample_id"
+                ],
+                "field_datatypes": {
+                    "pathogen_code": "text",
+                    "csv_template_version": "integer",
+                    "uploader": "text",
+                    "sender_sample_id": "text",
+                    "received_date": "date",
+                    "collection_date": "date",
+                    "sample_type": "choice",
+                    "run_sequencer": "text",
+                    "run_seq_protocol": "text",
+                    "run_layout": "choice",
+                    "run_selection": "choice",
+                    "seq_approach": "choice",
+                    "seq_strategy": "choice",
+                    "seq_platform": "choice",
+                    "run_name": "text",
+                    "instrument_model": "text",
+                    "bioinfo_pipe_name": "text",
+                    "bioinfo_pipe_version": "text"
+                },
+                "character_limits": {
+                    "uploader": "1-8",
+                    "sender_sample_id": "8-24",
+                    "sample_type": "1-16",
+                    "previous_sample_id": "0-24",
+                    "run_sequencer": "1-96",
+                    "run_seq_protocol": "1-96",
+                    "run_name": "18-96",
+                    "instrument_model": "1-48",
+                    "bioinfo_pipe_name": "1-96",
+                    "bioinfo_pipe_version": "1-48"
+                },
+                "field_choices": {
+                    "uploader": [
+                        "BIRM"
+                    ],
+                    "run_layout": [
+                        "SINGLE",
+                        "PAIRED"
+                    ],
+                    "run_selection": [
+                        "OTHER",
+                        "PCR",
+                        "RANDOM",
+                        "RANDOM_PCR",
+                        "NONE"
+                    ],
+                    "seq_approach": [
+                        "GENOMIC",
+                        "METAGENOMIC",
+                        "METATRANSCRIPTOMIC",
+                        "OTHER",
+                        "TRANSCRIPTOMIC",
+                        "VIRAL_RNA"
+                    ],
+                    "seq_strategy": [
+                        "AMPLICON",
+                        "OTHER",
+                        "TARGETED_CAPTURE",
+                        "WGA",
+                        "WGS"
+                    ],
+                    "seq_platform": [
+                        "ILLUMINA",
+                        "OXFORD_NANOPORE",
+                        "PACIFIC_BIOSCIENCES",
+                        "ION_TORRENT"
+                    ]
+                }
+            }
+        }
+    }
+}
