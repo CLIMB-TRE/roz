@@ -42,7 +42,10 @@ def validate_dehumanised(
             seq_mapping_quals[hit.ctg] = hit.mapq
         if seq_mapping_quals:
             top_hit = max(seq_mapping_quals, key=seq_mapping_quals.get)
-            best_hits_dict[pathogen_name] += 1 if top_hit == pathogen_name else best_hits_dict["human"] += 1
+            if top_hit == pathogen_name:
+                best_hits_dict[pathogen_name] += 1
+            else:
+                best_hits_dict["human"] += 1
 
     human_proportion = best_hits_dict[human_name] / best_hits_dict["total"]
 
