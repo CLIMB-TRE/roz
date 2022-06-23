@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 import time
 import json
+from types import SimpleNamespace
 
 from varys import mqtt_client
 from varys import wrap_stderr
@@ -50,23 +51,22 @@ def get_env_variables():
         "mqtt_host": "MQTT_HOST",
         "mqtt_port": "MQTT_PORT",
         "temp_dir": "ROZ_TEMP_DIR",
-        "mm2_threads": "ROZ_MM2_THREADS",
         "idx_ref_dir": "ROZ_REF_ROOT",
-        "raw_ref_path": "ROZ_CPD_REF_PATH",
+        "compound_ref_path": "ROZ_CPD_REF_PATH",
         "json_config": "ROZ_CONFIG_JSON",
     }
 
-    config = {k: os.genenv(v) for k, v in env_vars.items()}
-
-    if any(v for v in config.values() if v == None):
-        none_vals = ", ".join(str(v) for v in config.values() if v == None)
+    config = {k: os.getenv(v) for k, v in env_vars.items()}
+    
+    if any(True for v in config.values() if v == None):
+        none_vals = ", ".join(str(env_vars[k]) for k, v in config.items() if v == None)
         print(
             f"The following required environmental variables must be set for ROZ to function: {none_vals}.",
             file=sys.stderr,
         )
         sys.exit(10)
-
-    return config
+        
+    return SimpleNamespace(**config)
 
 
 def run(args):

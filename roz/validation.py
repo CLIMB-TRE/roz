@@ -7,7 +7,7 @@ import re
 import os
 from pathlib import Path
 
-from roz.util import validate_dehumanised
+from util import validate_dehumanised
 
 
 def expand_int_ranges(range_string):
