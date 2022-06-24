@@ -9,3 +9,4 @@ dependencies:
   - mappy
   - pika
   - samtools
+  - pytest

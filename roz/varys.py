@@ -5,6 +5,7 @@ from collections import namedtuple
 import logging
 from functools import partial
 import json
+import os
 
 class varys_consumer:
     
@@ -12,12 +13,11 @@ class varys_consumer:
     
     exchange_type = ExchangeType.topic
     
-    def __init__(self, log_name=str, log_file=str, re_connect=bool, username=str, password=str, ampq_url=str, port=int, exchange="", queue=str, routing_key="default", prefetch_count=1, blocking=True, durable=False):
+    def __init__(self, username, password, queue, re_connect, ampq_url, port, log_file, exchange=None, routing_key="default", prefetch_count=1, blocking=True, durable=False):
         self._messages = []
         
-        self._log = logging.getLogger(log_name)
-        log_format = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) -35s %(lineno) -5d: %(message)s')        
-        logging.basicConfig(level=logging.DEBUG, format=log_format, filename=log_file)
+        self._log = logging.getLogger("varys_consumer")
+        logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(asctime)s:%(message)s', filename=log_file)
         
         self._should_reconnect = re_connect
         self._reconnect_delay = 10
@@ -47,6 +47,7 @@ class varys_consumer:
         self.__open_channel()
         
     def __on_connection_open_error(self, _unused_connection, err):
+        print(err)
         self._log.error(f"Failed to connect to server due to {err}")
         self.__reconnect()
 
@@ -161,7 +162,13 @@ class varys_consumer:
     def __close_channel(self):
         self._log.info("Closing the channel")
         self._channel.close()
-    
+
+    def check_for_messages(self):
+        if self._messages:
+            return True
+        else:
+            return False
+
     def message_generator(self):
         if self._messages:
             self._log.info(f"Consuming {len(self._messages)} messages")
@@ -174,8 +181,15 @@ class varys_consumer:
             return None    
     
     def run(self):
-        self._connection = self.__connect()
-        self._connection.ioloop.start()
+        while True:
+            try:
+                self._connection = self.__connect()
+                self._connection.ioloop.start()
+            except KeyboardInterrupt:
+                self.stop()
+                break
+            self.__reconnect()
+        
     
     def stop(self):
         if not self._closing:
@@ -192,7 +206,7 @@ class varys_producer:
         
     def __init__(self, log_name=str, log_file=str, username=str, password=str, ampq_url=str, port=int, exchange=str, queue=str, routing_key="default", durable=False):
         self._log = logging.getLogger(log_name)
-        logging.basicConfig(level=logging.DEBUG, format=log_format, filename=log_file)
+        logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(asctime)s:%(message)s', filename=log_file)
         
         self._connection = None
         self._channel = None
@@ -358,4 +372,17 @@ class varys_producer:
         self.__close_channel()
         self.__close_connection()
         
-    
+class configurator:
+    if os.getenv("VARYS_CONFIG"):
+        config_path = os.getenv("VARYS_CONFIG")
+
+    def __init__(self, profile, config_path=None):
+        with open(self.config_path, "rt") as config_fh:
+            config_obj = json.load(config_fh)
+        
+        if config_obj.get(profile):
+            self.username = config_obj["username"]
+            self.password = config_obj["password"]
+            self.host = config_obj["host"]
+            self.port = config_obj["port"]
+            self.queue = config_obj["queue"]

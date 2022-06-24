@@ -5,9 +5,9 @@ port = 5672
 username = "roz"
 password = "siXdySi5Jn"
 log_name = "varys_test"
-log_file = "/rds/homes/w/wilkisaj/projects/climb-mpx/ware/roz/test_logfile.log"
+log_file = "/home/sam/onedrive/bioinformatics/climb-pathogens/roz/test_logfile.log"
 
-consumer = varys_consumer(log_name, log_file, True, username, password, host, port, queue="inbound.triplets", routing_key="default", blocking=True, durable=True)
+consumer = varys_consumer(username, password, "inbound.triplets", False, host, port, log_file)
 
 consumer.run()
 
