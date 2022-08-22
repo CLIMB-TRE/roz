@@ -7,8 +7,7 @@ import re
 import os
 from pathlib import Path
 
-from util import validate_dehumanised
-
+import mappy as mp
 
 def expand_int_ranges(range_string):
     r = []
@@ -20,6 +19,48 @@ def expand_int_ranges(range_string):
             r += range(l, h + 1)
     return r
 
+
+def validate_dehumanised(config, env_vars, bam_path, minimap_preset):
+
+    # Check if indexed compound ref to requested preset exists in $ROZ_REF_ROOT and create it if not
+    if not os.path.exists(f"{env_vars.idx_ref_dir}/{minimap_preset}.mmi"):
+        mp.Aligner(
+            fn_idx_in=env_vars.compound_ref_path, fn_idx_out=f"{env_vars.idx_ref_dir}/{minimap_preset}.mmi"
+        )
+
+    # Dump BAM reads to fastq file for mapping
+    fastq_name = bam_path.split("/")[-1].replace(".bam", ".fastq")
+    os.system(f"samtools fastq {bam_path} > {env_vars.temp_dir}/{fastq_name}")
+
+    # Align them to the compound ref
+    aligner = mp.Aligner(fn_idx_in=f"{env_vars.idx_ref_dir}/{minimap_preset}.mmi")
+
+    best_hits_dict = {"total": 0, config["compound_ref_pathogen_name"]: 0, "human": 0}
+
+    # Iterate through the seqs in the dumped fastq file and re-align them to the compound reference,
+    # storing a count of how many align to each contig best
+
+    pathogen = config["compound_ref_pathogen_name"]
+
+    for name, seq, qual in mp.fastx_read(f"{env_vars.temp_dir}/{fastq_name}"):
+        seq_mapping_quals = {}
+        best_hits_dict["total"] += 1
+        for hit in aligner.map(seq):
+            seq_mapping_quals[hit.ctg] = hit.mapq
+        if seq_mapping_quals:
+            top_hit = max(seq_mapping_quals, key=seq_mapping_quals.get)
+            if top_hit == pathogen:
+                best_hits_dict[pathogen] += 1
+            else:
+                best_hits_dict["human"] += 1
+    
+    human_proportion = best_hits_dict["human"] / best_hits_dict["total"]
+
+    os.system(f"rm -f {env_vars.temp_dir}/{fastq_name}")
+    if human_proportion > config["max_acceptible_human"]:
+        return False, human_proportion
+    else:
+        return True, human_proportion
 
 def validate_datetime(date_string):
     try:
@@ -35,10 +76,10 @@ def expand_character_ranges(character_range_string):
     for split in splits:
         if split == "alphanumeric":
             allowed_characters.extend(string.ascii_uppercase)
-            allowed_characters.extend(range(0, 9))
+            allowed_characters.extend(range(0, 10))
         else:
             allowed_characters.extend(split)
-    return set([str(character) for character in allowed_characters])
+    return [str(character) for character in allowed_characters]
 
 
 class csv_validator:
@@ -207,13 +248,14 @@ class csv_validator:
         # Ensure fields adhere to character limits
         if self.config.get("character_limits"):
             for field, range in self.config.get("character_limits").items():
-                if not len(csv_data[field]) in expand_int_ranges(range):
-                    self.errors.append(
-                        {
-                            "type": "content",
-                            "text": f"The field: {field} contains {len(csv_data[field])} characters which is outside of the range {range}",
-                        }
-                    )
+                if csv_data.get(field):
+                    if not len(csv_data[field]) in expand_int_ranges(range):
+                        self.errors.append(
+                            {
+                                "type": "content",
+                                "text": f"The field: {field} contains {len(csv_data[field])} characters which is outside of the range {range}",
+                            }
+                        )
 
         # Ensure sender_sample_id not in other fields
         if self.config.get("disallow_sample_id_elsewhere"):
@@ -290,9 +332,7 @@ class fasta_validator:
                 self.config["header_allowed_characters"] + ",>"
             )
 
-            if any(
-                character.upper() not in allowed_characters for character in fasta.id
-            ):
+            if any(True for character in str(fasta.id) if character.upper() not in allowed_characters):
                 self.errors.append(
                     {
                         "type": "content",
@@ -308,25 +348,34 @@ class fasta_validator:
                         "text": "The fasta header does not appear to match the specified pattern",
                     }
                 )
+                return False
 
         filename_splits = self.fasta_path.name.split(".")
         header_splits = fasta.id.split(".")
 
-        if filename_splits[0] != header_splits[1]:
-            self.errors.append(
-                {
-                    "type": "format",
-                    "text": "The 'sender_sample_id' section of the filename disagrees with the Fasta header",
-                }
-            )
 
-        if filename_splits[1] != header_splits[2]:
+        try:
+            if filename_splits[0] != header_splits[1]:
+                self.errors.append(
+                    {
+                        "type": "format",
+                        "text": "The 'sender_sample_id' section of the filename disagrees with the Fasta header",
+                    }
+                )
+            if filename_splits[1] != header_splits[2]:
+                self.errors.append(
+                    {
+                        "type": "format",
+                        "text": "The 'run_name' section of the filename disagrees with the Fasta header",
+                    }
+                )
+        except IndexError:
             self.errors.append(
-                {
-                    "type": "format",
-                    "text": "The 'run_name' section of the filename disagrees with the Fasta header",
-                }
-            )
+                    {
+                        "type": "format",
+                        "text": "The Fasta header appears to be malformed, ensure it is in the format: '>[uploader].[sender_sample_id].[run_name]'",
+                    }
+                )
 
         if len(self.errors) == 0:
             validation_result = True
@@ -339,16 +388,18 @@ class fasta_validator:
 
 
 class bam_validator:
-    def __init__(self, config, bam_path, platform):
+    def __init__(self, config, env_vars, bam_path, platform):
         self.config = config["bam"]
+        self.env_vars = env_vars
         self.bam_path = bam_path
         self.errors = []
+        self.platform = platform
 
     def validate(self):
         if self.config.get("size_limit_gb"):
             bam_size = os.path.getsize(self.bam_path)
 
-            if bam_size > self.config["size_limit_gb"] * (1 ^ 9):
+            if bam_size > self.config["size_limit_gb"] * (10 ** 9):
                 self.errors.append(
                     {
                         "type": "content",
@@ -370,7 +421,7 @@ class bam_validator:
 
         with pysam.AlignmentFile(self.bam_path, "rb") as bam_fh:
             # TODO: check behaviour of "rb" for samfiles
-            if any(bam_fh.references not in self.config.get("allowed_refs")):
+            if any(True for ref in bam_fh.references if ref not in self.config.get("allowed_refs")):
                 allowed_ref_string = ", ".join(
                     str(ref) for ref in self.config.get("allowed_refs")
                 )
@@ -384,14 +435,14 @@ class bam_validator:
             headers = bam_fh.header.to_dict()
 
             if self.config.get("require_sorted"):
-                if headers["SO"] != "coordinate":
+                if headers["HD"]["SO"] != "coordinate":
                     self.errors.append(
                         {
                             "type": "content",
                             "text": f"The bam file is not coordinate sorted, please properly sort the bam file and resubmit",
                         }
                     )
-
+            n_reads = 0
             for read in bam_fh:
                 n_reads += 1
                 break
@@ -405,12 +456,7 @@ class bam_validator:
                 )
 
         if self.config.get("check_dehumanised"):
-            result, human_proportion = validate_dehumanised(
-                self.bam_path,
-                self.config.get("mapping_presets")[platform],
-                self.config.get("compound_ref_pathogen_name"),
-                self.config.get("human_ref_name"),
-            )
+            result, human_proportion = validate_dehumanised(self.config, self.env_vars, self.bam_path, self.config.get("mapping_presets")[self.platform])
 
             if not result:
                 self.errors.append(

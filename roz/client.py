@@ -1,181 +1,92 @@
-import os
+from re import I
 import sys
-from urllib.parse import urlparse
-from pathlib import Path
-import time
 import json
-from types import SimpleNamespace
-from collections import namedtuple
-import logging
+import queue
+import multiprocessing as mp
 
-from varys import configurator, varys_consumer, varys_producer
+import varys
 
-from validation import csv_validator, fasta_validator, bam_validator
-
-
-# BIG TODO -> write worker funcs so that multiprocessing / job queueing can be utilised.
+from util import validate_triplet, get_env_variables, validation_tuple
 
 
-# class triplet_parser:
-#     def __init__(self, messages=set):
-#         self.__triplets = {}
+class worker_pool_handler:
+    def __init__(self, roz_config, pathogen_code, env_vars, max_retries, logger, outbound_queue, workers):
+        self._max_retries = max_retries
+        self._roz_config = roz_config
+        self._pathogen_code = pathogen_code
+        self._env_vars = env_vars
+        self._log = logger
+        self._out_queue = outbound_queue
+        self.worker_pool = mp.Pool(processes=workers)
 
-#     def populate_triplets(self, messages):
-#         for message in messages:
-#             parsed_url = urlparse(message["url"])
-#             parsed_path = Path(parsed_url.path)
-#             if parsed_path.suffix not in (".fasta", ".bam", ".csv"):
-#                 continue
-#             else:
-#                 self.__triplets[parsed_path.stem][parsed_path.suffix] = message
+    def submit_job(self, validation_tuple):
+        self.worker_pool.apply_async(func=validate_triplet, args=(self._roz_config["configs"][self._pathogen_code], self._env_vars, validation_tuple), callback=self.callback, error_callback=self.error_callback)
 
-#     def store_triplets():
-#         # TODO: Add some sort of SQL? Db for all messages, decisions, etc -> NOT A BIG OL JSON FILE EW
-#         pass
+    def callback(self, validation_tuple):
+        if validation_tuple.success:
+            self._log.info(f"Successfully validated artifact: {validation_tuple.payload['artifact']}")
+            self._out_queue.put(validation_tuple.payload)
+        else:
+            if validation_tuple.attempts >= self._max_retries:
+                self._log.error(f"Unable to successfully process file triplet for artifact: {validation_tuple.payload['artifact']} after {self._max_retries} unsuccessful attempts")
+            else:
+                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.payload['artifact']}, automatically retrying")
+                self.submit_job(validation_tuple)
 
-#     def return_matched(self):
-#         for k, v in self.__triplets.items():
-#             if len(v) == 3:
-#                 yield v
-
-#     def download_matched(self):
-#         # TODO: Discuss with rads how this should be implemented
-#         # Also add local path to file triplet store
-#         pass
-
-
-# Ensure that all required environmental variables are set
-def get_env_variables():
-    env_vars = {
-        "temp_dir": "ROZ_TEMP_DIR",
-        "idx_ref_dir": "ROZ_REF_ROOT",
-        "compound_ref_path": "ROZ_CPD_REF_PATH",
-        "json_config": "ROZ_CONFIG_JSON",
-        "logfile": "ROZ_LOG_PATH",
-    }
-
-    config = {k: os.getenv(v) for k, v in env_vars.items()}
     
-    if any(True for v in config.values() if v == None):
-        none_vals = ", ".join(str(env_vars[k]) for k, v in config.items() if v == None)
-        print(
-            f"The following required environmental variables must be set for ROZ to function: {none_vals}.",
-            file=sys.stderr,
-        )
-        sys.exit(10)
-        
-    return SimpleNamespace(**config)
+    def error_callback(self, exception):
+        self._log.error(f"Worker failed with unhandled exception {exception}")
 
-def pull_triplet_files(triplet_message):
-    #Will require some discussion with rads
-    pass
 
 def run(args):
 
     env_vars = get_env_variables()
 
-    logging.basicConfig(format='%(levelname)s:%(asctime)s:%(message)s', level=logging.ERROR, filename=env_vars.logfile)
-    log = logging.getLogger("roz_log")
+    log = varys.init_logger("roz_client", args.log_file, "DEBUG")
 
+    #TODO MAKE THIS LESS SHIT
     try:
-        validation_config = json.load(env_vars.json_config[args.pathogen_code])
+        with open(env_vars.json_config, "rt") as validation_cfg_fh:
+            validation_config = json.load(validation_cfg_fh)
     except:
         log.error("ROZ configuration JSON could not be parsed, ensure it is valid JSON and restart")
         sys.exit(2)
 
-    consumer_config = configurator("roz-consumer", env_vars.json_config)
-    producer_config = configurator("roz-producer", env_vars.json_config)
+    inbound_cfg = varys.configurator(args.inbound_profile, env_vars.profile_config)
+    outbound_cfg = varys.configurator(args.outbound_profile, env_vars.profile_config)
 
-    consumer = varys_consumer(consumer_config.username, consumer_config.password, env_vars.varys_queue, True, consumer_config.host, consumer_config.port, env_vars.logfile)
-    consumer.run()
+    inbound_queue = queue.Queue()
+    outbound_queue = queue.Queue()
 
+    roz_consumer = varys.consumer(received_messages=inbound_queue, configuration=inbound_cfg, log_file=args.log_file).start()
 
+    roz_producer = varys.producer(to_send=outbound_queue, configuration=outbound_cfg, log_file=args.log_file).start()
+
+    worker_pool = worker_pool_handler(roz_config=validation_config, pathogen_code=args.pathogen_code, env_vars=env_vars, max_retries=args.max_retries, logger=log, outbound_queue=outbound_queue, workers=args.workers)
 
     while True:
-        if consumer.check_for_messages():
-            for message in consumer.message_generator():
-                body = json.loads(message.body)
+        triplet_message = inbound_queue.get()
 
-            
+        payload = json.loads(triplet_message.body)
 
+        to_validate = validation_tuple(payload["artifact"], False, triplet_message.properties.headers["x-stream-offset"], payload, 0)
 
-        # inbound_messages = mqtt.consume_messages(args.inbound_topic)
-        # if inbound_messages:
-        #     triplets.populate_triplets(inbound_messages)
-        #     for triplet_name, file_triplet in triplets.return_matched().items():
-        #         triplet_errors = {}
-        #         csv_url_parsed = urlparse(file_triplet[".csv"]["url"])
-        #         fasta_url_parsed = urlparse(file_triplet[".fasta"]["url"])
+        log.info(f"Received message # {triplet_message.basic_deliver.delivery_tag}, attempting to validate file triplet for artifact {to_validate.artifact}")
 
-        #         with open(file_triplet[".csv"]["url"], "rt") as csv_fh:
-        #             csv = csv_validator(validation_config, csv_fh, csv_url_parsed.path)
-        #             csv_valid = csv.validate()
-        #             triplet_errors["csv"] = csv.errors
-
-        #         with open(file_triplet[".fasta"]["url"]) as fasta_fh:
-        #             fasta = fasta_validator(
-        #                 validation_config, fasta_fh, fasta_url_parsed.path
-        #             )
-        #             fasta_valid = fasta.validate()
-        #             triplet_errors["fasta"] = fasta.errors
-
-        #         bam = bam_validator(
-        #             validation_config,
-        #             file_triplet[".bam"]["url"],
-        #             csv.csv_data["seq_platform"],
-        #         )
-        #         bam_valid = bam.validate()
-        #         triplet_errors["bam"] = bam.errors
-
-        #         # TODO: Add all this to db
-        #         triplet_payload = json.dumps(
-        #             {
-        #                 triplet_name: {
-        #                     "urls": {
-        #                         "csv": file_triplet[".csv"]["url"],
-        #                         "fasta": file_triplet[".csv"]["url"],
-        #                         "bam": file_triplet[".bam"]["url"],
-        #                     },
-        #                     "errors": triplet_errors,
-        #                 }
-        #             }
-        #         )
-
-        #         if csv_valid and fasta_valid and bam_valid:
-        #             mqtt.publish(args.outbound_topic, triplet_payload)
-        #         else:
-        #             mqtt.publish(args.rejected_topic, triplet_payload)
-
-        # else:
-        #     time.sleep(60 * args.check_interval)
+        worker_pool.submit_job(to_validate)
+    
 
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pathogen_code", required=True)
-    # TODO: Add default topic constructors
-    # parser.add_argument(
-    #     "--inbound_topic",
-    #     default=None,
-    #     help="Topic to watch for inbound file messages. default: ROZ/{pathogen_code}/inbound/",
-    # )
-    # parser.add_argument(
-    #     "--outbound_topic",
-    #     default=None,
-    #     help="Topic to publish validated triplet messages to. default: ROZ/{pathogen_code}/validated_triplets/",
-    # )
-    # parser.add_argument(
-    #     "--rejected_topic",
-    #     default=None,
-    #     help="Topic to publish rejected triplet messages to. default: ROZ/{pathogen_code}/rejected_triplets/",
-    # )
-    parser.add_argument(
-        "--check_interval",
-        default=1,
-        help="How often to attempt to check for inbound files (minutes)",
-    )
+    parser.add_argument("--pathogen-code", required=True)
+    parser.add_argument("--inbound-profile", required=True)
+    parser.add_argument("--outbound-profile", required=True)
+    parser.add_argument("--workers", default=5, type=int)
+    parser.add_argument("--log-file", required=True)
+    parser.add_argument("--max-retries", default=3)
     args = parser.parse_args()
 
     run(args)

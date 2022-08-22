@@ -1,44 +1,60 @@
-import pysam
 import sys
-import mappy as mp
 import os
+from types import SimpleNamespace
+import copy
+from collections import namedtuple
 
+from validation import csv_validator, fasta_validator, bam_validator
 
-def validate_dehumanised(config, bam_path, minimap_preset, pathogen_name, max_allowable_human
-):
-    # Check if indexed compound ref to requested preset exists in $ROZ_REF_ROOT and create it if not
-    if not os.path.exists(f"{config.idx_ref_dir}/{minimap_preset}.mmi"):
-        mp.Aligner(
-            fn_idx_in=config.compound_ref_path, fn_idx_out=f"{config.idx_ref_dir}/{minimap_preset}.mmi"
-        )
+validation_tuple = namedtuple("validation_tuple", "artifact success offset payload attempts")
 
-    # Dump BAM reads to fastq file for mapping
-    fastq_name = bam_path.split("/")[-1].replace(".bam", ".fastq")
-    os.system(f"samtools fastq {bam_path} > {config.temp_dir}/{fastq_name}")
+def get_env_variables():
+    env_vars = {
+        "temp_dir": "ROZ_TEMP_DIR",
+        "idx_ref_dir": "ROZ_REF_ROOT",
+        "compound_ref_path": "ROZ_CPD_REF_PATH",
+        "json_config": "ROZ_CONFIG_JSON",
+        "profile_config": "ROZ_PROFILE_CFG",
+        "logfile": "ROZ_LOG_PATH"
+    }
 
-    # Align them to the compound ref
-    aligner = mp.Aligner(fn_idx_in=f"{config.idx_ref_dir}/{minimap_preset}.mmi")
-
-    best_hits_dict = {"total": 0, pathogen_name: 0, "human": 0}
-
-    # Iterate through the seqs in the dumped fastq file and re-align them to the compound reference,
-    # storing a count of how many align to each contig best
-    for name, seq, qual in mp.fastx_read(f"{config.temp_dir}/{fastq_name}"):
-        seq_mapping_quals = {}
-        best_hits_dict["total"] += 1
-        for hit in aligner.map(seq):
-            seq_mapping_quals[hit.ctg] = hit.mapq
-        if seq_mapping_quals:
-            top_hit = max(seq_mapping_quals, key=seq_mapping_quals.get)
-            if top_hit == pathogen_name:
-                best_hits_dict[pathogen_name] += 1
-            else:
-                best_hits_dict["human"] += 1
+    config = {k: os.getenv(v) for k, v in env_vars.items()}
     
-    human_proportion = best_hits_dict["human"] / best_hits_dict["total"]
+    if any(True for v in config.values() if v == None):
+        none_vals = ", ".join(str(env_vars[k]) for k, v in config.items() if v == None)
+        print(
+            f"The following required environmental variables must be set for ROZ to function: {none_vals}.", file=sys.stderr
+        )
+        sys.exit(10)
+        
+    return SimpleNamespace(**config)
 
-    os.system(f"rm -f {config.temp_dir}/{fastq_name}")
-    if human_proportion > max_allowable_human:
-        return False, human_proportion
-    else:
-        return True, human_proportion
+
+def validate_triplet(config, env_vars, to_validate):
+    try:
+        out_payload = copy.copy(to_validate.payload)
+
+        out_payload["validation"] = {}
+
+        out_payload["source_offset"] = to_validate.offset
+
+        with open(to_validate.payload["files"]["csv"]["path"], "rt") as csv_fh:
+            csv_check = csv_validator(config, csv_fh, to_validate.payload["files"]["csv"]["path"])
+            csv_pass = csv_check.validate()
+            out_payload["validation"]["csv"] = {"result": csv_pass, "errors": csv_check.errors}
+            platform = csv_check.csv_data["seq_platform"]
+
+        with open(to_validate.payload["files"]["fasta"]["path"], "rt") as fasta_fh:
+            fasta_check = fasta_validator(config, fasta_fh, to_validate.payload["files"]["fasta"]["path"])
+            fasta_pass = fasta_check.validate()
+            out_payload["validation"]["fasta"] = {"result": fasta_pass, "errors": fasta_check.errors}
+        
+        bam_check = bam_validator(config, env_vars, to_validate.payload["files"]["bam"]["path"], platform)
+        bam_pass = bam_check.validate()
+        out_payload["validation"]["bam"] = {"result": bam_pass, "errors": bam_check.errors}
+
+        callback = validation_tuple(to_validate.artifact, True, to_validate.offset, out_payload, to_validate.attempts + 1)
+    except:
+        callback = validation_tuple(to_validate.artifact, False, to_validate.offset, to_validate.payload, to_validate.attempts + 1)
+
+    return callback
