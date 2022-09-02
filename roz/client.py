@@ -42,8 +42,6 @@ def run(args):
 
     env_vars = get_env_variables()
 
-    log = varys.init_logger("roz_client", args.log_file, "DEBUG")
-
     #TODO MAKE THIS LESS SHIT
     try:
         with open(env_vars.json_config, "rt") as validation_cfg_fh:
@@ -51,6 +49,8 @@ def run(args):
     except:
         log.error("ROZ configuration JSON could not be parsed, ensure it is valid JSON and restart")
         sys.exit(2)
+    
+    log = varys.init_logger("roz_client", env_vars.logfile, "DEBUG")
 
     inbound_cfg = varys.configurator(args.inbound_profile, env_vars.profile_config)
     outbound_cfg = varys.configurator(args.outbound_profile, env_vars.profile_config)
@@ -85,7 +85,7 @@ def main():
     parser.add_argument("--inbound-profile", required=True)
     parser.add_argument("--outbound-profile", required=True)
     parser.add_argument("--workers", default=5, type=int)
-    parser.add_argument("--log-file", required=True)
+    # parser.add_argument("--log-file", required=True)
     parser.add_argument("--max-retries", default=3)
     args = parser.parse_args()
 
