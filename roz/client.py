@@ -58,9 +58,9 @@ def run(args):
     inbound_queue = queue.Queue()
     outbound_queue = queue.Queue()
 
-    roz_consumer = varys.consumer(received_messages=inbound_queue, configuration=inbound_cfg, log_file=args.log_file).start()
+    roz_consumer = varys.consumer(received_messages=inbound_queue, configuration=inbound_cfg, log_file=env_vars.logfile).start()
 
-    roz_producer = varys.producer(to_send=outbound_queue, configuration=outbound_cfg, log_file=args.log_file).start()
+    roz_producer = varys.producer(to_send=outbound_queue, configuration=outbound_cfg, log_file=env_vars.logfile).start()
 
     worker_pool = worker_pool_handler(roz_config=validation_config, pathogen_code=args.pathogen_code, env_vars=env_vars, max_retries=args.max_retries, logger=log, outbound_queue=outbound_queue, workers=args.workers)
 
