@@ -76,7 +76,7 @@ file_triplet_cfg = configurator("triplet_matcher", os.getenv("ROZ_PROFILE_CFG"))
 
 file_trip_queue = Queue()
 
-file_triplet_producer = producer(file_trip_queue, file_triplet_cfg, os.getenv("ROZ_MATCHER_LOG")).start()
+file_triplet_producer = producer(file_trip_queue, file_triplet_cfg, os.getenv("ROZ_MATCHER_LOG_PATH")).start()
 
 log.info("Generating dict of already matched file triplets")
 previously_matched = get_already_matched_triplets(file_triplet_cfg)
