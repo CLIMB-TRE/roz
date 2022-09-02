@@ -70,13 +70,13 @@ def generate_payload(artifact, file_triplet, uploader_code, spec_version=1):
     
     return payload
 
-log = init_logger("trip_match_client", "/home/ubuntu/roz/triplet_matcher.log", "DEBUG")
+log = init_logger("trip_match_client", os.getenv("ROZ_MATCHER_LOG"), "DEBUG")
 
-file_triplet_cfg = configurator("triplet_matcher", "/home/ubuntu/roz/roz_config.json")
+file_triplet_cfg = configurator("triplet_matcher", os.getenv("ROZ_PROFILE_CFG"))
 
 file_trip_queue = Queue()
 
-file_triplet_producer = producer(file_trip_queue, file_triplet_cfg, "/home/ubuntu/roz/triplet_matcher.log").start()
+file_triplet_producer = producer(file_trip_queue, file_triplet_cfg, os.getenv("ROZ_MATCHER_LOG")).start()
 
 log.info("Generating dict of already matched file triplets")
 previously_matched = get_already_matched_triplets(file_triplet_cfg)
@@ -89,7 +89,7 @@ unmatched_artifacts = {}
 uploader_code = "BIRM"
 
 while True:
-    new_files = directory_scanner("/home/ubuntu/roz_testdata/test_inbound_dir", existing_files)
+    new_files = directory_scanner(os.getenv("ROZ_INBOUND_PATH"), existing_files)
     existing_files = existing_files.union(new_files)
 
     if not new_files:
@@ -126,9 +126,7 @@ while True:
                     to_delete.append(artifact)
                     log.info(f"Ignoring triplet for artifact: {artifact} since identical triplet has been previously matched")
                     continue
-            print("generating payload")
             payload = generate_payload(artifact, triplet, uploader_code)
-            print("putting payload")
             file_trip_queue.put(payload)
     
     if to_delete:
