@@ -10,4 +10,4 @@ dependencies:
   - pika
   - samtools
   - pytest
-  - Bioconda
+  - biopython
