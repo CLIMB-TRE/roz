@@ -1,4 +1,5 @@
-from re import I
+#!/usr/bin/env python
+
 import sys
 import json
 import queue

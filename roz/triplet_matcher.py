@@ -1,4 +1,5 @@
-from cmath import e
+#!/usr/bin/env python
+
 import queue
 from varys import producer, consumer, configurator, init_logger
 from queue import Queue
