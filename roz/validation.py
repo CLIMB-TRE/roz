@@ -149,6 +149,14 @@ class csv_validator:
                 }
             )
             return False
+        except ValueError:
+            self.errors.append(
+                {
+                    "type": "formatting",
+                    "text": f"The CSV field 'csv_template_version' does not appear to be an integer, CSV validation halted at this point so this list of errors may be inexhaustive",
+                }
+            )
+            return False            
 
         # Ensure that CSV contains enough headings
         if any(key == None for key in csv_data.keys()):
