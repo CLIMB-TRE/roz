@@ -23,7 +23,7 @@ class worker_pool_handler:
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
     def submit_job(self, validation_tuple):
-        self._log.info(f"Submitting artifact {validation_tuple.artifact} to worker pool")
+        self._log.debug(f"Submitting validation triplet {validation_tuple} to worker pool")
         self.worker_pool.apply_async(func=validate_triplet, args=(self._roz_config["configs"][self._pathogen_code], self._env_vars, validation_tuple, self._log), callback=self.callback, error_callback=self.error_callback)
 
     def callback(self, validation_tuple):
@@ -54,7 +54,7 @@ def run(args):
         log.error("ROZ configuration JSON could not be parsed, ensure it is valid JSON and restart")
         sys.exit(2)
     
-    log = varys.init_logger("roz_client", env_vars.logfile, "INFO")
+    log = varys.init_logger("roz_client", env_vars.logfile, "DEBUG")
 
     inbound_cfg = varys.configurator(args.inbound_profile, env_vars.profile_config)
     outbound_cfg = varys.configurator(args.outbound_profile, env_vars.profile_config)
