@@ -16,10 +16,10 @@
             },
             "bam": {
                 "allowed_refs": [
-                    "ON563414.3"
+                    "ON563414.3",
+                    "MT903344.1"
                 ],
-                "compound_ref_path": "mmi_compound_ref_path",
-                "compound_ref_pathogen_name": "CANONICAL_MPX",
+                "compound_ref_pathogen_name": "MT903344.1",
                 "human_ref_name": "GRCh38.p14",
                 "check_dehumanised": true,
                 "max_acceptible_human": 0.01,
@@ -128,6 +128,9 @@
                         "OXFORD_NANOPORE",
                         "PACIFIC_BIOSCIENCES",
                         "ION_TORRENT"
+                    ],
+                    "sample_type": [
+                        "swab"
                     ]
                 }
             }
