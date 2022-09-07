@@ -34,7 +34,7 @@ class worker_pool_handler:
             if validation_tuple.attempts >= self._max_retries:
                 self._log.error(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} after {self._max_retries} unsuccessful attempts")
             else:
-                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} with error: {validation_tuple.error}, automatically retrying")
+                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} with error: {validation_tuple.exception}, automatically retrying")
                 self.submit_job(validation_tuple)
 
     
