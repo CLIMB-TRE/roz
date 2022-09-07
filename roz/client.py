@@ -77,7 +77,10 @@ def run(args):
 
         log.info(f"Received message # {triplet_message.basic_deliver.delivery_tag}, attempting to validate file triplet for artifact {to_validate.artifact}")
 
-        worker_pool.submit_job(to_validate)
+        try:
+            worker_pool.submit_job(to_validate)
+        except Exception as e:
+            log.error(f"Unable to submit job to worker pool with error: {e}")
     
 
 
