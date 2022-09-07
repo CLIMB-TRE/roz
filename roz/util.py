@@ -6,7 +6,7 @@ from collections import namedtuple
 
 from validation import csv_validator, fasta_validator, bam_validator
 
-validation_tuple = namedtuple("validation_tuple", "artifact success offset payload attempts")
+validation_tuple = namedtuple("validation_tuple", "artifact success offset payload attempts exception")
 
 def get_env_variables():
     env_vars = {
@@ -56,8 +56,8 @@ def validate_triplet(config, env_vars, to_validate, log):
         bam_pass = bam_check.validate()
         out_payload["validation"]["bam"] = {"result": bam_pass, "errors": bam_check.errors}
 
-        callback = validation_tuple(to_validate.artifact, True, to_validate.offset, out_payload, to_validate.attempts + 1)
-    except:
-        callback = validation_tuple(to_validate.artifact, False, to_validate.offset, to_validate.payload, to_validate.attempts + 1)
+        callback = validation_tuple(to_validate.artifact, True, to_validate.offset, out_payload, to_validate.attempts + 1, "")
+    except Exception as e:
+        callback = validation_tuple(to_validate.artifact, False, to_validate.offset, to_validate.payload, to_validate.attempts + 1, e)
 
     return callback

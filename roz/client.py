@@ -34,7 +34,7 @@ class worker_pool_handler:
             if validation_tuple.attempts >= self._max_retries:
                 self._log.error(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} after {self._max_retries} unsuccessful attempts")
             else:
-                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact}, automatically retrying")
+                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} with error: {validation_tuple.error}, automatically retrying")
                 self.submit_job(validation_tuple)
 
     
@@ -54,7 +54,7 @@ def run(args):
         log.error("ROZ configuration JSON could not be parsed, ensure it is valid JSON and restart")
         sys.exit(2)
     
-    log = varys.init_logger("roz_client", env_vars.logfile, "DEBUG")
+    log = varys.init_logger("roz_client", env_vars.logfile, "INFO")
 
     inbound_cfg = varys.configurator(args.inbound_profile, env_vars.profile_config)
     outbound_cfg = varys.configurator(args.outbound_profile, env_vars.profile_config)
@@ -73,7 +73,7 @@ def run(args):
 
         payload = json.loads(triplet_message.body)
 
-        to_validate = validation_tuple(payload["artifact"], False, triplet_message.properties.headers["x-stream-offset"], payload, 0)
+        to_validate = validation_tuple(payload["artifact"], False, triplet_message.properties.headers["x-stream-offset"], payload, 0, "")
 
         log.info(f"Received message # {triplet_message.basic_deliver.delivery_tag}, attempting to validate file triplet for artifact {to_validate.artifact}")
 
