@@ -38,20 +38,20 @@ def validate_triplet(config, env_vars, to_validate, log):
 
         out_payload["source_offset"] = to_validate.offset
 
-        log.info(f"Attempting to validate CSV for artifact {to_validate.payload.artifact}")
+        log.info(f"Attempting to validate CSV for artifact {to_validate.artifact}")
         with open(to_validate.payload["files"]["csv"]["path"], "rt") as csv_fh:
             csv_check = csv_validator(config, csv_fh, to_validate.payload["files"]["csv"]["path"])
             csv_pass = csv_check.validate()
             out_payload["validation"]["csv"] = {"result": csv_pass, "errors": csv_check.errors}
             platform = csv_check.csv_data["seq_platform"]
 
-        log.info(f"Attempting to validate Fasta for artifact {to_validate.payload.artifact}")
+        log.info(f"Attempting to validate Fasta for artifact {to_validate.artifact}")
         with open(to_validate.payload["files"]["fasta"]["path"], "rt") as fasta_fh:
             fasta_check = fasta_validator(config, fasta_fh, to_validate.payload["files"]["fasta"]["path"])
             fasta_pass = fasta_check.validate()
             out_payload["validation"]["fasta"] = {"result": fasta_pass, "errors": fasta_check.errors}
         
-        log.info(f"Attempting to validate BAM for artifact {to_validate.payload.artifact}")
+        log.info(f"Attempting to validate BAM for artifact {to_validate.artifact}")
         bam_check = bam_validator(config, env_vars, to_validate.payload["files"]["bam"]["path"], platform)
         bam_pass = bam_check.validate()
         out_payload["validation"]["bam"] = {"result": bam_pass, "errors": bam_check.errors}
