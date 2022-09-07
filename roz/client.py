@@ -23,18 +23,18 @@ class worker_pool_handler:
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
     def submit_job(self, validation_tuple):
-        self._log.info(f"Submitting artifact {validation_tuple.payload.artifact} to worker pool")
+        self._log.info(f"Submitting artifact {validation_tuple.artifact} to worker pool")
         self.worker_pool.apply_async(func=validate_triplet, args=(self._roz_config["configs"][self._pathogen_code], self._env_vars, validation_tuple, self._log), callback=self.callback, error_callback=self.error_callback)
 
     def callback(self, validation_tuple):
         if validation_tuple.success:
-            self._log.info(f"Successfully validated artifact: {validation_tuple.payload['artifact']}")
+            self._log.info(f"Successfully validated artifact: {validation_tuple.artifact}")
             self._out_queue.put(validation_tuple.payload)
         else:
             if validation_tuple.attempts >= self._max_retries:
-                self._log.error(f"Unable to successfully process file triplet for artifact: {validation_tuple.payload['artifact']} after {self._max_retries} unsuccessful attempts")
+                self._log.error(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} after {self._max_retries} unsuccessful attempts")
             else:
-                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.payload['artifact']}, automatically retrying")
+                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact}, automatically retrying")
                 self.submit_job(validation_tuple)
 
     
