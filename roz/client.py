@@ -21,6 +21,7 @@ class worker_pool_handler:
         self.worker_pool = mp.Pool(processes=workers)
 
     def submit_job(self, validation_tuple):
+        self._log.info(f"Submitting artifact {validation_tuple.payload.artifact} to worker pool")
         self.worker_pool.apply_async(func=validate_triplet, args=(self._roz_config["configs"][self._pathogen_code], self._env_vars, validation_tuple, self._log), callback=self.callback, error_callback=self.error_callback)
 
     def callback(self, validation_tuple):
