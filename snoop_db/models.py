@@ -1,24 +1,11 @@
 from sqlmodel import Field, SQLModel
 import datetime
-import types
-
-
-class EpochTime(types.TypeDecorator):
-    impl = types.Integer
-
-    epoch = datetime.date(1970, 1, 1)
-
-    def process_bind_param(self, value, dialect):
-        return (value - self.epoch).days
-
-    def process_result_value(self, value, dialect):
-        return self.epoch + datetime.timedelta(days=value)
-
+import sqlalchemy.types as types
 
 class new_file_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
-    timestamp: EpochTime = Field(index=True)
+    timestamp: int = Field(index=True)
 
     site_code: str = Field(index=True)
 
@@ -30,7 +17,7 @@ class new_file_table(SQLModel, table=True):
 class matched_triplet_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
-    timestamp: EpochTime = Field(index=True)
+    timestamp: int = Field(index=True)
 
     site_code: str = Field(index=True)
 
@@ -56,7 +43,7 @@ class matched_triplet_table(SQLModel, table=True):
 class validation_result_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
-    timestamp: EpochTime = Field(index=True)
+    timestamp: int = Field(index=True)
 
     site_code: str = Field(index=True)
 
@@ -86,7 +73,7 @@ class new_artifact_table(SQLModel, table=True):
 
     cid: str = Field(index=True, unique=True)
 
-    timestamp: EpochTime = Field(index=True)
+    timestamp: int = Field(index=True)
 
     site_code: str = Field(index=True)
 

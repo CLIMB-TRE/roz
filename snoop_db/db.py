@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, create_engine
-from .models import (
+from snoop_db.models import (
     new_file_table,
     matched_triplet_table,
     validation_result_table,

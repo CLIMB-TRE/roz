@@ -1,13 +1,13 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select
-from .models import (
+from snoop_db.models import (
     new_file_table,
     matched_triplet_table,
     validation_result_table,
     new_artifact_table,
 )
-import db
+from snoop_db.db import main
 
-from roz import varys
+import varys
 import queue
 import os
 import json

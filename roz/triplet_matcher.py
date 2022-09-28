@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from snoop_db.models import matched_triplet_table
 from snoop_db import api, db, models
 
 import queue
@@ -31,7 +30,7 @@ def get_already_matched_triplets():
 
     with Session(engine) as session:
 
-        matched_triplets = session.exec(select(matched_triplet_table))
+        matched_triplets = session.exec(select(models.matched_triplet_table))
 
         out_dict = {}
 

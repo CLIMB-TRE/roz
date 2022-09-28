@@ -7,7 +7,7 @@ import multiprocessing as mp
 
 import varys
 
-from util import validate_triplet, get_env_variables, validation_tuple
+from roz.util import validate_triplet, get_env_variables, validation_tuple
 
 
 class worker_pool_handler:

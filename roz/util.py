@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import copy
 from collections import namedtuple
 
-from validation import csv_validator, fasta_validator, bam_validator
+from roz.validation import csv_validator, fasta_validator, bam_validator
 
 validation_tuple = namedtuple(
     "validation_tuple", "artifact success payload attempts exception"
