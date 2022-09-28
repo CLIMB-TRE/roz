@@ -11,7 +11,16 @@ from util import validate_triplet, get_env_variables, validation_tuple
 
 
 class worker_pool_handler:
-    def __init__(self, roz_config, pathogen_code, env_vars, max_retries, logger, outbound_queue, workers):
+    def __init__(
+        self,
+        roz_config,
+        pathogen_code,
+        env_vars,
+        max_retries,
+        logger,
+        outbound_queue,
+        workers,
+    ):
         self._max_retries = max_retries
         self._roz_config = roz_config
         self._pathogen_code = pathogen_code
@@ -23,21 +32,48 @@ class worker_pool_handler:
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
     def submit_job(self, validation_tuple):
-        self._log.debug(f"Submitting validation triplet {validation_tuple} to worker pool")
-        self.worker_pool.apply_async(func=validate_triplet, args=(self._roz_config["configs"][self._pathogen_code], self._env_vars, validation_tuple, self._log), callback=self.callback, error_callback=self.error_callback)
+        self._log.debug(
+            f"Submitting validation triplet {validation_tuple} to worker pool"
+        )
+        self.worker_pool.apply_async(
+            func=validate_triplet,
+            args=(
+                self._roz_config["configs"][self._pathogen_code],
+                self._env_vars,
+                validation_tuple,
+                self._log,
+            ),
+            callback=self.callback,
+            error_callback=self.error_callback,
+        )
 
     def callback(self, validation_tuple):
         if validation_tuple.success:
-            self._log.info(f"Successfully validated artifact: {validation_tuple.artifact}")
+            self._log.info(
+                f"Successfully validated artifact: {validation_tuple.artifact}"
+            )
+            if (
+                validation_tuple.payload["csv"]["result"]
+                == validation_tuple.payload["fasta"]["result"]
+                == validation_tuple.payload["bam"]["result"]
+                == True
+            ):
+                validation_tuple.payload["triplet_result"] = True
+            else:
+                validation_tuple.payload["triplet_result"] = False
+
             self._out_queue.put(validation_tuple.payload)
         else:
             if validation_tuple.attempts >= self._max_retries:
-                self._log.error(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} after {self._max_retries} unsuccessful attempts")
+                self._log.error(
+                    f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} after {self._max_retries} unsuccessful attempts"
+                )
             else:
-                self._log.info(f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} with error: {validation_tuple.exception}, automatically retrying")
+                self._log.info(
+                    f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} with error: {validation_tuple.exception}, automatically retrying"
+                )
                 self.submit_job(validation_tuple)
 
-    
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception {exception}")
 
@@ -46,14 +82,16 @@ def run(args):
 
     env_vars = get_env_variables()
 
-    #TODO MAKE THIS LESS SHIT
+    # TODO MAKE THIS LESS SHIT
     try:
         with open(env_vars.json_config, "rt") as validation_cfg_fh:
             validation_config = json.load(validation_cfg_fh)
     except:
-        log.error("ROZ configuration JSON could not be parsed, ensure it is valid JSON and restart")
+        log.error(
+            "ROZ configuration JSON could not be parsed, ensure it is valid JSON and restart"
+        )
         sys.exit(2)
-    
+
     log = varys.init_logger("roz_client", env_vars.logfile, "INFO")
 
     inbound_cfg = varys.configurator(args.inbound_profile, env_vars.profile_config)
@@ -62,26 +100,47 @@ def run(args):
     inbound_queue = queue.Queue()
     outbound_queue = queue.Queue()
 
-    roz_consumer = varys.consumer(received_messages=inbound_queue, configuration=inbound_cfg, log_file=env_vars.logfile).start()
+    roz_consumer = varys.consumer(
+        received_messages=inbound_queue,
+        configuration=inbound_cfg,
+        log_file=env_vars.logfile,
+    ).start()
 
-    roz_producer = varys.producer(to_send=outbound_queue, configuration=outbound_cfg, log_file=env_vars.logfile).start()
+    roz_producer = varys.producer(
+        to_send=outbound_queue, configuration=outbound_cfg, log_file=env_vars.logfile
+    ).start()
 
-    worker_pool = worker_pool_handler(roz_config=validation_config, pathogen_code=args.pathogen_code, env_vars=env_vars, max_retries=args.max_retries, logger=log, outbound_queue=outbound_queue, workers=args.workers)
+    worker_pool = worker_pool_handler(
+        roz_config=validation_config,
+        pathogen_code=args.pathogen_code,
+        env_vars=env_vars,
+        max_retries=args.max_retries,
+        logger=log,
+        outbound_queue=outbound_queue,
+        workers=args.workers,
+    )
 
     while True:
         triplet_message = inbound_queue.get()
 
         payload = json.loads(triplet_message.body)
 
-        to_validate = validation_tuple(payload["artifact"], False, triplet_message.properties.headers["x-stream-offset"], payload, 0, "")
+        to_validate = validation_tuple(
+            payload["artifact"],
+            False,
+            payload,
+            0,
+            "",
+        )
 
-        log.info(f"Received message # {triplet_message.basic_deliver.delivery_tag}, attempting to validate file triplet for artifact {to_validate.artifact}")
+        log.info(
+            f"Received message # {triplet_message.basic_deliver.delivery_tag}, attempting to validate file triplet for artifact {to_validate.artifact}"
+        )
 
         try:
             worker_pool.submit_job(to_validate)
         except Exception as e:
             log.error(f"Unable to submit job to worker pool with error: {e}")
-    
 
 
 def main():
