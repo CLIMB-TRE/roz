@@ -94,7 +94,7 @@ class csv_validator:
 
         csv_list = [row for row in reader]
 
-        # Ensure the CSV contains data
+        # Ensure the CSV contains a data row
         if len(csv_list) == 0:
             self.errors.append(
                 {

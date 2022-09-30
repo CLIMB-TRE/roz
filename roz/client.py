@@ -5,7 +5,7 @@ import json
 import queue
 import multiprocessing as mp
 
-import varys
+import roz.varys
 
 from roz.util import validate_triplet, get_env_variables, validation_tuple
 
@@ -52,16 +52,12 @@ class worker_pool_handler:
             self._log.info(
                 f"Successfully validated artifact: {validation_tuple.artifact}"
             )
-            if (
-                validation_tuple.payload["csv"]["result"]
-                == validation_tuple.payload["fasta"]["result"]
-                == validation_tuple.payload["bam"]["result"]
-                == True
-            ):
+            if all(validation_tuple.payload["validation"][file]["result"] == True for file in ("csv", "fasta", "bam")):
                 validation_tuple.payload["triplet_result"] = True
             else:
                 validation_tuple.payload["triplet_result"] = False
 
+            self._log.info(f"Sending validation result for artifact {validation_tuple.artifact}")
             self._out_queue.put(validation_tuple.payload)
         else:
             if validation_tuple.attempts >= self._max_retries:
@@ -92,21 +88,21 @@ def run(args):
         )
         sys.exit(2)
 
-    log = varys.init_logger("roz_client", env_vars.logfile, "INFO")
+    log = roz.varys.init_logger("roz_client", env_vars.logfile, "ERROR")
 
-    inbound_cfg = varys.configurator(args.inbound_profile, env_vars.profile_config)
-    outbound_cfg = varys.configurator(args.outbound_profile, env_vars.profile_config)
+    inbound_cfg = roz.varys.configurator(args.inbound_profile, env_vars.profile_config)
+    outbound_cfg = roz.varys.configurator(args.outbound_profile, env_vars.profile_config)
 
     inbound_queue = queue.Queue()
     outbound_queue = queue.Queue()
 
-    roz_consumer = varys.consumer(
+    roz_consumer = roz.varys.consumer(
         received_messages=inbound_queue,
         configuration=inbound_cfg,
         log_file=env_vars.logfile,
     ).start()
 
-    roz_producer = varys.producer(
+    roz_producer = roz.varys.producer(
         to_send=outbound_queue, configuration=outbound_cfg, log_file=env_vars.logfile
     ).start()
 

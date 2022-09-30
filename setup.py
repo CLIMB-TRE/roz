@@ -18,18 +18,19 @@ setup(
     version=version,
     install_requires=install_requires,
     requires=["python (>=3.8)"],
-    packages=["roz", "snoop_db", "varys"],
+    packages=["roz", "snoop_db"],
     author="Sam AJ Wilkinson",
     description="A file ingest and message queue solution",
     long_description=long_description,
-    package_dir={"roz": "roz", "snoop_db": "snoop_db", "varys": "roz"},
-    package_data={"artic": [], "snoop_db": []},
+    package_dir={"roz": "roz", "snoop_db": "snoop_db"},
+    package_data={"roz": [], "snoop_db": []},
     zip_safe=False,
     include_package_data=True,
     entry_points={
         "console_scripts": [
             "roz=roz.client:main",
             "snoop_db=snoop_db.client:main",
+            "init_snoop_db=snoop_db.db:main"
         ],
     },
     author_email="s.a.j.wilkinson@bham.ac.uk",

@@ -21,7 +21,7 @@ class consumer(Thread):
         received_messages,
         configuration,
         log_file,
-        log_level="DEBUG",
+        log_level="ERROR",
     ):
 
         Thread.__init__(self)
@@ -234,7 +234,7 @@ class consumer(Thread):
 
 
 class producer(Thread):
-    def __init__(self, to_send, configuration, log_file, log_level="DEBUG"):
+    def __init__(self, to_send, configuration, log_file, log_level="ERROR"):
         # username, password, queue, ampq_url, port, log_file, exchange="", routing_key="default", sleep_interval=5
         Thread.__init__(self)
 

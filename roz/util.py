@@ -40,8 +40,6 @@ def validate_triplet(config, env_vars, to_validate, log):
 
         out_payload["validation"] = {}
 
-        out_payload["source_offset"] = to_validate.offset
-
         log.info(f"Attempting to validate CSV for artifact {to_validate.artifact}")
         with open(to_validate.payload["files"]["csv"]["path"], "rt") as csv_fh:
             csv_check = csv_validator(
@@ -52,7 +50,10 @@ def validate_triplet(config, env_vars, to_validate, log):
                 "result": csv_pass,
                 "errors": csv_check.errors,
             }
-            platform = csv_check.csv_data["seq_platform"]
+            try:
+                platform = csv_check.csv_data["seq_platform"]
+            except:
+                platform = False
 
         log.info(f"Attempting to validate Fasta for artifact {to_validate.artifact}")
         with open(to_validate.payload["files"]["fasta"]["path"], "rt") as fasta_fh:
@@ -66,14 +67,21 @@ def validate_triplet(config, env_vars, to_validate, log):
             }
 
         log.info(f"Attempting to validate BAM for artifact {to_validate.artifact}")
-        bam_check = bam_validator(
-            config, env_vars, to_validate.payload["files"]["bam"]["path"], platform
-        )
-        bam_pass = bam_check.validate()
-        out_payload["validation"]["bam"] = {
-            "result": bam_pass,
-            "errors": bam_check.errors,
-        }
+        if platform:
+            bam_check = bam_validator(
+                config, env_vars, to_validate.payload["files"]["bam"]["path"], platform
+            )
+            bam_pass = bam_check.validate()
+            out_payload["validation"]["bam"] = {
+                "result": bam_pass,
+                "errors": bam_check.errors,
+            }
+        else:
+            bam_pass = False
+            out_payload["validation"]["bam"] = {
+                "result": bam_pass,
+                "errors": [{ "type": "formatting", "text": "The CSV does not appear to contain a data row, please ensure you include a header row as well as a data row" }]
+            }
 
         callback = validation_tuple(
             to_validate.artifact,

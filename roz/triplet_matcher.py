@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from snoop_db import api, db, models
+from snoop_db import db
+from snoop_db.models import matched_triplet_table
 
 import queue
-from varys import producer, consumer, configurator, init_logger
+from roz.varys import producer, consumer, configurator, init_logger
 from queue import Queue
 import hashlib
 import os
@@ -26,12 +27,14 @@ def hash_file(filepath, blocksize=2**20):
 
 def get_already_matched_triplets():
 
-    engine = db.main()
+    engine = db.make_engine()
 
     with Session(engine) as session:
 
-        matched_triplets = session.exec(select(models.matched_triplet_table))
 
+        statement = select(matched_triplet_table)
+        matched_triplets = session.exec(statement).all()
+            
         out_dict = {}
 
         for triplet in matched_triplets:
@@ -53,6 +56,8 @@ def directory_scanner(path, old_files):
     found_files = set()
 
     for file in os.listdir(path):
+        if str(file).startswith("."):
+            continue
         fullpath = os.path.join(path, file)
         if fullpath in old_files:
             continue
@@ -90,7 +95,7 @@ def generate_payload(artifact, file_triplet, uploader_code, spec_version=1):
 
 log = init_logger("trip_match_client", os.getenv("ROZ_MATCHER_LOG_PATH"), "DEBUG")
 
-file_triplet_cfg = configurator("triplet_matcher", os.getenv("ROZ_PROFILE_CFG"))
+file_triplet_cfg = configurator("matched_triplets", os.getenv("ROZ_PROFILE_CFG"))
 
 file_trip_queue = Queue()
 
@@ -99,7 +104,7 @@ file_triplet_producer = producer(
 ).start()
 
 log.info("Generating dict of already matched file triplets")
-previously_matched = get_already_matched_triplets(file_triplet_cfg)
+previously_matched = get_already_matched_triplets()
 log.info("Dict of already matched triplets generated successfully")
 
 existing_files = set()
@@ -120,7 +125,7 @@ while True:
         fname = os.path.basename(new_file)
         if len(fname.split(".")) != 3:
             log.error(
-                f"File {new_file} does not appear to confirm to filename specification, ignoring"
+                f"File {new_file} does not appear to conform to filename specification, ignoring"
             )
             continue
         ftype = fname.split(".")[2]
@@ -132,9 +137,9 @@ while True:
         fhash = hash_file(new_file)
 
         if unmatched_artifacts.get(artifact):
-            unmatched_artifacts[artifact][ftype] = {"path": new_file, "hash": fhash}
+            unmatched_artifacts[artifact][ftype] = {"path": new_file, "md5": fhash}
         else:
-            unmatched_artifacts[artifact] = {ftype: {"path": new_file, "hash": fhash}}
+            unmatched_artifacts[artifact] = {ftype: {"path": new_file, "md5": fhash}}
 
     to_delete = []
 
@@ -143,7 +148,7 @@ while True:
             if artifact in previously_matched.keys():
                 ftype_matches = {"fasta": False, "csv": False, "bam": False}
                 for ftype in ("fasta", "csv", "bam"):
-                    if previously_matched[artifact][ftype] == triplet[ftype]["hash"]:
+                    if previously_matched[artifact][ftype] == triplet[ftype]["md5"]:
                         ftype_matches[ftype] = True
                 if all(ftype_matches.values()):
                     to_delete.append(artifact)
