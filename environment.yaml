@@ -12,3 +12,4 @@ dependencies:
   - pytest
   - biopython
   - fastapi
+  - sqlite
