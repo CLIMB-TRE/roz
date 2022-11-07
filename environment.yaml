@@ -13,3 +13,5 @@ dependencies:
   - biopython
   - fastapi
   - sqlite
+  - requests
+  - pandas
