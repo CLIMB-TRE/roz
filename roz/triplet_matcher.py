@@ -76,7 +76,7 @@ def generate_payload(artifact, file_triplet, uploader_code, spec_version=1):
         ts = time.time_ns()
         payload = {
             "payload_version": 1,
-            "uploader": uploader_code,
+            "site": uploader_code,
             "match_timestamp": ts,
             "artifact": artifact,
             "pathogen_code": "mpx",  # Sort this later

@@ -81,18 +81,8 @@ class new_artifact_table(SQLModel, table=True):
 
     artifact: str = Field(index=True)
 
-    csv_url: str = Field()
-
-    csv_md5: str = Field()
-
     fasta_url: str = Field()
-
-    fasta_md5: str = Field()
 
     bam_url: str = Field()
 
-    bam_md5: str = Field()
-
     payload: str = Field()
-
-    

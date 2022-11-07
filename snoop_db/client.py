@@ -96,7 +96,7 @@ def main():
                         session.add(
                             matched_triplet_table(
                                 timestamp=payload["match_timestamp"],
-                                site_code=payload["uploader"],
+                                site_code=payload["site"],
                                 pathogen_code=payload["pathogen_code"],
                                 artifact=payload["artifact"],
                                 csv_url=payload["files"]["csv"]["path"],
@@ -107,11 +107,12 @@ def main():
                                 bam_md5=payload["files"]["bam"]["md5"],
                                 payload=message.body,
                             )
-                        except, Exception as e:
-                            log.error(f"Unable to submit message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}")
+                        )
+                    except Exception as e:
+                        log.error(f"Unable to submit message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}")
                 try:
                     session.commit()
-                except, Exception as e:
+                except Exception as e:
                     log.error(f"Unable to commit session to snoop_db with error: {e}")
 
         if validation_result_messages:
@@ -123,7 +124,7 @@ def main():
                         session.add(
                             validation_result_table(
                                 timestamp=payload["match_timestamp"],
-                                site_code=payload["uploader"],
+                                site_code=payload["site"],
                                 pathogen_code=payload["pathogen_code"],
                                 artifact=payload["artifact"],
                                 triplet_result=payload["triplet_result"],
@@ -142,34 +143,41 @@ def main():
                                 payload=message.body,
                             )
                         )
-                    except, Exception as e:
+                    except Exception as e:
                         log.error(f"Unable to submit message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}")
                 try:
                     session.commit()
-                except, Exception as e:
+                except Exception as e:
                     log.error(f"Unable to commit session to snoop_db with error: {e}")
 
-        # if new_artifact_messages:
-        #     payload = json.loads(new_artifact_message.body)
-        #     session.add(
-        #         new_artifact_table(
-        #             cid=payload["cid"],
-        #             timestamp=payload["match_timestamp"],
-        #             site_code=payload["uploader"],
-        #             pathogen_code=payload["pathogen_code"],
-        #             artifact=payload["artifact"],
-        #             csv_url=payload["csv"]["path"],
-        #             csv_md5=payload["csv"]["md5"],
-        #             fasta_url=payload["fasta"]["path"],
-        #             fasta_md5=payload["fasta"]["md5"],
-        #             bam_url=payload["bam"]["path"],
-        #             bam_md5=payload["bam"]["md5"],
-        #             payload=new_artifact_message.body,
-        #         )
-        #     )
-        #     session.commit()
+        if new_artifact_messages:
+            with Session(engine) as session:
+                for message in new_artifact_messages:
+                    payload = json.loads(message.body)
+                    log.info(f"Submitting new_artifact message #{message.basic_deliver.delivery_tag} to snoop_db")
+                    try:
+                        session.add(
+                            new_artifact_table(
+                                cid=payload["cid"],
+                                timestamp=payload["ingest_timestamp"],
+                                created=payload["created"],
+                                ingested=payload["ingested"],
+                                site_code=payload["site"],
+                                pathogen_code=payload["pathogen_code"],
+                                artifact=payload["artifact"],
+                                fasta_url=payload["fasta_path"],
+                                bam_url=payload["bam_path"],
+                                payload=message.body,
+                            )
+                        )
+                    except Exception as e:
+                        log.error(f"Unable to submit message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}")
+                try:
+                    session.commit()
+                except Exception as e:
+                    log.error(f"Unable to commit session to snoop_db with error: {e}")
 
-            
+
 
             time.sleep(5)
 

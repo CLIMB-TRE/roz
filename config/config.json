@@ -22,7 +22,7 @@
                 "compound_ref_pathogen_name": "MT903344.1",
                 "human_ref_name": "GRCh38.p14",
                 "check_dehumanised": true,
-                "max_acceptible_human": 0.01,
+                "max_acceptible_human": 0.0001,
                 "mapping_presets": {
                     "ILLUMINA": "sr",
                     "OXFORD_NANOPORE": "map-ont",
@@ -41,74 +41,74 @@
                 "required_fields": [
                     "pathogen_code",
                     "csv_template_version",
-                    "uploader",
-                    "sender_sample_id",
-                    "received_date",
+                    "site",
+                    "sample_id",
+                    "received_month",
                     "sample_type",
-                    "run_sequencer",
-                    "run_seq_protocol",
-                    "run_layout",
-                    "run_selection",
-                    "seq_approach",
-                    "seq_strategy",
                     "seq_platform",
-                    "run_name",
                     "instrument_model",
+                    "enrichment_method",
+                    "seq_strategy",
+                    "source_of_library",
+                    "run_name",
                     "bioinfo_pipe_name",
-                    "bioinfo_pipe_version"
+                    "bioinfo_pipe_version",
+                    "country",
+                    "da_region"
                 ],
                 "optional_fields": [
-                    "collection_date",
-                    "previous_sample_id"
+                    "collection_month",
+                    "patient_ageband",
+                    "travel_status",
+                    "outer_postcode",
+                    "epi_cluster",
+                    "person_id",
+                    "sample_site"
                 ],
                 "field_datatypes": {
                     "pathogen_code": "text",
                     "csv_template_version": "integer",
-                    "uploader": "text",
-                    "sender_sample_id": "text",
-                    "received_date": "date",
-                    "collection_date": "date",
+                    "site": "choice",
+                    "sample_id": "text",
+                    "received_month": "month",
+                    "collection_month": "month",
                     "sample_type": "choice",
-                    "run_sequencer": "text",
-                    "run_seq_protocol": "text",
-                    "run_layout": "choice",
-                    "run_selection": "choice",
-                    "seq_approach": "choice",
+                    "sample_site": "choice",
+                    "source_of_library": "choice",
                     "seq_strategy": "choice",
                     "seq_platform": "choice",
                     "run_name": "text",
                     "instrument_model": "text",
                     "bioinfo_pipe_name": "text",
-                    "bioinfo_pipe_version": "text"
+                    "bioinfo_pipe_version": "text",
+                    "patient_ageband": "choice",
+                    "country": "choice",
+                    "da_region": "choice"
                 },
                 "character_limits": {
-                    "uploader": "1-8",
-                    "sender_sample_id": "8-24",
-                    "sample_type": "1-16",
-                    "previous_sample_id": "0-24",
-                    "run_sequencer": "1-96",
-                    "run_seq_protocol": "1-96",
+                    "site": "1-8",
+                    "sample_id": "8-24",
                     "run_name": "18-96",
                     "instrument_model": "1-48",
                     "bioinfo_pipe_name": "1-96",
                     "bioinfo_pipe_version": "1-48"
                 },
                 "field_choices": {
-                    "uploader": [
+                    "site": [
                         "BIRM"
                     ],
                     "run_layout": [
                         "SINGLE",
                         "PAIRED"
                     ],
-                    "run_selection": [
+                    "enrichment_method": [
                         "OTHER",
                         "PCR",
                         "RANDOM",
                         "RANDOM_PCR",
                         "NONE"
                     ],
-                    "seq_approach": [
+                    "source_of_library": [
                         "GENOMIC",
                         "METAGENOMIC",
                         "METATRANSCRIPTOMIC",
@@ -130,7 +130,41 @@
                         "ION_TORRENT"
                     ],
                     "sample_type": [
-                        "swab"
+                        "SWAB",
+                        "SERUM"
+                    ],
+                    "patient_ageband": [
+                        "0-5",
+                        "6-10",
+                        "11-15",
+                        "16-20",
+                        "21-25",
+                        "26-30",
+                        "31-35",
+                        "36-40",
+                        "41-45",
+                        "46-50",
+                        "51-55",
+                        "56-60",
+                        "61-65",
+                        "66-70",
+                        "71-75",
+                        "76-80",
+                        "81-85",
+                        "86-90",
+                        "91-95",
+                        "96-100",
+                        "100+"
+                    ],
+                    "country": [
+                        "ENG",
+                        "WALES",
+                        "SCOT",
+                        "NI"
+                    ],
+                    "travel_status": [
+                        "YES",
+                        "NO"
                     ]
                 }
             }

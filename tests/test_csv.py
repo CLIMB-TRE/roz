@@ -21,7 +21,7 @@ def config():
                 "test_choice",
                 "test_date",
             ],
-            "optional_fields": ["test_optional"],
+            "optional_fields": ["test_optional", "test_month"],
             "field_datatypes": {
                 "sender_sample_id": "text",
                 "run_name": "text",
@@ -30,6 +30,7 @@ def config():
                 "test_optional": "text",
                 "test_choice": "choice",
                 "test_date": "date",
+                "test_month": "month"
             },
             "character_limits": {"test_text": "1-8"},
             "field_choices": {"test_choice": ["test1", "test2"]},
@@ -123,7 +124,7 @@ def test_sample_id_allowed_characers(config):
 
 def test_check_dtypes(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,01/12/22,15,test3,s"
+        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_month,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,01/12/22,2022-05-23,15,test3,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -131,6 +132,10 @@ def test_check_dtypes(config):
         "type": "content",
         "text": "The test_date field must be in the format YYYY-MM-DD not 01/12/22",
     } in validator.errors
+    assert {
+        "type": "content",
+        "text": "The test_month field must be in the format YYYY-MM not 2022-05-23",
+    } in validator.errors    
     assert {
         "type": "content",
         "text": "The test_choice field can only contain one of: test1, test2",
@@ -191,7 +196,7 @@ def test_extra_columns(config):
 
 def test_pass_csv(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s"
+        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_month,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,2022-05-12,2022-05,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == True

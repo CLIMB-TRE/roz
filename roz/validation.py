@@ -64,10 +64,20 @@ def validate_dehumanised(config, env_vars, bam_path, minimap_preset):
 
 def validate_datetime(date_string):
     try:
-        datetime.datetime.strptime(date_string, "%Y-%m-%d")
+        if date_string != datetime.strptime(date_string, "%Y-%m-%d").strftime('%Y-%m-%d'):
+            raise ValueError
         return True
     except ValueError:
         return False
+
+def validate_month(date_string):
+    try:
+        if date_string != datetime.strptime(date_string, "%Y-%m").strftime('%Y-%m'):
+            raise ValueError
+        return True
+    except ValueError:
+        return False
+
 
 
 def expand_character_ranges(character_range_string):
@@ -178,30 +188,30 @@ class csv_validator:
             )
             return False
 
-        # Check sender_sample_id only contains allowed characters
+        # Check sample_id only contains allowed characters
         if self.config.get("sample_name_allowed_characters"):
             allowed_characters = expand_character_ranges(
                 self.config.get("sample_name_allowed_characters")
             )
             if any(
                 character.upper() not in allowed_characters
-                for character in csv_data["sender_sample_id"]
+                for character in csv_data["sample_id"]
             ):
                 self.errors.append(
                     {
                         "type": "content",
-                        "text": "The sender_sample_id field contains at least one disallowed character",
+                        "text": f"The sample_id field contains at least one disallowed character",
                     }
                 )
 
         # Check that the sample_id / runname in the filename are match the metadata
         filename_splits = self.csv_path.name.split(".")
 
-        if filename_splits[0] != csv_data["sender_sample_id"]:
+        if filename_splits[0] != csv_data["sample_id"]:
             self.errors.append(
                 {
                     "type": "format",
-                    "text": "The 'sender_sample_id' section of the filename disagrees with the CSV metadata",
+                    "text": "The 'sample_id' section of the filename disagrees with the CSV metadata",
                 }
             )
 
@@ -229,7 +239,7 @@ class csv_validator:
         for field, type in self.config.get("field_datatypes").items():
             try:
                 if type == "choice":
-                    if csv_data[field] not in self.config["field_choices"][field]:
+                    if csv_data[field].upper() not in self.config["field_choices"][field]:
                         choices_string = ", ".join(
                             str(choice)
                             for choice in self.config["field_choices"][field]
@@ -246,6 +256,14 @@ class csv_validator:
                             {
                                 "type": "content",
                                 "text": f"The {field} field must be in the format YYYY-MM-DD not {csv_data[field]}",
+                            }
+                        )
+                elif type == "month":
+                    if not validate_month(csv_data[field]):
+                        self.errors.append(
+                            {
+                                "type": "content",
+                                "text": f"The {field} field must be in the format YYYY-MM not {csv_data[field]}",
                             }
                         )
 
@@ -265,18 +283,18 @@ class csv_validator:
                             }
                         )
 
-        # Ensure sender_sample_id not in other fields
+        # Ensure sample_id not in other fields
         if self.config.get("disallow_sample_id_elsewhere"):
             for field, contents in csv_data.items():
-                sample_id = csv_data["sender_sample_id"]
-                if field == "sender_sample_id":
+                sample_id = csv_data["sample_id"]
+                if field == "sample_id":
                     continue
                 else:
                     if sample_id in str(contents):
                         self.errors.append(
                             {
                                 "type": "content",
-                                "text": f"The field: {field} contains the sender_sample_id",
+                                "text": f"The field: {field} contains the sample_id",
                             }
                         )
 
@@ -367,7 +385,7 @@ class fasta_validator:
                 self.errors.append(
                     {
                         "type": "format",
-                        "text": "The 'sender_sample_id' section of the filename disagrees with the Fasta header",
+                        "text": "The 'sample_id' section of the filename disagrees with the Fasta header",
                     }
                 )
             if filename_splits[1] != header_splits[2]:
@@ -381,7 +399,7 @@ class fasta_validator:
             self.errors.append(
                     {
                         "type": "format",
-                        "text": "The Fasta header appears to be malformed, ensure it is in the format: '>[uploader].[sender_sample_id].[run_name]'",
+                        "text": "The Fasta header appears to be malformed, ensure it is in the format: '>[site_code].[sample_id].[run_name]'",
                     }
                 )
 
