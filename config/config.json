@@ -54,7 +54,7 @@
                     "bioinfo_pipe_name",
                     "bioinfo_pipe_version",
                     "country",
-                    "da_region"
+                    "ukhsa_region"
                 ],
                 "optional_fields": [
                     "collection_month",
@@ -83,7 +83,7 @@
                     "bioinfo_pipe_version": "text",
                     "patient_ageband": "choice",
                     "country": "choice",
-                    "da_region": "choice"
+                    "da_region": "ukhsa_region"
                 },
                 "character_limits": {
                     "site": "1-8",
@@ -165,6 +165,9 @@
                     "travel_status": [
                         "YES",
                         "NO"
+                    ],
+                    "ukhsa_region": [
+                        "NE"
                     ]
                 }
             }
