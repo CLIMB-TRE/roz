@@ -93,7 +93,7 @@ def generate_payload(artifact, file_triplet, uploader_code, spec_version=1):
     return payload
 
 
-log = init_logger("trip_match_client", os.getenv("ROZ_MATCHER_LOG_PATH"), "DEBUG")
+log = init_logger("trip_match_client", os.getenv("ROZ_MATCHER_LOG_PATH"), "ERROR")
 
 file_triplet_cfg = configurator("matched_triplets", os.getenv("ROZ_PROFILE_CFG"))
 

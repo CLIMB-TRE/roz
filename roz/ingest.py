@@ -142,7 +142,8 @@ def main():
                         outbound_queue.put(out_payload)
                     
                     else:
-                        error_string = "\n".join(f"Field: {k}\nError(s): {'\t'.join(str(error) for error in v)}" for k, v in metadb_response["errors"].items())
+
+                        error_string = "\n".join(f"Field: {k}\tError(s): {v}" for k, v in metadb_response["errors"].items())
                         log.info(f"Failed to create artifact on metadb due to the following errors:\n{error_string}")
                         out_payload["metadb_errors"] = metadb_response["errors"]
                         outbound_queue.put(out_payload)
@@ -151,6 +152,5 @@ def main():
             log.error(f"Ingest failed due to unhandled error: {e}")
 
 
-            
-
-
+if __name__ == "__main__":
+    main()
