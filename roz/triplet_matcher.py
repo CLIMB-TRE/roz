@@ -93,14 +93,14 @@ def generate_payload(artifact, file_triplet, uploader_code, spec_version=1):
     return payload
 
 
-log = init_logger("trip_match_client", os.getenv("ROZ_MATCHER_LOG_PATH"), "ERROR")
+log = init_logger("trip_match_client", os.getenv("ROZ_MATCHER_LOG_PATH"), os.getenv("ROZ_LOG_LEVEL"))
 
 file_triplet_cfg = configurator("matched_triplets", os.getenv("ROZ_PROFILE_CFG"))
 
 file_trip_queue = Queue()
 
 file_triplet_producer = producer(
-    file_trip_queue, file_triplet_cfg, os.getenv("ROZ_MATCHER_LOG_PATH")
+    file_trip_queue, file_triplet_cfg, os.getenv("ROZ_MATCHER_LOG_PATH"), log_level=os.getenv("ROZ_LOG_LEVEL")
 ).start()
 
 log.info("Generating dict of already matched file triplets")
@@ -111,7 +111,7 @@ existing_files = set()
 
 unmatched_artifacts = {}
 
-uploader_code = "BIRM"
+uploader_code = "BIRM" ##FIX THIS
 
 while True:
     new_files = directory_scanner(os.getenv("ROZ_INBOUND_PATH"), existing_files)

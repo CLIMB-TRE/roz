@@ -1,5 +1,5 @@
 from csv import DictReader
-import datetime
+from datetime import datetime
 import string
 import pysam
 from Bio import SeqIO
@@ -358,7 +358,7 @@ class fasta_validator:
                 self.config["header_allowed_characters"] + ",>"
             )
 
-            if any(True for character in str(fasta.id) if character.upper() not in allowed_characters):
+            if any(character.upper() not in allowed_characters for character in str(fasta.id)):
                 self.errors.append(
                     {
                         "type": "content",

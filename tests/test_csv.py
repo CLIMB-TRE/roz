@@ -13,7 +13,7 @@ def config():
             "sample_name_allowed_characters": "alphanumeric,_,-",
             "current_version": 1,
             "required_fields": [
-                "sender_sample_id",
+                "sample_id",
                 "run_name",
                 "csv_template_version",
                 "test_text",
@@ -23,7 +23,7 @@ def config():
             ],
             "optional_fields": ["test_optional", "test_month"],
             "field_datatypes": {
-                "sender_sample_id": "text",
+                "sample_id": "text",
                 "run_name": "text",
                 "test_text": "text",
                 "test_integer": "integer",
@@ -40,7 +40,7 @@ def config():
 
 def test_short_csv(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\n"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\n"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -52,7 +52,7 @@ def test_short_csv(config):
 
 def test_long_csv(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -64,7 +64,7 @@ def test_long_csv(config):
 
 def test_duplicate_cols(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,text1,2022-05-12,15,test1,s"
+        "sample_id,run_name,csv_template_version,test_text,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,text1,2022-05-12,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -76,7 +76,7 @@ def test_duplicate_cols(config):
 
 def test_specification_version(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,2,text,2022-05-12,15,test1,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,2,text,2022-05-12,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -88,7 +88,7 @@ def test_specification_version(config):
 
 def test_sufficient_headers(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -100,7 +100,7 @@ def test_sufficient_headers(config):
 
 def test_required_fields(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_optional\ntestid_1,test_runname,1,text,2022-05-12,15,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_optional\ntestid_1,test_runname,1,text,2022-05-12,15,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -112,19 +112,19 @@ def test_required_fields(config):
 
 def test_sample_id_allowed_characers(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional,test_extra\ntestid_1$,test_runname,1,text,2022-05-12,15,test1,s,5"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional,test_extra\ntestid_1$,test_runname,1,text,2022-05-12,15,test1,s,5"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
     assert {
         "type": "content",
-        "text": "The sender_sample_id field contains at least one disallowed character",
+        "text": "The sample_id field contains at least one disallowed character",
     } in validator.errors
 
 
 def test_check_dtypes(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_month,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,01/12/22,2022-05-23,15,test3,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_month,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,01/12/22,2022-05-23,15,test3,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -144,13 +144,13 @@ def test_check_dtypes(config):
 
 def test_filename_validation(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_2,test_runnam,1,text,2022-05-12,15,test1,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_2,test_runnam,1,text,2022-05-12,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
     assert {
         "type": "format",
-        "text": "The 'sender_sample_id' section of the filename disagrees with the CSV metadata",
+        "text": "The 'sample_id' section of the filename disagrees with the CSV metadata",
     } in validator.errors
     assert {
         "type": "format",
@@ -160,7 +160,7 @@ def test_filename_validation(config):
 
 def test_check_character_ranges(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text12345678,2022-05-12,15,test1,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text12345678,2022-05-12,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
@@ -172,19 +172,19 @@ def test_check_character_ranges(config):
 
 def test_sample_id_elsewhere(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,test_text,test_integer,test_choice,test_date,csv_template_version\ntest_id,test_runname,test_id1234567,field_2,test56,test_id-01/12/22,1"
+        "sample_id,run_name,test_text,test_integer,test_choice,test_date,csv_template_version\ntest_id,test_runname,test_id1234567,field_2,test56,test_id-01/12/22,1"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == False
     assert {
         "type": "content",
-        "text": f"The field: test_date contains the sender_sample_id",
+        "text": f"The field: test_date contains the sample_id",
     } in validator.errors
 
 
 def test_extra_columns(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional,test_extra\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s,5"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_integer,test_choice,test_optional,test_extra\ntestid_1,test_runname,1,text,2022-05-12,15,test1,s,5"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == True
@@ -196,7 +196,7 @@ def test_extra_columns(config):
 
 def test_pass_csv(config):
     test_csv = io.StringIO(
-        "sender_sample_id,run_name,csv_template_version,test_text,test_date,test_month,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,2022-05-12,2022-05,15,test1,s"
+        "sample_id,run_name,csv_template_version,test_text,test_date,test_month,test_integer,test_choice,test_optional\ntestid_1,test_runname,1,text,2022-05-12,2022-05,15,test1,s"
     )
     validator = csv_validator(config, test_csv, "/fake/dir/testid_1.test_runname.csv")
     assert validator.validate() == True

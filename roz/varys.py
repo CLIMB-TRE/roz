@@ -8,6 +8,7 @@ from functools import partial
 import json
 from threading import Thread
 import sys
+import os
 
 varys_message = namedtuple("varys_message", "basic_deliver properties body")
 
@@ -21,7 +22,7 @@ class consumer(Thread):
         received_messages,
         configuration,
         log_file,
-        log_level="ERROR",
+        log_level,
     ):
 
         Thread.__init__(self)
@@ -234,7 +235,7 @@ class consumer(Thread):
 
 
 class producer(Thread):
-    def __init__(self, to_send, configuration, log_file, log_level="ERROR"):
+    def __init__(self, to_send, configuration, log_file, log_level):
         # username, password, queue, ampq_url, port, log_file, exchange="", routing_key="default", sleep_interval=5
         Thread.__init__(self)
 

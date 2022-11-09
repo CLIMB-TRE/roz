@@ -10,7 +10,7 @@
                 "allowed_characters": "alphanumeric,_,-,."
             },
             "fasta": {
-                "header_allowed_characters": "alphanumeric,_,-, ",
+                "header_allowed_characters": "alphanumeric,_,-, ,.",
                 "iupac_only": true,
                 "min_length": 100000
             },
@@ -62,7 +62,7 @@
                     "travel_status",
                     "outer_postcode",
                     "epi_cluster",
-                    "person_id",
+                    "patient_id",
                     "sample_site"
                 ],
                 "field_datatypes": {
@@ -83,7 +83,7 @@
                     "bioinfo_pipe_version": "text",
                     "patient_ageband": "choice",
                     "country": "choice",
-                    "da_region": "ukhsa_region"
+                    "ukhsa_region": "choice"
                 },
                 "character_limits": {
                     "site": "1-8",
@@ -95,7 +95,8 @@
                 },
                 "field_choices": {
                     "site": [
-                        "BIRM"
+                        "BIRM",
+                        "TEST"
                     ],
                     "run_layout": [
                         "SINGLE",
@@ -168,6 +169,10 @@
                     ],
                     "ukhsa_region": [
                         "NE"
+                    ],
+                    "sample_site": [
+                        "SORE",
+                        "GENITAL"
                     ]
                 }
             }

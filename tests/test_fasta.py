@@ -8,7 +8,7 @@ from roz.validation import fasta_validator
 def config():
     return {
         "fasta": {
-            "header_format": ">{uploader}{delimiter}{sender_sample_id}{delimiter}{run_name}",
+            "header_format": ">{uploader}{delimiter}{sample_id}{delimiter}{run_name}",
             "delimiter": ".",
             "header_allowed_characters": "alphanumeric,_,-,.",
             "iupac_only": True,
@@ -57,7 +57,7 @@ def test_header_mismatch(config):
     assert validator.validate() == False
     assert {
         "type": "format",
-        "text": "The 'sender_sample_id' section of the filename disagrees with the Fasta header",
+        "text": "The 'sample_id' section of the filename disagrees with the Fasta header",
     } in validator.errors
     assert {
         "type": "format",

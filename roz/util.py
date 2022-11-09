@@ -19,6 +19,7 @@ def get_env_variables():
         "json_config": "ROZ_CONFIG_JSON",
         "profile_config": "ROZ_PROFILE_CFG",
         "logfile": "ROZ_LOG_PATH",
+        "log_level": "ROZ_LOG_LEVEL"
     }
 
     config = {k: os.getenv(v) for k, v in env_vars.items()}

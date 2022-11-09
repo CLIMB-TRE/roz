@@ -4,6 +4,7 @@ import sys
 import json
 import queue
 import multiprocessing as mp
+import os
 
 import roz.varys
 
@@ -65,7 +66,7 @@ class worker_pool_handler:
                     f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} after {self._max_retries} unsuccessful attempts"
                 )
             else:
-                self._log.info(
+                self._log.error(
                     f"Unable to successfully process file triplet for artifact: {validation_tuple.artifact} with error: {validation_tuple.exception}, automatically retrying"
                 )
                 self.submit_job(validation_tuple)
@@ -88,7 +89,7 @@ def run(args):
         )
         sys.exit(2)
 
-    log = roz.varys.init_logger("roz_client", env_vars.logfile, "ERROR")
+    log = roz.varys.init_logger("roz_client", env_vars.logfile, env_vars.log_level)
 
     inbound_cfg = roz.varys.configurator(args.inbound_profile, env_vars.profile_config)
     outbound_cfg = roz.varys.configurator(args.outbound_profile, env_vars.profile_config)
@@ -100,10 +101,11 @@ def run(args):
         received_messages=inbound_queue,
         configuration=inbound_cfg,
         log_file=env_vars.logfile,
+        log_level=env_vars.log_level
     ).start()
 
     roz_producer = roz.varys.producer(
-        to_send=outbound_queue, configuration=outbound_cfg, log_file=env_vars.logfile
+        to_send=outbound_queue, configuration=outbound_cfg, log_file=env_vars.logfile, log_level=env_vars.log_level
     ).start()
 
     worker_pool = worker_pool_handler(

@@ -16,7 +16,7 @@ import time
 
 
 class snooper:
-    def __init__(self, varys_config, profile, logfile):
+    def __init__(self, varys_config, profile, logfile, log_level):
         self.__varys_config = varys_config
         self.__profile = profile
         self.__logfile = logfile
@@ -29,6 +29,7 @@ class snooper:
             received_messages=self.queue,
             configuration=self.cfg,
             log_file=self.__logfile,
+            log_level=log_level
         ).start()
 
     def snoop(self):
@@ -49,24 +50,27 @@ def main():
     roz_cfg_path = os.getenv("ROZ_PROFILE_CFG")
     snooper_log_path = os.getenv("SNOOPER_LOG_PATH")
 
-    log = roz.varys.init_logger("snoop_db", snooper_log_path, "ERROR")
+    log = roz.varys.init_logger("snoop_db", snooper_log_path, os.getenv("ROZ_LOG_LEVEL"))
 
     matched_triplet_snooper = snooper(
         varys_config=roz_cfg_path,
         profile="matched_triplets_snoop",
         logfile=snooper_log_path,
+        log_level=os.getenv("ROZ_LOG_LEVEL")
     )
 
     validation_result_snooper = snooper(
         varys_config=roz_cfg_path,
         profile="validated_triplets_snoop",
         logfile=snooper_log_path,
+        log_level=os.getenv("ROZ_LOG_LEVEL")
     )
 
     new_artifact_snooper = snooper(
         varys_config=roz_cfg_path,
         profile="new_artifacts_snoop",
         logfile=snooper_log_path,
+        log_level=os.getenv("ROZ_LOG_LEVEL")
     )
 
     engine = snoop_db.db.make_engine()
