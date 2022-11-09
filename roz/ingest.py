@@ -169,7 +169,7 @@ def main():
                     if metadb_response.ok:
                         out_payload["created"] = True
 
-                        out_payload["cid"] = metadb_response.json()["results"]["cid"]
+                        out_payload["cid"] = metadb_response.json()["results"][0]["cid"]
 
                         try:
                             fmove(payload["files"]["fasta"]["path"], fasta_path)
@@ -197,8 +197,8 @@ def main():
                     else:
 
                         error_string = "\n".join(
-                            f"Field: {k}\tError(s): {v}"
-                            for k, v in metadb_response["errors"].items()
+                            f"Field: {k}\tError(s): {v[0]}"
+                            for k, v in metadb_response.json()["errors"].items()
                         )
                         log.info(
                             f"Failed to create artifact on metadb due to the following errors:\n{error_string}"

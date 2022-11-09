@@ -54,6 +54,7 @@
                     "bioinfo_pipe_name",
                     "bioinfo_pipe_version",
                     "country",
+                    "run_layout",
                     "ukhsa_region"
                 ],
                 "optional_fields": [
