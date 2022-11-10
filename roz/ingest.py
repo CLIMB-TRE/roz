@@ -53,7 +53,6 @@ def meta_create(metadata, pathogen_code):
 
     return response
 
-
 def main():
 
     for i in ("METADB_ROZ_PASSWORD", "ROZ_INGEST_LOG", "ROZ_PROFILE_CFG"):
@@ -63,7 +62,7 @@ def main():
 
     # Setup producer / consumer
     log = roz.varys.init_logger(
-        "roz_client", os.getenv("ROZ_INGEST_LOG"), os.getenv("ROZ_LOG_LEVEL")
+        "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("ROZ_LOG_LEVEL")
     )
 
     inbound_cfg = roz.varys.configurator(
@@ -71,7 +70,7 @@ def main():
     )
     outbound_cfg = roz.varys.configurator("new_artifacts", os.getenv("ROZ_PROFILE_CFG"))
 
-    inbound_queue = queue.Queue()
+    inbound_queue = queue.Queue(maxsize=1)
     outbound_queue = queue.Queue()
 
     ingest_consumer = roz.varys.consumer(
@@ -111,12 +110,24 @@ def main():
 
             payload = json.loads(validated_triplet.body)
 
-            log.info(payload)
-            print(payload, file=sys.stderr)
-
             ts = time.time_ns()
 
-            out_payload = ingest_payload_template.copy()
+            out_payload = {
+                "artifact": "",
+                "sample_id": "",
+                "run_name": "",
+                "pathogen_code": "",
+                "ingest_timestamp": "",
+                "cid": "",
+                "site": "",
+                "created": False,
+                "ingested": False,
+                "fasta_path": "",
+                "bam_path": "",
+                "metadb_status_code": "",
+                "metadb_errors": {},
+                "ingest_errors": [],
+            }
             out_payload["artifact"] = payload["artifact"]
             out_payload["pathogen_code"] = payload["pathogen_code"]
             out_payload["ingest_timestamp"] = ts
@@ -126,7 +137,6 @@ def main():
                 triplet_metadata = meta_csv_parser(
                     payload["files"]["csv"]["path"], payload["files"]["csv"]["md5"]
                 )
-                print(triplet_metadata, file=sys.stderr)
 
                 if not triplet_metadata:
                     log.error(
@@ -148,10 +158,6 @@ def main():
                     out_payload["bam_path"] = bam_path
                     triplet_metadata["bam_path"] = bam_path
 
-                    log.info(triplet_metadata)
-
-                    print(triplet_metadata, file=sys.stderr)
-
                     try:
                         metadb_response = meta_create(
                             triplet_metadata, payload["pathogen_code"]
@@ -162,9 +168,6 @@ def main():
                     out_payload["metadb_status_code"] = metadb_response.status_code
 
                     out_payload["metadb_errors"] = metadb_response.json()["errors"]
-
-                    log.info(out_payload)
-                    log.info(metadb_response)
 
                     if metadb_response.ok:
                         out_payload["created"] = True
@@ -203,7 +206,7 @@ def main():
                         log.info(
                             f"Failed to create artifact on metadb due to the following errors:\n{error_string}"
                         )
-                        out_payload["metadb_errors"] = metadb_response["errors"]
+                        out_payload["metadb_errors"] = metadb_response.json()["errors"]
                         outbound_queue.put(out_payload)
 
         except Exception as e:

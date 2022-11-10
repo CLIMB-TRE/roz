@@ -78,13 +78,19 @@
                     "source_of_library": "choice",
                     "seq_strategy": "choice",
                     "seq_platform": "choice",
+                    "enrichment_method": "choice",
+                    "run_layout": "choice",
                     "run_name": "text",
                     "instrument_model": "text",
                     "bioinfo_pipe_name": "text",
                     "bioinfo_pipe_version": "text",
                     "patient_ageband": "choice",
                     "country": "choice",
-                    "ukhsa_region": "choice"
+                    "ukhsa_region": "choice",
+                    "outer_postcode": "text",
+                    "patient_id": "text",
+                    "epi_cluster": "text",
+                    "travel_status": "choice"
                 },
                 "character_limits": {
                     "site": "1-8",
@@ -92,12 +98,14 @@
                     "run_name": "18-96",
                     "instrument_model": "1-48",
                     "bioinfo_pipe_name": "1-96",
-                    "bioinfo_pipe_version": "1-48"
+                    "bioinfo_pipe_version": "1-48",
+                    "outer_postcode": "3-5",
+                    "patient_id": "5-24",
+                    "epi_cluster": "5-24"
                 },
                 "field_choices": {
                     "site": [
-                        "BIRM",
-                        "TEST"
+                        "BIRM"
                     ],
                     "run_layout": [
                         "SINGLE",
