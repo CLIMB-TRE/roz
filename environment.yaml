@@ -16,3 +16,4 @@ dependencies:
   - requests
   - pandas
   - sqlmodel
+  - boto3

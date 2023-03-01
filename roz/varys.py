@@ -13,38 +13,134 @@ import os
 varys_message = namedtuple("varys_message", "basic_deliver properties body")
 
 
+class varys:
+    def __init__(
+        self,
+        profile,
+        logfile,
+        queue_suffix,
+        in_exchange=False,
+        out_exchange=False,
+        log_level="DEBUG",
+        config_path=os.getenv("VARYS_CFG"),
+    ):
+        if not in_exchange and not out_exchange:
+            raise Exception(
+                "At least one of 'in_exchange' or 'out_exchange' must be provided when instantiating varys"
+            )
+
+        if in_exchange:
+            self.__in_queue = queue.Queue()
+
+        if out_exchange:
+            self.__out_queue = queue.Queue()
+
+        self.profile = profile
+        self.configuration_path = config_path
+
+        self.routing_key = "arbitrary_string"
+        self.in_exchange = in_exchange
+        self.out_exchange = out_exchange
+        self.queue_suffix = queue_suffix
+
+        self.__logfile = logfile
+        self.__log_level = log_level
+
+        self.__credentials = configurator(self.profile, self.configuration_path)
+
+        if in_exchange:
+            self.__consumer = consumer(
+                received_messages=self.__in_queue,
+                routing_key=self.routing_key,
+                exchange=self.in_exchange,
+                configuration=self.__credentials,
+                log_file=self.__logfile,
+                log_level=self.__log_level,
+                queue_suffix=self.queue_suffix,
+            ).start()
+
+        if out_exchange:
+            self.__producer = producer(
+                to_send=self.__out_queue,
+                routing_key=self.routing_key,
+                exchange=self.out_exchange,
+                configuration=self.__credentials,
+                log_file=self.__logfile,
+                log_level=self.__log_level,
+                queue_suffix=self.queue_suffix,
+            ).start()
+
+    def send(self, message):
+        if self.__producer:
+            self.__out_queue.put(message)
+        else:
+            raise Exception(
+                "Cannot send a message without providing an 'out_queue' when instantiating varys"
+            )
+
+    def receive(self, block=True):
+        if self.__consumer:
+            return self.__in_queue.get(block=block)
+        else:
+            raise Exception(
+                "Cannot send a message without providing an 'in_queue' when instantiating varys"
+            )
+
+    def receive_batch(self):
+        if self.__consumer:
+            messages = []
+
+            while not self.__in_queue.empty():
+                try:
+                    messages.append(self.receive(block=False))
+                except queue.Empty:
+                    break
+
+            return messages
+        else:
+            raise Exception(
+                "Cannot send a message without providing an 'in_queue' when instantiating varys"
+            )
+
+
 class consumer(Thread):
 
-    exchange_type = ExchangeType.topic
+    exchange_type = ExchangeType.fanout
 
     def __init__(
         self,
         received_messages,
+        routing_key,
+        exchange,
         configuration,
         log_file,
         log_level,
+        queue_suffix,
+        prefetch_count=5,
+        sleep_interval=10,
+        reconnect=True,
     ):
 
         Thread.__init__(self)
 
         self._messages = received_messages
 
-        self._log = init_logger(configuration.profile, log_file, log_level)
+        self._log = init_logger(exchange, log_file, log_level)
 
-        self._should_reconnect = configuration.reconnect
+        self._should_reconnect = reconnect
         self._reconnect_delay = 10
         self._connection = None
         self._channel = None
         self._closing = False
         self._consumer_tag = None
         self._consuming = False
-        self._prefetch_count = configuration.prefetch_count
+        self._prefetch_count = prefetch_count
 
-        self._exchange = configuration.exchange
-        self._queue = configuration.queue
+        self._exchange = exchange
+        self._queue = exchange + "." + queue_suffix
 
-        self._routing_key = configuration.routing_key
-        self._sleep_interval = configuration.sleep_interval
+        self._routing_key = routing_key
+        self._sleep_interval = sleep_interval
 
         self._parameters = pika.ConnectionParameters(
             host=configuration.ampq_url,
@@ -235,22 +331,32 @@ class consumer(Thread):
 
 
 class producer(Thread):
-    def __init__(self, to_send, configuration, log_file, log_level):
+    def __init__(
+        self,
+        to_send,
+        exchange,
+        configuration,
+        log_file,
+        log_level,
+        queue_suffix,
+        routing_key="arbitrary_string",
+        sleep_interval=10,
+    ):
         # username, password, queue, ampq_url, port, log_file, exchange="", routing_key="default", sleep_interval=5
         Thread.__init__(self)
 
-        self._log = init_logger(configuration.profile, log_file, log_level)
+        self._log = init_logger(exchange, log_file, log_level)
 
         self._message_queue = to_send
 
         self._connection = None
         self._channel = None
-        self._sleep_interval = configuration.sleep_interval
+        self._sleep_interval = sleep_interval
 
-        self._exchange = configuration.exchange
-        self._exchange_type = ExchangeType.topic
-        self._queue = configuration.queue
-        self._routing_key = configuration.routing_key
+        self._exchange = exchange
+        self._exchange_type = ExchangeType.fanout
+        self._queue = exchange + "." + queue_suffix
+        self._routing_key = routing_key
 
         self._deliveries = None
         self._acked = None
@@ -459,6 +565,7 @@ def init_logger(name, log_path, log_level):
     return log
 
 
+# Change this
 class configurator:
     def __init__(self, profile, config_path=None):
         try:
@@ -473,23 +580,30 @@ class configurator:
 
         if config_obj["version"] != "0.1":
             print(
-                "Version number in the ROZ configuration file does not appear to be current, ensure configuration format is correct if errors are experienced",
+                "Version number in the ROZ configuration file does not appear to be current, ensure configuration format is correct if you experience errors",
                 file=sys.stderr,
             )
 
         profile_dict = config_obj["profiles"].get(profile)
         if profile_dict:
-            self.profile = profile
-            self.username = str(profile_dict["username"])
-            self.password = str(profile_dict["password"])
-            self.ampq_url = str(profile_dict["ampq_url"])
-            self.port = int(profile_dict["port"])
-            self.queue = str(profile_dict["queue"])
-            self.routing_key = str(profile_dict["routing_key"])
-            self.exchange = str(profile_dict["exchange"])
-            self.sleep_interval = int(profile_dict["sleep_interval"])
-            self.prefetch_count = int(profile_dict["prefetch_count"])
-            self.reconnect = bool(profile_dict["reconnect"])
+            try:
+                self.profile = profile
+                self.username = str(profile_dict["username"])
+                self.password = str(profile_dict["password"])
+                self.ampq_url = str(profile_dict["ampq_url"])
+                self.port = int(profile_dict["port"])
+            except KeyError:
+                print(
+                    f"Varys configuration JSON does not appear to contain the necessary fields for profile: {profile}",
+                    file=sys.stderr,
+                )
+                sys.exit(11)
+            # self.queue = str(profile_dict["queue"])
+            # self.routing_key = str(profile_dict["routing_key"])
+            # self.exchange = str(profile_dict["exchange"])
+            # self.sleep_interval = int(profile_dict["sleep_interval"])
+            # self.prefetch_count = int(profile_dict["prefetch_count"])
+            # self.reconnect = bool(profile_dict["reconnect"])
         else:
             print(
                 f"Varys configuration JSON does not appear to contain the specified profile {profile}",

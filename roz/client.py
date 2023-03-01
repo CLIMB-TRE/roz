@@ -53,12 +53,17 @@ class worker_pool_handler:
             self._log.info(
                 f"Successfully validated artifact: {validation_tuple.artifact}"
             )
-            if all(validation_tuple.payload["validation"][file]["result"] == True for file in ("csv", "fasta", "bam")):
+            if all(
+                validation_tuple.payload["validation"][file]["result"] == True
+                for file in ("csv", "fasta", "bam")
+            ):
                 validation_tuple.payload["triplet_result"] = True
             else:
                 validation_tuple.payload["triplet_result"] = False
 
-            self._log.info(f"Sending validation result for artifact {validation_tuple.artifact}")
+            self._log.info(
+                f"Sending validation result for artifact {validation_tuple.artifact}"
+            )
             self._out_queue.put(validation_tuple.payload)
         else:
             if validation_tuple.attempts >= self._max_retries:
@@ -89,24 +94,16 @@ def run(args):
         )
         sys.exit(2)
 
+    varys_client = roz.varys.varys(
+        profile="roz_admin",
+        in_exchange="inbound.matched",
+        out_exchange="inbound.validated",
+        logfile=env_vars.logfile,
+        log_level=env_vars.log_level,
+        queue_suffix="roz_client"
+    )
+
     log = roz.varys.init_logger("roz_client", env_vars.logfile, env_vars.log_level)
-
-    inbound_cfg = roz.varys.configurator(args.inbound_profile, env_vars.profile_config)
-    outbound_cfg = roz.varys.configurator(args.outbound_profile, env_vars.profile_config)
-
-    inbound_queue = queue.Queue()
-    outbound_queue = queue.Queue()
-
-    roz_consumer = roz.varys.consumer(
-        received_messages=inbound_queue,
-        configuration=inbound_cfg,
-        log_file=env_vars.logfile,
-        log_level=env_vars.log_level
-    ).start()
-
-    roz_producer = roz.varys.producer(
-        to_send=outbound_queue, configuration=outbound_cfg, log_file=env_vars.logfile, log_level=env_vars.log_level
-    ).start()
 
     worker_pool = worker_pool_handler(
         roz_config=validation_config,
@@ -114,12 +111,12 @@ def run(args):
         env_vars=env_vars,
         max_retries=args.max_retries,
         logger=log,
-        outbound_queue=outbound_queue,
+        outbound_queue=varys_client.__out_queue,
         workers=args.workers,
     )
 
     while True:
-        triplet_message = inbound_queue.get()
+        triplet_message = varys_client.receive()
 
         payload = json.loads(triplet_message.body)
 

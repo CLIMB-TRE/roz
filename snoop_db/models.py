@@ -1,20 +1,14 @@
 from sqlmodel import Field, SQLModel
-import datetime
 import sqlalchemy.types as types
 
-class new_file_table(SQLModel, table=True):
+
+class inbound_s3_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
-
-    timestamp: int = Field(index=True)
-
-    site_code: str = Field(index=True)
-
-    pathogen_code: str = Field(index=True)
 
     payload: str = Field()
 
 
-class matched_triplet_table(SQLModel, table=True):
+class inbound_matched_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
     timestamp: int = Field(index=True)
@@ -25,22 +19,22 @@ class matched_triplet_table(SQLModel, table=True):
 
     csv_url: str = Field()
 
-    csv_md5: str = Field()
+    csv_etag: str = Field()
 
     fasta_url: str = Field()
 
-    fasta_md5: str = Field()
+    fasta_etag: str = Field()
 
     bam_url: str = Field()
 
-    bam_md5: str = Field()
+    bam_etag: str = Field()
 
     artifact: str = Field(index=True)
 
     payload: str = Field()
 
 
-class validation_result_table(SQLModel, table=True):
+class inbound_validated_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
     timestamp: int = Field(index=True)
@@ -68,7 +62,7 @@ class validation_result_table(SQLModel, table=True):
     payload: str = Field()
 
 
-class new_artifact_table(SQLModel, table=True):
+class inbound_artifacts_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
     cid: str = Field(index=True, unique=True)

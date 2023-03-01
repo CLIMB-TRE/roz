@@ -9,19 +9,20 @@ import queue
 import json
 import time
 import shutil
+import boto3
 
 
-def hash_file(filepath, blocksize=2**20):
-    m = hashlib.md5()
-    with open(filepath, "rb") as f:
-        while True:
-            buf = f.read(blocksize)
-            if not buf:
-                break
-            m.update(buf)
-    return m.hexdigest()
+# def hash_file(filepath, blocksize=2**20):
+#     m = hashlib.etag()
+#     with open(filepath, "rb") as f:
+#         while True:
+#             buf = f.read(blocksize)
+#             if not buf:
+#                 break
+#             m.update(buf)
+#     return m.hexdigest()
 
-
+# TODO Put this all in s3 buckets (wait for rads)
 def fmove(src, dest):
     """
     Move file from source to dest.  dest can include an absolute or relative path
@@ -34,16 +35,16 @@ def fmove(src, dest):
         pass  # Assume it exists.  This could fail if you don't have permissions, etc...
     shutil.move(src, dest)
 
+def add_to_bucket():
 
-def meta_csv_parser(csv_path, csv_md5):
-    if hash_file(csv_path) == csv_md5:
-        reader = DictReader(open(csv_path, "rt"))
 
-        metadata = next(reader)
 
-        return metadata
-    else:
-        return False
+def meta_csv_parser(csv_path):
+    reader = DictReader(open(csv_path, "rt"))
+
+    metadata = next(reader)
+
+    return metadata
 
 
 def meta_create(metadata, pathogen_code):
@@ -53,9 +54,10 @@ def meta_create(metadata, pathogen_code):
 
     return response
 
+
 def main():
 
-    for i in ("METADB_ROZ_PASSWORD", "ROZ_INGEST_LOG", "ROZ_PROFILE_CFG"):
+    for i in ("METADB_ROZ_PASSWORD", "ROZ_INGEST_LOG", "ROZ_PROFILE_CFG", "AWS_ENDPOINT", "ROZ_AWS_ACCESS", "ROZ_AWS_SECRET"):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
@@ -65,27 +67,21 @@ def main():
         "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("ROZ_LOG_LEVEL")
     )
 
-    inbound_cfg = roz.varys.configurator(
-        "validated_triplets", os.getenv("ROZ_PROFILE_CFG")
+    #Init S3 client
+    s3_client = boto3.client("s3",
+        endpoint_url=os.getenv("AWS_ENDPOINT"),
+        aws_access_key_id=os.getenv("ROZ_AWS_ACCESS"),
+        aws_secret_access_key=os.getenv("ROZ_AWS_SECRET"),
     )
-    outbound_cfg = roz.varys.configurator("new_artifacts", os.getenv("ROZ_PROFILE_CFG"))
 
-    inbound_queue = queue.Queue(maxsize=1)
-    outbound_queue = queue.Queue()
-
-    ingest_consumer = roz.varys.consumer(
-        received_messages=inbound_queue,
-        configuration=inbound_cfg,
-        log_file=os.getenv("ROZ_INGEST_LOG"),
+    varys_client = roz.varys.varys(
+        profile="roz_admin",
+        in_exchange="inbound.validated",
+        out_exchange="inbound.artifacts",
+        logfile=os.getenv("ROZ_INGEST_LOG"),
         log_level=os.getenv("ROZ_LOG_LEVEL"),
-    ).start()
-
-    ingest_producer = roz.varys.producer(
-        to_send=outbound_queue,
-        configuration=outbound_cfg,
-        log_file=os.getenv("ROZ_INGEST_LOG"),
-        log_level=os.getenv("ROZ_LOG_LEVEL"),
-    ).start()
+        queue_suffix="roz_ingest",
+    )
 
     ingest_payload_template = {
         "artifact": "",
@@ -106,7 +102,7 @@ def main():
 
     while True:
         try:
-            validated_triplet = inbound_queue.get()
+            validated_triplet = varys_client.receive()
 
             payload = json.loads(validated_triplet.body)
 
@@ -135,7 +131,7 @@ def main():
 
             if payload["triplet_result"]:
                 triplet_metadata = meta_csv_parser(
-                    payload["files"]["csv"]["path"], payload["files"]["csv"]["md5"]
+                    payload["files"]["csv"]["path"], payload["files"]["csv"]["etag"]
                 )
 
                 if not triplet_metadata:
@@ -195,7 +191,7 @@ def main():
                         if fasta_ingested and bam_ingested:
                             out_payload["ingested"] = True
 
-                        outbound_queue.put(out_payload)
+                        varys_client.send(out_payload)
 
                     else:
 
@@ -207,7 +203,7 @@ def main():
                             f"Failed to create artifact on metadb due to the following errors:\n{error_string}"
                         )
                         out_payload["metadb_errors"] = metadb_response.json()["errors"]
-                        outbound_queue.put(out_payload)
+                        varys_client.send(out_payload)
 
         except Exception as e:
             log.error(f"Ingest failed due to unhandled error: {e}")
