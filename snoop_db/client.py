@@ -15,7 +15,6 @@ import time
 
 
 def main():
-
     snooper_log_path = os.getenv("SNOOPER_LOG_PATH")
 
     log = roz.varys.init_logger(
@@ -33,6 +32,14 @@ def main():
     inbound_matched = roz.varys.varys(
         profile="roz_admin",
         in_exchange="inbound.matched",
+        logfile=snooper_log_path,
+        log_level="DEBUG",
+        queue_suffix="snoop_db",
+    )
+
+    inbound_to_validate = roz.varys.varys(
+        profile="roz_admin",
+        in_exchange="inbound.to_validate",
         logfile=snooper_log_path,
         log_level="DEBUG",
         queue_suffix="snoop_db",
@@ -60,6 +67,8 @@ def main():
         inbound_s3_messages = inbound_s3.receive_batch()
 
         inbound_matched_messages = inbound_matched.receive_batch()
+
+        inbound_to_validate_messages = inbound_to_validate.receive_batch()
 
         inbound_validated_messages = inbound_validated.receive_batch()
 
@@ -98,21 +107,54 @@ def main():
                         session.add(
                             inbound_matched_table(
                                 timestamp=payload["match_timestamp"],
-                                site_code=payload["site"],
-                                pathogen_code=payload["pathogen_code"],
+                                site=payload["site"],
+                                project=payload["project"],
+                                platform=payload["platform"],
                                 artifact=payload["artifact"],
-                                csv_url=payload["files"]["csv"]["path"],
-                                csv_etag=payload["files"]["csv"]["etag"],
-                                fasta_url=payload["files"]["fasta"]["path"],
-                                fasta_etag=payload["files"]["fasta"]["etag"],
-                                bam_url=payload["files"]["bam"]["path"],
-                                bam_etag=payload["files"]["bam"]["etag"],
+                                sample_id=payload["sample_id"],
+                                run_name=payload["run_name"],
+                                files=payload["files"],
+                                local_paths=payload["local_paths"],
                                 payload=message.body,
                             )
                         )
                     except Exception as e:
                         log.error(
                             f"Unable to submit message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}"
+                        )
+                try:
+                    session.commit()
+                except Exception as e:
+                    log.error(f"Unable to commit session to snoop_db with error: {e}")
+
+        if inbound_to_validate_messages:
+            with Session(engine) as session:
+                for message in inbound_to_validate_messages:
+                    payload = json.loads(message.body)
+                    log.info(
+                        f"Submitting to_validate message #{message.basic_deliver.delivery_tag} to snoop_db"
+                    )
+                    try:
+                        session.add(
+                            inbound_validated_table(
+                                mid=payload["mid"],
+                                timestamp=payload["match_timestamp"],
+                                site_code=payload["site"],
+                                project=payload["project"],
+                                artifact=payload["artifact"],
+                                sample_id=payload["sample_id"],
+                                run_name=payload["run_name"],
+                                files=payload["files"],
+                                local_paths=payload["local_paths"],
+                                onyx_test_status_code=payload["onyx_test_status_code"],
+                                onyx_test_errors=payload["onyx_test_errors"],
+                                onyx_test_status=payload["onyx_test_status"],
+                                payload=message.body,
+                            )
+                        )
+                    except Exception as e:
+                        log.error(
+                            f"Unable to submit to_validate message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}"
                         )
                 try:
                     session.commit()
@@ -129,23 +171,18 @@ def main():
                     try:
                         session.add(
                             inbound_validated_table(
+                                mid=payload["mid"],
                                 timestamp=payload["match_timestamp"],
                                 site_code=payload["site"],
-                                pathogen_code=payload["pathogen_code"],
+                                project=payload["project"],
                                 artifact=payload["artifact"],
-                                triplet_result=payload["triplet_result"],
-                                csv_result=payload["validation"]["csv"]["result"],
-                                csv_messages=json.dumps(
-                                    payload["validation"]["csv"]["errors"]
-                                ),
-                                fasta_result=payload["validation"]["fasta"]["result"],
-                                fasta_messages=json.dumps(
-                                    payload["validation"]["fasta"]["errors"]
-                                ),
-                                bam_result=payload["validation"]["bam"]["result"],
-                                bam_messages=json.dumps(
-                                    payload["validation"]["bam"]["errors"]
-                                ),
+                                sample_id=payload["sample_id"],
+                                run_name=payload["run_name"],
+                                files=payload["files"],
+                                local_paths=payload["local_paths"],
+                                onyx_test_status_code=payload["onyx_test_status_code"],
+                                onyx_test_errors=payload["onyx_test_errors"],
+                                onyx_test_status=payload["onyx_test_status"],
                                 payload=message.body,
                             )
                         )

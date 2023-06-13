@@ -1,212 +1,164 @@
-from metadbclient import Session, utils
-from csv import DictReader
-import hashlib
-from collections import namedtuple
+import roz
 import os
 import sys
-import roz.varys
-import queue
-import json
 import time
-import shutil
-import boto3
+import json
+
+from onyxclient import Session as onyx_session
+
+from roz import varys
 
 
-# def hash_file(filepath, blocksize=2**20):
-#     m = hashlib.etag()
-#     with open(filepath, "rb") as f:
-#         while True:
-#             buf = f.read(blocksize)
-#             if not buf:
-#                 break
-#             m.update(buf)
-#     return m.hexdigest()
-
-# TODO Put this all in s3 buckets (wait for rads)
-def fmove(src, dest):
-    """
-    Move file from source to dest.  dest can include an absolute or relative path
-    If the path doesn't exist, it gets created
-    """
-    dest_dir = os.path.dirname(dest)
-    try:
-        os.makedirs(dest_dir)
-    except os.error as e:
-        pass  # Assume it exists.  This could fail if you don't have permissions, etc...
-    shutil.move(src, dest)
-
-def add_to_bucket():
-
-
-
-def meta_csv_parser(csv_path):
-    reader = DictReader(open(csv_path, "rt"))
-
-    metadata = next(reader)
-
-    return metadata
-
-
-def meta_create(metadata, pathogen_code):
-
-    with Session(env_password=True) as session:
-        response = session.create(pathogen_code=pathogen_code, fields=metadata)
-
-    return response
+def handle_status_code(status_code):
+    if status_code == 422:
+        return (False, "validation_failure")
+    elif status_code == 403:
+        return (False, "perm_failure")
+    elif status_code == 201:
+        return (True, "success")
+    else:
+        return (False, "unknown")
 
 
 def main():
-
-    for i in ("METADB_ROZ_PASSWORD", "ROZ_INGEST_LOG", "ROZ_PROFILE_CFG", "AWS_ENDPOINT", "ROZ_AWS_ACCESS", "ROZ_AWS_SECRET"):
+    for i in (
+        "onyx_ROZ_PASSWORD",
+        "ROZ_INGEST_LOG",
+        "ROZ_PROFILE_CFG",
+        "AWS_ENDPOINT",
+        "ROZ_AWS_ACCESS",
+        "ROZ_AWS_SECRET",
+    ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
 
     # Setup producer / consumer
-    log = roz.varys.init_logger(
+    log = varys.init_logger(
         "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("ROZ_LOG_LEVEL")
     )
 
-    #Init S3 client
-    s3_client = boto3.client("s3",
-        endpoint_url=os.getenv("AWS_ENDPOINT"),
-        aws_access_key_id=os.getenv("ROZ_AWS_ACCESS"),
-        aws_secret_access_key=os.getenv("ROZ_AWS_SECRET"),
-    )
-
-    varys_client = roz.varys.varys(
+    varys_client = varys.varys(
         profile="roz_admin",
-        in_exchange="inbound.validated",
-        out_exchange="inbound.artifacts",
+        in_exchange="inbound.matched",
+        out_exchange="inbound.to_validate",
         logfile=os.getenv("ROZ_INGEST_LOG"),
         log_level=os.getenv("ROZ_LOG_LEVEL"),
         queue_suffix="roz_ingest",
     )
 
     ingest_payload_template = {
+        "mid": "",
         "artifact": "",
         "sample_id": "",
         "run_name": "",
-        "pathogen_code": "",
+        "project": "",
+        "platform": "",
         "ingest_timestamp": "",
-        "cid": "",
+        "cid": False,
         "site": "",
         "created": False,
         "ingested": False,
-        "fasta_path": "",
-        "bam_path": "",
-        "metadb_status_code": "",
-        "metadb_errors": {},
-        "ingest_errors": [],
+        "files": False,  # Dict
+        "local_paths": False,  # Dict
+        "onyx_test_status_code": False,
+        "onyx_test_errors": False,  # Dict
+        "onyx_test_create_status": False,
+        "onyx_status_code": False,
+        "onyx_errors": False,  # Dict
+        "onyx_create_status": False,
+        "ingest_errors": False,
     }
 
     while True:
-        try:
-            validated_triplet = varys_client.receive()
+        # I think shallow copy is appropriate here?
+        payload = ingest_payload_template.copy()
 
-            payload = json.loads(validated_triplet.body)
+        message = varys_client.receive()
 
-            ts = time.time_ns()
+        matched_message = json.loads(message.body)
 
-            out_payload = {
-                "artifact": "",
-                "sample_id": "",
-                "run_name": "",
-                "pathogen_code": "",
-                "ingest_timestamp": "",
-                "cid": "",
-                "site": "",
-                "created": False,
-                "ingested": False,
-                "fasta_path": "",
-                "bam_path": "",
-                "metadb_status_code": "",
-                "metadb_errors": {},
-                "ingest_errors": [],
-            }
-            out_payload["artifact"] = payload["artifact"]
-            out_payload["pathogen_code"] = payload["pathogen_code"]
-            out_payload["ingest_timestamp"] = ts
-            out_payload["site"] = payload["site"]
+        payload["mid"] = message.basic_deliver.delivery_tag
 
-            if payload["triplet_result"]:
-                triplet_metadata = meta_csv_parser(
-                    payload["files"]["csv"]["path"], payload["files"]["csv"]["etag"]
+        # Not sure how to fully generalise this, the idea is to have a csv as the only file that will always exist, so I guess this is okay?
+        # CSV file must always be called '.csv' though
+        with onyx_session() as client:
+            log.info(
+                f"Received match for artifact: {matched_message['artifact']}, now attempting to test_create record in Onyx"
+            )
+
+            try:
+                # Test create from the metadata CSV
+                response = client.csv_create(
+                    matched_message["project"],
+                    csv_path=matched_message["local_paths"][
+                        ".csv"
+                    ],  # I don't like having a hardcoded metadata file name like this but hypothetically
+                    test=True,  # we should always have a metadata CSV
                 )
 
-                if not triplet_metadata:
+                status, reason = handle_status_code(response.status_code)
+
+                payload["onyx_test_create_status"] = status
+                payload["onyx_test_status_code"] = response.status_code
+
+                test_create_errors = (
+                    response.json()["messages"]
+                    if response.json().get("messages")
+                    else False
+                )
+
+                payload["onyx_test_create_errors"] = test_create_errors
+
+                log.info(
+                    f"Received Onyx response for artifact: {matched_message['artifact']}"
+                )
+
+            except Exception as e:
+                log.error(
+                    f"Onxy test csv create failed for artifact: {matched_message['artifact']} due to client error: {e}"
+                )
+                continue
+
+            if not status:
+                if reason == "unknown":
                     log.error(
-                        f"Metadata CSV for artifact: {payload['artifact']} checksum mismatch"
+                        f"Onyx test create returned an unknown status code: {response.status_code} for artifact: {matched_message['artifact']}"
                     )
-                    out_payload["ingest_errors"].append(
-                        f"Metadata CSV for artifact: {payload['artifact']} checksum mismatch"
+                    continue
+
+                elif reason == "perm_failure":
+                    log.error(
+                        f"Onyx test create for artifact: {matched_message['artifact']} due to Onyx permissions failure"
                     )
-                else:
-                    out_payload["sample_id"] = triplet_metadata["sample_id"]
-                    out_payload["run_name"] = triplet_metadata["run_name"]
+                    continue
 
-                    fasta_path = f"{os.getenv('MPX_ARTIFACTS')}/consensus/{payload['site']}/{triplet_metadata['run_name']}/{triplet_metadata['sample_id']}.{triplet_metadata['run_name']}.fasta"
-                    bam_path = f"{os.getenv('MPX_ARTIFACTS')}/mapped_reads/{payload['site']}/{triplet_metadata['run_name']}/{triplet_metadata['sample_id']}.{triplet_metadata['run_name']}.bam"
+                if reason == "validation_failure":
+                    log.info(
+                        f"Onyx test create failed for artifact: {matched_message['artifact']} due to errors: {test_create_errors} (if this 'False' something has gone awry)"
+                    )
 
-                    out_payload["fasta_path"] = fasta_path
-                    triplet_metadata["fasta_path"] = fasta_path
+            elif reason == "success":
+                log.info(
+                    f"Onyx test create success for artifact: {matched_message['artifact']}"
+                )
+                if response.json()["data"]["cid"]:
+                    log.error(
+                        f"Onyx appears to have assigned a CID ({response['data']['cid']}) to artifact: {matched_message['artifact']}. This should NOT happen in any circumstance."
+                    )
+                    continue
 
-                    out_payload["bam_path"] = bam_path
-                    triplet_metadata["bam_path"] = bam_path
+            payload["artifact"] = matched_message["artifact"]
+            payload["sample_id"] = matched_message["sample_id"]
+            payload["run_name"] = matched_message["run_name"]
+            payload["project"] = matched_message["project"]
+            payload["platform"] = matched_message["platform"]
+            payload["ingest_timestamp"] = time.time_ns()
+            payload["site"] = matched_message["site"]
+            payload["files"] = matched_message["files"]
+            payload["local_paths"] = matched_message["local_paths"]
 
-                    try:
-                        metadb_response = meta_create(
-                            triplet_metadata, payload["pathogen_code"]
-                        )
-                    except Exception as e:
-                        log.error(f"Metadb ingest failed due to exception: {e}")
-
-                    out_payload["metadb_status_code"] = metadb_response.status_code
-
-                    out_payload["metadb_errors"] = metadb_response.json()["errors"]
-
-                    if metadb_response.ok:
-                        out_payload["created"] = True
-
-                        out_payload["cid"] = metadb_response.json()["results"][0]["cid"]
-
-                        try:
-                            fmove(payload["files"]["fasta"]["path"], fasta_path)
-                            fasta_ingested = True
-                        except Exception as e:
-                            log.error(
-                                f"Ingest of consensus for artifact '{payload['artifact']}' failed due to exception: {e}"
-                            )
-                            out_payload["ingest_errors"].append(e)
-
-                        try:
-                            fmove(payload["files"]["bam"]["path"], bam_path)
-                            bam_ingested = True
-                        except Exception as e:
-                            log.error(
-                                f"Ingest of aligned_reads for artifact '{payload['artifact']}' failed due to exception: {e}"
-                            )
-                            out_payload["ingest_errors"].append(e)
-
-                        if fasta_ingested and bam_ingested:
-                            out_payload["ingested"] = True
-
-                        varys_client.send(out_payload)
-
-                    else:
-
-                        error_string = "\n".join(
-                            f"Field: {k}\tError(s): {v[0]}"
-                            for k, v in metadb_response.json()["errors"].items()
-                        )
-                        log.info(
-                            f"Failed to create artifact on metadb due to the following errors:\n{error_string}"
-                        )
-                        out_payload["metadb_errors"] = metadb_response.json()["errors"]
-                        varys_client.send(out_payload)
-
-        except Exception as e:
-            log.error(f"Ingest failed due to unhandled error: {e}")
+            varys_client.send(payload)
 
 
 if __name__ == "__main__":

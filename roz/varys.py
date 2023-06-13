@@ -14,6 +14,8 @@ varys_message = namedtuple("varys_message", "basic_deliver properties body")
 
 
 class varys:
+    """A high-level wrapper for the producer and consumer classes used by varys, abstracting away the tedious details."""
+
     def __init__(
         self,
         profile,
@@ -71,23 +73,23 @@ class varys:
             ).start()
 
     def send(self, message):
-        if self.__producer:
+        if self.__out_queue:
             self.__out_queue.put(message)
         else:
             raise Exception(
-                "Cannot send a message without providing an 'out_queue' when instantiating varys"
+                "Cannot send a message without providing an 'out_exchange' when instantiating varys"
             )
 
     def receive(self, block=True):
-        if self.__consumer:
+        if self.__in_queue:
             return self.__in_queue.get(block=block)
         else:
             raise Exception(
-                "Cannot send a message without providing an 'in_queue' when instantiating varys"
+                "Cannot receive messages without providing an 'in_exchange' when instantiating varys"
             )
 
     def receive_batch(self):
-        if self.__consumer:
+        if self.__in_queue:
             messages = []
 
             while not self.__in_queue.empty():
@@ -99,12 +101,11 @@ class varys:
             return messages
         else:
             raise Exception(
-                "Cannot send a message without providing an 'in_queue' when instantiating varys"
+                "Cannot receive messages without providing an 'in_exchange' when instantiating varys"
             )
 
 
 class consumer(Thread):
-
     exchange_type = ExchangeType.fanout
 
     def __init__(
@@ -120,7 +121,6 @@ class consumer(Thread):
         sleep_interval=10,
         reconnect=True,
     ):
-
         Thread.__init__(self)
 
         self._messages = received_messages
@@ -164,7 +164,7 @@ class consumer(Thread):
         self.__open_channel()
 
     def __on_connection_open_error(self, _unused_connection, err):
-        self._log.error(f"Failed to connect to server due to {err}")
+        self._log.error(f"Failed to connect to server due to error: {err}")
         self.__reconnect()
 
     def __on_connection_closed(self, _unused_connection, reason):
@@ -392,9 +392,12 @@ class producer(Thread):
 
     def __on_connection_open_error(self, _unused_connection, error):
         self._log.error(
-            f"Connection attempt to broker failed, attempting to re-open in 10 seconds: {error}"
+            f"Connection attempt to broker failed, attempting to re-open in {self._sleep_interval} seconds: {error}"
         )
-        self._connection.ioloop.call_later(10, self._connection.ioloop.stop)
+        self._connection.ioloop.stop()
+        time.sleep(self._sleep_interval)
+        self._connection = self.__connect()
+        self._connection.ioloop.start()
 
     def __on_connection_closed(self, _unused_connection, reason):
         self._channel = None
@@ -590,7 +593,7 @@ class configurator:
                 self.profile = profile
                 self.username = str(profile_dict["username"])
                 self.password = str(profile_dict["password"])
-                self.ampq_url = str(profile_dict["ampq_url"])
+                self.ampq_url = str(profile_dict["amqp_url"])
                 self.port = int(profile_dict["port"])
             except KeyError:
                 print(
