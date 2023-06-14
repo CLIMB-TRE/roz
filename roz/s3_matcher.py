@@ -16,7 +16,7 @@ from snoop_db.models import inbound_matched_table
 
 
 def generate_file_url(record):
-    return f"https://{record['s3']['bucket']['name']}.s3.climb.ac.uk/{record['s3']['object']['key']}"
+    return f"s3://{record['s3']['bucket']['name']}/{record['s3']['object']['key']}"
 
 
 def get_already_matched_submissions():
@@ -73,7 +73,7 @@ def generate_payload(
     local_scratch_path,
     platform,
 ):
-    unique = uuid.uuid4()
+    unique = str(uuid.uuid4())
 
     ts = time.time_ns()
 
@@ -200,6 +200,12 @@ def run(args):
                 test = record["s3"]["bucket"]["name"].split("-")[3]
 
                 fname = record["s3"]["object"]["key"]
+
+                if "/" in fname or "\\" in fname:
+                    log.info(
+                        f"Submitted object: {fname} in bucket: {record['s3']['bucket']['name']} appears to be within a bucket subdirectory, ignoring"
+                    )
+                    continue
 
                 log.info(f"Attempting to process object with key: {fname}")
 
