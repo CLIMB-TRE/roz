@@ -8,7 +8,7 @@ import os
 
 import roz.varys
 
-from archive.util import validate_triplet, get_env_variables, validation_tuple
+from roz.util import validate_triplet, get_env_variables, validation_tuple
 
 
 class worker_pool_handler:
@@ -81,6 +81,7 @@ class worker_pool_handler:
 
 
 def run(args):
+
     env_vars = get_env_variables()
 
     # TODO MAKE THIS LESS SHIT
@@ -99,7 +100,7 @@ def run(args):
         out_exchange="inbound.validated",
         logfile=env_vars.logfile,
         log_level=env_vars.log_level,
-        queue_suffix="roz_client",
+        queue_suffix="roz_client"
     )
 
     log = roz.varys.init_logger("roz_client", env_vars.logfile, env_vars.log_level)

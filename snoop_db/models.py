@@ -11,6 +11,8 @@ class inbound_s3_table(SQLModel, table=True):
 class inbound_matched_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
+    uuid: str = Field(index=True)
+
     timestamp: int = Field(index=True)
 
     site: str = Field(index=True)
@@ -35,7 +37,7 @@ class inbound_matched_table(SQLModel, table=True):
 class inbound_to_validate_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
-    mid: int = Field(index=True)
+    uuid: int = Field(index=True)
 
     timestamp: int = Field(index=True)
 
@@ -67,7 +69,7 @@ class inbound_to_validate_table(SQLModel, table=True):
 class inbound_validated_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
-    mid: int = Field(index=True)
+    uuid: int = Field(index=True)
 
     timestamp: int = Field(index=True)
 
@@ -103,7 +105,9 @@ class inbound_validated_table(SQLModel, table=True):
 class inbound_artifacts_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
-    cid: str = Field(index=True, unique=True)
+    uuid: str = Field(index=True)
+
+    cid: str = Field(index=True)
 
     timestamp: int = Field(index=True)
 

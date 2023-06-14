@@ -1,5 +1,4 @@
-pysam
+boto3
 pika
 pytest
-biopython
 fastapi

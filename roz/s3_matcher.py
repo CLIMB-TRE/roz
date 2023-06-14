@@ -4,11 +4,11 @@ import os
 import boto3
 import time
 from collections import defaultdict
-from types import SimpleNamespace
+import uuid
+
+from roz import varys
 
 from onyx import Session as onyx_session
-
-import roz.varys
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from snoop_db import db
@@ -73,6 +73,8 @@ def generate_payload(
     local_scratch_path,
     platform,
 ):
+    unique = uuid.uuid4()
+
     ts = time.time_ns()
 
     files = {
@@ -91,6 +93,7 @@ def generate_payload(
     }
 
     payload = {
+        "uuid": unique,
         "payload_version": 1,
         "site": site_code,
         "match_timestamp": ts,
@@ -132,7 +135,7 @@ def run(args):
         "ONYX_ROZ_PASSWORD",
         "ROZ_CONFIG_JSON",
         "S3_MATCHER_LOG",
-        "S3_LOG_LEVEL",
+        "INGEST_LOG_LEVEL",
         "ROZ_SCRATCH_PATH",
         "AWS_ENDPOINT",
         "ROZ_AWS_ACCESS",
@@ -142,8 +145,8 @@ def run(args):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
 
-    log = roz.varys.init_logger(
-        "roz_client", os.getenv("S3_MATCHER_LOG"), os.getenv("S3_LOG_LEVEL")
+    log = varys.init_logger(
+        "roz_client", os.getenv("S3_MATCHER_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
     try:
@@ -165,12 +168,12 @@ def run(args):
         aws_secret_access_key=os.getenv("ROZ_AWS_SECRET"),
     )
 
-    varys_client = roz.varys.varys(
+    varys_client = varys.varys(
         profile="roz",
         in_exchange="inbound.s3",
         out_exchange="inbound.matched",
         logfile=os.getenv("S3_MATCHER_LOG"),
-        log_level=os.getenv("S3_LOG_LEVEL"),
+        log_level=os.getenv("INGEST_LOG_LEVEL"),
         queue_suffix="s3_matcher",
     )
 
@@ -306,7 +309,7 @@ def run(args):
                                         continue
                                     else:
                                         log.info(
-                                            f"Resubmitting previously rejected submission for artifact: {artifact} due to update of submission {ftype}"
+                                            f"Resubmitting previously rejected submission with for artifact: {artifact} due to update of submission {ftype}"
                                         )
                                         if update_messages[project][site_code][
                                             platform

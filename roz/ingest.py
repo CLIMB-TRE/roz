@@ -4,6 +4,7 @@ import sys
 import time
 import json
 import copy
+import uuid
 
 from onyx import Session as onyx_session
 
@@ -32,7 +33,7 @@ def main():
 
     # Setup producer / consumer
     log = varys.init_logger(
-        "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("ROZ_LOG_LEVEL")
+        "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
     varys_client = varys.varys(
@@ -40,12 +41,12 @@ def main():
         in_exchange="inbound.matched",
         out_exchange="inbound.to_validate",
         logfile=os.getenv("ROZ_INGEST_LOG"),
-        log_level=os.getenv("ROZ_LOG_LEVEL"),
+        log_level=os.getenv("INGEST_LOG_LEVEL"),
         queue_suffix="ingest",
     )
 
     ingest_payload_template = {
-        "mid": "",
+        "uuid": "",
         "artifact": "",
         "sample_id": "",
         "run_name": "",
@@ -73,9 +74,6 @@ def main():
         message = varys_client.receive()
 
         matched_message = json.loads(message.body)
-
-        # TODO: make this an actual unique MID
-        payload["mid"] = message.basic_deliver.delivery_tag
 
         # Not sure how to fully generalise this, the idea is to have a csv as the only file that will always exist, so I guess this is okay?
         # CSV file must always be called '.csv' though
@@ -135,6 +133,7 @@ def main():
                             ]
 
                 if not all(name_matches.keys()):
+                    payload["uuid"] = matched_message["uuid"]
                     payload["artifact"] = matched_message["artifact"]
                     payload["sample_id"] = matched_message["sample_id"]
                     payload["run_name"] = matched_message["run_name"]
@@ -199,6 +198,7 @@ def main():
                     continue
 
         payload["artifact"] = matched_message["artifact"]
+        payload["uuid"] = matched_message["uuid"]
         payload["sample_id"] = matched_message["sample_id"]
         payload["run_name"] = matched_message["run_name"]
         payload["project"] = matched_message["project"]

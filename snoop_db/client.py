@@ -7,7 +7,7 @@ from snoop_db.models import (
 )
 import snoop_db.db
 
-import roz.varys
+from roz import varys
 
 import os
 import json
@@ -17,44 +17,42 @@ import time
 def main():
     snooper_log_path = os.getenv("SNOOPER_LOG_PATH")
 
-    log = roz.varys.init_logger(
-        "snoop_db", snooper_log_path, os.getenv("ROZ_LOG_LEVEL")
-    )
+    log = varys.init_logger("snoop_db", snooper_log_path, os.getenv("INGEST_LOG_LEVEL"))
 
-    inbound_s3 = roz.varys.varys(
-        profile="roz_admin",
+    inbound_s3 = varys.varys(
+        profile="roz",
         in_exchange="inbound.s3",
         logfile=snooper_log_path,
         log_level="DEBUG",
         queue_suffix="snoop_db",
     )
 
-    inbound_matched = roz.varys.varys(
-        profile="roz_admin",
+    inbound_matched = varys.varys(
+        profile="roz",
         in_exchange="inbound.matched",
         logfile=snooper_log_path,
         log_level="DEBUG",
         queue_suffix="snoop_db",
     )
 
-    inbound_to_validate = roz.varys.varys(
-        profile="roz_admin",
+    inbound_to_validate = varys.varys(
+        profile="roz",
         in_exchange="inbound.to_validate",
         logfile=snooper_log_path,
         log_level="DEBUG",
         queue_suffix="snoop_db",
     )
 
-    inbound_validated = roz.varys.varys(
-        profile="roz_admin",
+    inbound_validated = varys.varys(
+        profile="roz",
         in_exchange="inbound.validated",
         logfile=snooper_log_path,
         log_level="DEBUG",
         queue_suffix="snoop_db",
     )
 
-    inbound_artifacts = roz.varys.varys(
-        profile="roz_admin",
+    inbound_artifacts = varys.varys(
+        profile="roz",
         in_exchange="inbound.artifacts",
         logfile=snooper_log_path,
         log_level="DEBUG",
