@@ -15,7 +15,7 @@ from snoop_db import db
 from snoop_db.models import inbound_matched_table
 
 
-def generate_file_url(record):
+def generate_file_uri(record):
     return f"s3://{record['s3']['bucket']['name']}/{record['s3']['object']['key']}"
 
 
@@ -92,10 +92,13 @@ def generate_payload(
         for x in upload_config["configs"][project]["file_specs"][platform]["files"]
     }
 
+    uploaders = set(msg["userIdentity"]["principalId"] for file, msg in s3_msgs.items())
+
     payload = {
         "uuid": unique,
         "payload_version": 1,
         "site": site_code,
+        "uploaders": list(uploaders),
         "match_timestamp": ts,
         "artifact": artifact,
         "sample_id": parsed_fname["sample_id"],
@@ -124,7 +127,7 @@ def generate_artifact(parsed_fname, artifact_layout):
 
 def record_parser(record):
     return {
-        "url": generate_file_url(record),
+        "uri": generate_file_uri(record),
         "etag": record["s3"]["object"]["eTag"],
         "key": record["s3"]["object"]["key"],
     }
@@ -412,7 +415,6 @@ def run(args):
                                     new_artifacts_to_delete.append(
                                         (project, site_code, platform, artifact)
                                     )
-
                                 else:
                                     log.error(
                                         f"Unable to pull {len([x for x in s3_resp if x])} files for artifact: {artifact}"

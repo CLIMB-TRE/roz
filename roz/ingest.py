@@ -4,11 +4,11 @@ import sys
 import time
 import json
 import copy
-import uuid
 
 from onyx import Session as onyx_session
 
 from roz import varys
+import utils
 
 
 def handle_status_code(status_code):
@@ -20,6 +20,21 @@ def handle_status_code(status_code):
         return (True, "success")
     else:
         return (False, "unknown")
+
+
+def parse_match_message(matched_message, payload):
+    payload["artifact"] = matched_message["artifact"]
+    payload["sample_id"] = matched_message["sample_id"]
+    payload["run_name"] = matched_message["run_name"]
+    payload["project"] = matched_message["project"]
+    payload["uploaders"] = matched_message["uploaders"]
+    payload["platform"] = matched_message["platform"]
+    payload["ingest_timestamp"] = time.time_ns()
+    payload["site"] = matched_message["site"]
+    payload["files"] = matched_message["files"]
+    payload["local_paths"] = matched_message["local_paths"]
+
+    return payload
 
 
 def main():
@@ -51,6 +66,7 @@ def main():
         "sample_id": "",
         "run_name": "",
         "project": "",
+        "uploaders": [],
         "platform": "",
         "ingest_timestamp": "",
         "cid": False,
@@ -75,11 +91,13 @@ def main():
 
         matched_message = json.loads(message.body)
 
+        payload["uuid"] = matched_message["uuid"]
+
         # Not sure how to fully generalise this, the idea is to have a csv as the only file that will always exist, so I guess this is okay?
         # CSV file must always be called '.csv' though
-        with onyx_session() as client:
+        with onyx_session(env_password=True) as client:
             log.info(
-                f"Received match for artifact: {matched_message['artifact']}, now attempting to test_create record in Onyx"
+                f"Received match for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} now attempting to test_create record in Onyx"
             )
 
             try:
@@ -93,7 +111,7 @@ def main():
                 )
             except Exception as e:
                 log.error(
-                    f"Onxy test csv create failed for artifact: {matched_message['artifact']} due to client error: {e}"
+                    f"Onxy test csv create failed for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} due to client error: {e}"
                 )
                 continue
 
@@ -103,7 +121,7 @@ def main():
             for response in response_generator:
                 if to_test:
                     log.info(
-                        f"Metadata CSV for artifact {payload['artifact']} contains more than one record, metadata CSVs should only ever contain a single record"
+                        f"Metadata CSV for artifact {payload['artifact']}, UUID: {payload['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
                     )
                     multiline_csv = True
                     break
@@ -111,7 +129,7 @@ def main():
                     to_test = response
 
         if not multiline_csv:
-            with open(matched_message["local_paths"][".csv"], "rt") as csv_fh:
+            with open(utils.s3_to_fh(payload["files"][".csv"]), "rt") as csv_fh:
                 reader = csv.DictReader(csv_fh, delimiter=",")
 
                 metadata = next(reader)
@@ -133,18 +151,13 @@ def main():
                             ]
 
                 if not all(name_matches.keys()):
-                    payload["uuid"] = matched_message["uuid"]
-                    payload["artifact"] = matched_message["artifact"]
-                    payload["sample_id"] = matched_message["sample_id"]
-                    payload["run_name"] = matched_message["run_name"]
-                    payload["project"] = matched_message["project"]
-                    payload["platform"] = matched_message["platform"]
-                    payload["ingest_timestamp"] = time.time_ns()
-                    payload["site"] = matched_message["site"]
-                    payload["files"] = matched_message["files"]
-                    payload["local_paths"] = matched_message["local_paths"]
+                    to_send = None
 
-                    varys_client.send(payload)
+                    to_send = parse_match_message(
+                        matched_message=matched_message, payload=payload
+                    )
+
+                    varys_client.send(to_send)
                     continue
 
         if multiline_csv:
@@ -177,19 +190,19 @@ def main():
             if not status:
                 if reason == "unknown":
                     log.error(
-                        f"Onyx test create returned an unknown status code: {to_test.status_code} for artifact: {matched_message['artifact']}"
+                        f"Onyx test create returned an unknown status code: {to_test.status_code} for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
                     )
                     continue
 
                 elif reason == "perm_failure":
                     log.error(
-                        f"Onyx test create for artifact: {matched_message['artifact']} due to Onyx permissions failure"
+                        f"Onyx test create for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} due to Onyx permissions failure"
                     )
                     continue
 
             elif reason == "success":
                 log.info(
-                    f"Onyx test create success for artifact: {matched_message['artifact']}"
+                    f"Onyx test create success for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
                 )
                 if to_test.json()["data"]["cid"]:
                     log.error(
@@ -197,18 +210,11 @@ def main():
                     )
                     continue
 
-        payload["artifact"] = matched_message["artifact"]
-        payload["uuid"] = matched_message["uuid"]
-        payload["sample_id"] = matched_message["sample_id"]
-        payload["run_name"] = matched_message["run_name"]
-        payload["project"] = matched_message["project"]
-        payload["platform"] = matched_message["platform"]
-        payload["ingest_timestamp"] = time.time_ns()
-        payload["site"] = matched_message["site"]
-        payload["files"] = matched_message["files"]
-        payload["local_paths"] = matched_message["local_paths"]
+        to_send = None
 
-        varys_client.send(payload)
+        to_send = parse_match_message(matched_message=matched_message, payload=payload)
+
+        varys_client.send(to_send)
 
 
 if __name__ == "__main__":
