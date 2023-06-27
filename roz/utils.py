@@ -3,10 +3,14 @@ from collections import namedtuple
 import configparser
 import os
 import sys
-from io import BytesIO
+from io import StringIO
 
 
 def get_credentials(args=None):
+    """
+    Get credentials for S3 from a config file, environment variables or command line arguments
+    Serves them as a s3 credentials named tuple with attributes: access_key, secret_key, endpoint, region, profile_name
+    """
     __s3_creds = namedtuple(
         "s3_credentials",
         ["access_key", "secret_key", "endpoint", "region", "profile_name"],
@@ -14,7 +18,12 @@ def get_credentials(args=None):
 
     credential_file = configparser.ConfigParser()
 
-    credential_file.read_file(open(os.path.expanduser("~/.aws/credentials"), "rt"))
+    try:
+        credential_file.read_file(open(os.path.expanduser("~/.aws/credentials"), "rt"))
+        access_key = credential_file[profile]["aws_access_key_id"]
+        secret_key = credential_file[profile]["aws_secret_access_key"]
+    except FileNotFoundError:
+        pass
 
     if args:
         profile = "default" if not args.profile else args.profile
@@ -24,10 +33,6 @@ def get_credentials(args=None):
     endpoint = "https://s3.climb.ac.uk"
 
     region = "s3"
-
-    if credential_file:
-        access_key = credential_file[profile]["aws_access_key_id"]
-        secret_key = credential_file[profile]["aws_secret_access_key"]
 
     if os.getenv("AWS_ACCESS_KEY_ID"):
         access_key = os.getenv("AWS_ACCESS_KEY_ID")
@@ -42,6 +47,7 @@ def get_credentials(args=None):
         if args.secret_key:
             secret_key = args.secret_key
 
+    # Make this actually work
     if not access_key or not secret_key:
         error = """CLIMB S3 credentials could not be found, please provide valid credentials in one of the following ways:
             - In a correctly formatted config file (~/.aws/credentials)
@@ -62,14 +68,19 @@ def get_credentials(args=None):
     return s3_credentials
 
 
-def s3_to_fh(s3_uri):
+def s3_to_fh(s3_uri, eTag):
+    """
+    Take file from S3 URI and return a file handle-like object using StringIO
+    Requires an S3 URI and an ETag to confirm the file has not been modified since upload
+    """
+
     s3_credentials = get_credentials()
 
     bucket = s3_uri.replace("s3://", "").split("/")[0]
 
     key = s3_uri.replace("s3://", "").split("/", 1)[1]
 
-    s3_client = boto3.s3(
+    s3_client = boto3.client(
         "s3",
         endpoint_url=s3_credentials.endpoint,
         aws_access_key_id=s3_credentials.access_key,
@@ -77,6 +88,9 @@ def s3_to_fh(s3_uri):
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    file_obj = s3_client.get_object(bucket=bucket, key=key)
+    file_obj = s3_client.get_object(Bucket=bucket, Key=key)
 
-    return BytesIO(file_obj["Body"].read())
+    if file_obj["ETag"].replace('"', "") != eTag:
+        raise Exception("ETag mismatch, CSV has been modified since upload")
+
+    return StringIO(file_obj["Body"].read().decode("utf-8"))

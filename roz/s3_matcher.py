@@ -3,10 +3,12 @@ import json
 import os
 import boto3
 import time
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import uuid
+import copy
 
 from roz import varys
+import utils
 
 from onyx import Session as onyx_session
 
@@ -32,35 +34,356 @@ def get_already_matched_submissions():
 
         for submission in matched_submissions:
             out_dict[submission.project][submission.site_code][submission.platform][
-                submission.artifact
-            ] = json.loads(submission.payload)
+                submission.test_code
+            ][submission.artifact] = json.loads(submission.payload)
 
         return out_dict
 
 
-def pull_submission_files(s3_client, records, local_scratch_path, log):
-    if not os.path.exists(local_scratch_path):
-        raise Exception(
-            f"The local scratch path: {local_scratch_path} provided with environmental variable 'ROZ_SCRATCH_PATH' does not appear to exist"
-        )
+def handle_artifact_messages(
+    artifact_messages,
+    validation_config,
+    log,
+    varys_client,
+):
+    """
+    Iterate through the artifact messages and do basic validation of whether the files provided match the specification
+    artifact_messages should be structured as follows:
+        {project_code:
+            {site_code :
+                {platform:
+                    {artifact:
+                        {file_type:
+                            s3 on create RabbitMQ message JSON}}}}}
 
-    resps = []
+    It will return a list of named tuples with the following attributes:
+        success: True if the artifact matched the specification and was sent to the validator
+        previously_matched: Records to add to the previously matched dict
+        project: Project code
+        site_code: Site code
+        platform: Platform
+        artifact: Artifact name
 
-    for k, v in records.items():
-        local_path = os.path.join(local_scratch_path, v["s3"]["object"]["key"])
+    """
 
-        try:
-            s3_client.download_file(
-                v["s3"]["bucket"]["name"], v["s3"]["object"]["key"], local_path
+    _result = namedtuple(
+        "result",
+        [
+            "success",
+            "records",
+            "project",
+            "site_code",
+            "platform",
+            "test_flag",
+            "artifact",
+        ],
+    )
+
+    results = []
+
+    for project, sites in artifact_messages.items():
+        for site_code, platforms in sites.items():
+            for platform, test_flags in platforms.items():
+                for test_flag, artifacts in test_flags.items():
+                    for artifact, records in artifacts.items():
+                        if test_flag == "test":
+                            test_bool = True
+                        elif test_flag == "prod":
+                            test_bool = False
+
+                        parsed_fname = False
+                        if len(records) != len(
+                            validation_config["configs"][project]["file_specs"][
+                                platform
+                            ]["files"]
+                        ):
+                            log.info(
+                                f"Skipping artifact: {artifact} for this loop since files provided do not appear to match the specification for this project and platform"
+                            )
+                            results.append(
+                                _result(
+                                    success=False,
+                                    records=False,
+                                    project=project,
+                                    site_code=site_code,
+                                    platform=platform,
+                                    test_flag=test_flag,
+                                    artifact=artifact,
+                                )
+                            )
+                            continue
+
+                        ftype_matches = {
+                            x: False
+                            for x in validation_config["configs"][project][
+                                "file_specs"
+                            ][platform]["files"]
+                        }
+
+                        for ftype in validation_config["configs"][project][
+                            "file_specs"
+                        ][platform]["files"]:
+                            if records.get(ftype):
+                                ftype_matches[ftype] = True
+
+                        if all(ftype_matches.values()):
+                            # Slightly gross but it means that we can keep it project/platform general by parsing the filename of the last file iterated over
+                            parsed_fname = parse_fname(
+                                fname=records[ftype]["s3"]["object"]["key"],
+                                fname_layout=validation_config["configs"][project][
+                                    "file_specs"
+                                ][platform][ftype]["layout"],
+                            )
+
+                            log.info(
+                                f"Submission matched for artifact: {artifact}, attempting to send submission payload"
+                            )
+                            try:
+                                to_send = generate_payload(
+                                    artifact=artifact,
+                                    parsed_fname=parsed_fname,
+                                    file_submission=records,
+                                    project=project,
+                                    site_code=site_code,
+                                    upload_config=validation_config,
+                                    platform=platform,
+                                    test_bool=test_bool,
+                                )
+
+                                varys_client.send(to_send)
+
+                                results.append(
+                                    _result(
+                                        success=True,
+                                        records=records,
+                                        project=project,
+                                        site_code=site_code,
+                                        platform=platform,
+                                        test_flag=test_flag,
+                                        artifact=artifact,
+                                    )
+                                )
+                            except Exception as e:
+                                log.error(
+                                    f"Failed to send payload for artifact: {artifact} with error: {e}"
+                                )
+                                results.append(
+                                    _result(
+                                        success=False,
+                                        records=False,
+                                        project=project,
+                                        site_code=site_code,
+                                        platform=platform,
+                                        test_flag=test_flag,
+                                        artifact=artifact,
+                                    )
+                                )
+
+                        else:
+                            log.info(
+                                f"Provided files for artifact: {artifact} do not currently match the specification for this project and platform"
+                            )
+                            results.append(
+                                _result(
+                                    success=False,
+                                    records=False,
+                                    project=project,
+                                    site_code=site_code,
+                                    platform=platform,
+                                    test_flag=test_flag,
+                                    artifact=artifact,
+                                )
+                            )
+    return results
+
+
+def handle_update_messages(
+    update_messages,
+    validation_config,
+    log,
+    varys_client,
+):
+    """
+    Iterate through the artifact messages and do basic validation of whether the files provided match the specification
+    artifact_messages should be structured as follows:
+        {project_code:
+            {site_code :
+                {platform:
+                    {test_flag:
+                        {artifact:
+                            {file_type:
+                                s3 on create RabbitMQ message JSON}}}}}
+
+    It will return a list of named tuples with the following attributes:
+        success: True if the artifact matched the specification and was sent to the validator
+        previously_matched: Records to add to the previously matched dict
+        project: Project code
+        site_code: Site code
+        platform: Platform
+        artifact: Artifact name
+
+    """
+
+    _result = namedtuple(
+        "result",
+        [
+            "success",
+            "records",
+            "project",
+            "site_code",
+            "platform",
+            "test_flag",
+            "artifact",
+        ],
+    )
+
+    results = []
+
+    for project, sites in update_messages.items():
+        for site_code, platforms in sites.items():
+            for platform, test_flags in platforms.items():
+                for test_flag, artifacts in test_flags.items():
+                    for artifact, records in artifacts.items():
+                        if test_flag == "test":
+                            test_bool = True
+                        elif test_flag == "prod":
+                            test_bool = False
+
+                        modified_records = copy.deepcopy(records)
+
+                        # Slightly gross but it means that we can keep it project/platform general by parsing the filename of the first file described in the spec
+                        first_ftype = validation_config["configs"][project][
+                            "file_specs"
+                        ][platform]["files"][0]
+                        parsed_fname = parse_fname(
+                            fname=records[first_ftype]["s3"]["object"]["key"],
+                            fname_layout=validation_config["configs"][project][
+                                "file_specs"
+                            ][platform][first_ftype]["layout"],
+                        )
+
+                        log.info(
+                            f"Submission matched for previously rejected artifact: {artifact}, attempting to send submission payload"
+                        )
+
+                        try:
+                            to_send = generate_payload(
+                                artifact=artifact,
+                                parsed_fname=parsed_fname,
+                                file_submission=records,
+                                project=project,
+                                site_code=site_code,
+                                upload_config=validation_config,
+                                platform=platform,
+                                test_bool=test_bool,
+                            )
+
+                            varys_client.send(to_send)
+                            results.append(
+                                _result(
+                                    success=True,
+                                    records=records,
+                                    project=project,
+                                    site_code=site_code,
+                                    platform=platform,
+                                    test_flag=test_flag,
+                                    artifact=artifact,
+                                )
+                            )
+                        except Exception as e:
+                            log.error(
+                                f"Failed to send payload for artifact: {artifact} with error: {e}"
+                            )
+                            results.append(
+                                _result(
+                                    success=False,
+                                    records=False,
+                                    project=project,
+                                    site_code=site_code,
+                                    platform=platform,
+                                    test_flag=test_flag,
+                                    artifact=artifact,
+                                )
+                            )
+
+    return results
+
+
+def query_onyx(
+    project,
+    artifact,
+    parsed_fname,
+    log,
+    fname,
+):
+    try:
+        with onyx_session(env_password=True) as session:
+            response = next(
+                session.filter(
+                    project,
+                    fields={
+                        "sample_id": parsed_fname["sample_id"],
+                        "run_name": parsed_fname["run_name"],
+                    },
+                )
             )
-            resps.append(local_path)
-        except Exception as e:
-            log.error(
-                f"Unable to pull file: {v['s3']['object']['key']} for artifact: {k}, due to error: {e}"
-            )
-            resps.append(False)
 
-    return resps
+            if response.status_code == 500:
+                log.error(
+                    f"Onyx query for artifact: {artifact} lead to onyx internal server error"
+                )
+                return False
+
+            elif response.status_code == 422:
+                log.error(
+                    f"Onyx query for artifact: {artifact} failed due to bad fields in request (should not happen ever)"
+                )
+                return False
+
+            elif response.status_code == 404:
+                log.error(
+                    f"Onyx query for artifact: {artifact} failed because project: {project} does not exist"
+                )
+                return False
+
+            elif response.status_code == 403:
+                log.error(
+                    f"Onyx query for artifact: {artifact} failed due to a permission error"
+                )
+                return False
+
+            elif response.status_code == 400:
+                log.error(
+                    f"Onyx query for artifact: {artifact} failed due to a malformed request (should not happen ever)"
+                )
+                return False
+
+            elif response.status_code == 200:
+                if len(response.json()["data"]["records"]) == 1:
+                    log.info(
+                        f"Artifact: {artifact} has been sucessfully ingested previously with CID: {response.json()['data']['records'][0]['cid']} and as such cannot be modified by re-submission"
+                    )
+                    return False
+
+                elif len(response.json()["data"]["records"]) > 1:
+                    log.error(
+                        f"onyx query returned more than one response for artifact: {artifact}"
+                    )
+
+                    return False
+
+                else:
+                    return True
+
+            else:
+                log.error(
+                    f"Onyx query for artifact: {artifact} failed due to unhandled error code: {response.status_code}"
+                )
+                return False
+
+    except Exception as e:
+        log.error(f"Submitted file: {fname} lead to onyx-client exception: {e}")
+        return False
 
 
 def generate_payload(
@@ -70,8 +393,8 @@ def generate_payload(
     project,
     site_code,
     upload_config,
-    local_scratch_path,
     platform,
+    test_bool,
 ):
     unique = str(uuid.uuid4())
 
@@ -87,12 +410,7 @@ def generate_payload(
         for x in upload_config["configs"][project]["file_specs"][platform]["files"]
     }
 
-    local_paths = {
-        x: os.path.join(local_scratch_path, s3_msgs[x]["s3"]["object"]["key"])
-        for x in upload_config["configs"][project]["file_specs"][platform]["files"]
-    }
-
-    uploaders = set(msg["userIdentity"]["principalId"] for file, msg in s3_msgs.items())
+    uploaders = set(msg["userIdentity"]["principalId"] for msg in s3_msgs.values())
 
     payload = {
         "uuid": unique,
@@ -106,7 +424,7 @@ def generate_payload(
         "project": project,
         "platform": platform,
         "files": files,
-        "local_paths": local_paths,
+        "test_flag": test_bool,
     }
 
     return payload
@@ -134,15 +452,13 @@ def record_parser(record):
 
 
 def run(args):
+    # TODO Standardise all of the ebvironmental variables -> parameterise them instead?
+
     for i in (
         "ONYX_ROZ_PASSWORD",
         "ROZ_CONFIG_JSON",
         "S3_MATCHER_LOG",
         "INGEST_LOG_LEVEL",
-        "ROZ_SCRATCH_PATH",
-        "AWS_ENDPOINT",
-        "ROZ_AWS_ACCESS",
-        "ROZ_AWS_SECRET",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
@@ -163,12 +479,14 @@ def run(args):
 
     nested_ddict = lambda: defaultdict(nested_ddict)
 
+    s3_credentials = utils.get_credentials()
+
     # Init S3 client
     s3_client = boto3.client(
         "s3",
-        endpoint_url=os.getenv("AWS_ENDPOINT"),
-        aws_access_key_id=os.getenv("ROZ_AWS_ACCESS"),
-        aws_secret_access_key=os.getenv("ROZ_AWS_SECRET"),
+        endpoint_url=s3_credentials.endpoint,
+        aws_access_key_id=s3_credentials.access_key,
+        aws_secret_access_key=s3_credentials.secret_key,
     )
 
     varys_client = varys.varys(
@@ -191,11 +509,12 @@ def run(args):
 
         for message in messages:
             ftype = None
+            fname = None
+            ftype = None
 
             payload = json.loads(message.body)
 
             for record in payload["Records"]:
-                # mscapetest-birm-ont-prod
                 # Bucket names should follow the format "project-site_code-platform-test_status"
                 project = record["s3"]["bucket"]["name"].split("-")[0]
                 site_code = record["s3"]["bucket"]["name"].split("-")[1]
@@ -203,6 +522,12 @@ def run(args):
                 test = record["s3"]["bucket"]["name"].split("-")[3]
 
                 fname = record["s3"]["object"]["key"]
+
+                if test != "prod" and test != "test":
+                    log.error(
+                        f"Test flag in bucket name is not either 'test' or 'prod' ignoring message"
+                    )
+                    continue
 
                 if "/" in fname or "\\" in fname:
                     log.info(
@@ -243,255 +568,105 @@ def run(args):
                     ]["layout"],
                 )
 
+                # If the filename spec contains "project" or "platform" ensure that the project in the filename matches the bucket name
+                if parsed_fname.get("project"):
+                    if parsed_fname["project"] != project:
+                        log.info(
+                            f"Submitted file: {fname} appears to be in a bucket for the wrong project, only files for the project {project} should be submitted to bucket: {record['s3']['bucket']['name']} ignoring"
+                        )
+                        continue
+
+                if parsed_fname.get("platform"):
+                    if parsed_fname["platform"] != platform:
+                        log.info(
+                            f"Submitted file: {fname} appears to be in a bucket for the wrong platform, only files for the platform {platform} should be submitted to bucket: {record['s3']['bucket']['name']} ignoring"
+                        )
+                        continue
+
                 artifact = generate_artifact(
                     parsed_fname,
                     validation_config["configs"][project]["artifact_layout"],
                 )
 
-                if previously_matched[project][site_code][platform].get(artifact):
-                    if (
-                        previously_matched[project][site_code][platform][artifact][
-                            ftype
-                        ]["s3"]["object"]["eTag"]
-                        == record["s3"]["object"]["eTag"]
-                    ):
+                if previously_matched[project][site_code][platform][test].get(artifact):
+                    previous_etag = previously_matched[project][site_code][platform][
+                        test
+                    ][artifact][ftype]["s3"]["object"]["eTag"]
+
+                    if previous_etag == record["s3"]["object"]["eTag"]:
                         log.info(
                             f"Previously ingested file: {fname} has been previously matched and appears identical to previously matched version, ignoring"
                         )
                         continue
 
                     else:
-                        try:
-                            with onyx_session(env_password=True) as session:
-                                response = next(
-                                    session.filter(
-                                        project,
-                                        fields={
-                                            "sample_id": parsed_fname["sample_id"],
-                                            "run_name": parsed_fname["run_name"],
-                                        },
-                                    )
-                                )
+                        onyx_resp = query_onyx(
+                            project=project,
+                            artifact=artifact,
+                            parsed_fname=parsed_fname,
+                            log=log,
+                            fname=fname,
+                        )
 
-                                if response.status_code == 500:
-                                    log.error(
-                                        f"Onyx query for artifact: {artifact} lead to onyx internal server error"
-                                    )
-                                    continue
-
-                                elif response.status_code == 422:
-                                    log.error(
-                                        f"Onyx query for artifact: {artifact} failed due to bad fields in request (should not happen ever)"
-                                    )
-                                    continue
-
-                                elif response.status_code == 404:
-                                    log.error(
-                                        f"Onyx query for artifact: {artifact} failed because project: {project} does not exist"
-                                    )
-                                    continue
-
-                                elif response.status_code == 403:
-                                    log.error(
-                                        f"Onyx query for artifact: {artifact} failed due to a permission error"
-                                    )
-                                    continue
-
-                                elif response.status_code == 400:
-                                    log.error(
-                                        f"Onyx query for artifact: {artifact} failed due to a malformed request (should not happen ever)"
-                                    )
-                                    continue
-
-                                elif response.status_code == 200:
-                                    if len(response.json()["data"]["records"]) == 1:
-                                        log.info(
-                                            f"Artifact: {artifact} has been sucessfully ingested previously and as such cannot be modified by re-submission"
-                                        )
-                                        continue
-
-                                    elif len(response.json()["data"]["records"]) > 1:
-                                        log.error(
-                                            f"onyx query returned more than one response for artifact: {artifact}"
-                                        )
-
-                                        continue
-                                    else:
-                                        log.info(
-                                            f"Resubmitting previously rejected submission with for artifact: {artifact} due to update of submission {ftype}"
-                                        )
-                                        if update_messages[project][site_code][
-                                            platform
-                                        ].get(artifact):
-                                            update_messages[project][site_code][
-                                                platform
-                                            ][artifact][ftype] = record
-                                        else:
-                                            update_messages[project][site_code][
-                                                platform
-                                            ][artifact] = previously_matched[project][
-                                                site_code
-                                            ][
-                                                platform
-                                            ][
-                                                artifact
-                                            ].copy()
-                                            update_messages[project][site_code][
-                                                platform
-                                            ][artifact][ftype] = record
-
-                        except Exception as e:
-                            log.error(
-                                f"Submitted file: {fname} lead to onyx-client exception: {e}"
+                        if onyx_resp:
+                            log.info(
+                                f"Resubmitting previously rejected submission with for artifact: {artifact} due to update of submission {ftype}"
                             )
+                            if update_messages[project][site_code][platform][test].get(
+                                artifact
+                            ):
+                                update_messages[project][site_code][platform][test][
+                                    artifact
+                                ][ftype] = record
+                            else:
+                                previous_matched_copy = copy.deepcopy(
+                                    previously_matched[project][site_code][platform][
+                                        test
+                                    ][artifact]
+                                )
+                                update_messages[project][site_code][platform][test][
+                                    artifact
+                                ] = previous_matched_copy
+
+                                update_messages[project][site_code][platform][test][
+                                    artifact
+                                ][ftype] = record
+                        else:
                             continue
 
                 else:
-                    artifact_messages[project][site_code][platform][artifact][
+                    artifact_messages[project][site_code][platform][test][artifact][
                         ftype
                     ] = record
 
-        new_artifacts_to_delete = []
+        artifact_results = handle_artifact_messages(
+            artifact_messages=artifact_messages,
+            validation_config=validation_config,
+            log=log,
+            varys_client=varys_client,
+        )
 
-        for project, sites in artifact_messages.items():
-            for site_code, platforms in sites.items():
-                for platform, artifacts in platforms.items():
-                    for artifact, records in artifacts.items():
-                        if len(records) != len(
-                            validation_config["configs"][project]["file_specs"][
-                                platform
-                            ]["files"]
-                        ):
-                            log.info(
-                                f"Skipping artifact: {artifact} for this loop since not enough files have currently been provided based on the spec"
-                            )
-                            continue
+        for result in artifact_results:
+            if result.success:
+                previously_matched[result.project][result.site_code][result.platform][
+                    result.test_flag
+                ][result.artifact] = result.records
+                del artifact_messages[result.project][result.site_code][
+                    result.platform
+                ][result.test_flag][result.artifact]
 
-                        ftype_matches = {
-                            x: False
-                            for x in validation_config["configs"][project][
-                                "file_specs"
-                            ][platform]["files"]
-                        }
+        update_results = handle_update_messages(
+            update_messages=update_messages,
+            validation_config=validation_config,
+            log=log,
+            varys_client=varys_client,
+        )
 
-                        for ftype in validation_config["configs"][project][
-                            "file_specs"
-                        ][platform]["files"]:
-                            if records.get(ftype):
-                                ftype_matches[ftype] = True
-
-                        if all(ftype_matches.values()):
-                            log.info(
-                                f"Submission matched for artifact: {artifact}, attempting to download files then sending submission payload"
-                            )
-                            try:
-                                to_send = False
-
-                                s3_resp = pull_submission_files(
-                                    s3_client,
-                                    records,
-                                    os.getenv("ROZ_SCRATCH_PATH"),
-                                    log,
-                                )
-                                if all(s3_resp):
-                                    to_send = generate_payload(
-                                        artifact=artifact,
-                                        parsed_fname=parsed_fname,
-                                        file_submission=records,
-                                        project=project,
-                                        site_code=site_code,
-                                        upload_config=validation_config,
-                                        local_scratch_path=os.getenv(
-                                            "ROZ_SCRATCH_PATH"
-                                        ),
-                                        platform=platform,
-                                    )
-
-                                    varys_client.send(to_send)
-
-                                    previously_matched[project][site_code][platform][
-                                        artifact
-                                    ] = records
-                                    new_artifacts_to_delete.append(
-                                        (project, site_code, platform, artifact)
-                                    )
-                                else:
-                                    log.error(
-                                        f"Unable to pull {len([x for x in s3_resp if x])} files for artifact: {artifact}"
-                                    )
-                                    new_artifacts_to_delete.append(
-                                        (project, site_code, platform, artifact)
-                                    )
-                                    previously_matched[project][site_code][platform][
-                                        artifact
-                                    ] = {
-                                        x: record_parser(records[x])
-                                        for x in validation_config["configs"][project][
-                                            "file_specs"
-                                        ][platform]["files"]
-                                    }
-
-                            except Exception as e:
-                                log.error(
-                                    f"Failed to download files to local scratch then send submission payload for artifact {artifact} with error: {e}"
-                                )
-                                new_artifacts_to_delete.append(
-                                    (project, site_code, platform, artifact)
-                                )
-                        else:
-                            log.info(
-                                f"Provided files for artifact: {artifact} do not match the specification provided"
-                            )
-                            continue
-
-        for project, sites in update_messages.items():
-            for site_code, platforms in sites.items():
-                for platform, artifacts in platforms.items():
-                    for artifact, records in artifacts.items():
-                        log.info(
-                            f"Submission matched for previously rejected artifact: {artifact}, attempting to download files then sending submission payload"
-                        )
-                        try:
-                            to_send = False
-
-                            s3_resp = pull_submission_files(
-                                s3_client,
-                                records,
-                                os.getenv("ROZ_SCRATCH_PATH"),
-                                log,
-                            )
-                            if all(s3_resp):
-                                to_send = generate_payload(
-                                    artifact=artifact,
-                                    parsed_fname=parsed_fname,
-                                    file_submission=records,
-                                    project=project,
-                                    site_code=site_code,
-                                    upload_config=validation_config,
-                                    local_scratch_path=os.getenv("ROZ_SCRATCH_PATH"),
-                                    platform=platform,
-                                )
-
-                                varys_client.send(to_send)
-                                previously_matched[project][site_code][platform][
-                                    artifact
-                                ] = records
-
-                            else:
-                                log.error(
-                                    f"Unable to pull {len([x for x in s3_resp if x])} files for previously matched artifact: {artifact}"
-                                )
-                                continue
-
-                        except Exception as e:
-                            log.error(
-                                f"Failed to download files to local scratch then send submission payload for artifact {artifact} with error: {e}"
-                            )
-
-        for new_artifact in new_artifacts_to_delete:
-            del artifact_messages[new_artifact[0]][new_artifact[1]][new_artifact[2]][
-                new_artifact[3]
-            ]
+        for result in update_results:
+            if result.success:
+                previously_matched[result.project][result.site_code][result.platform][
+                    result.test_flag
+                ][result.artifact] = result.records
 
         time.sleep(args.sleep_time)
 

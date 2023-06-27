@@ -32,7 +32,7 @@ def parse_match_message(matched_message, payload):
     payload["ingest_timestamp"] = time.time_ns()
     payload["site"] = matched_message["site"]
     payload["files"] = matched_message["files"]
-    payload["local_paths"] = matched_message["local_paths"]
+    payload["test_flag"] = matched_message["test_flag"]
 
     return payload
 
@@ -74,14 +74,15 @@ def main():
         "created": False,
         "ingested": False,
         "files": {},  # Dict
-        "local_paths": {},  # Dict
         "onyx_test_status_code": False,
         "onyx_test_create_errors": {},  # Dict
         "onyx_test_create_status": False,
         "onyx_status_code": False,
         "onyx_errors": {},  # Dict
         "onyx_create_status": False,
-        "ingest_errors": {},
+        "ingest_errors": [],
+        "test_flag": True,
+        "test_ingest_result": False,
     }
 
     while True:
@@ -99,19 +100,19 @@ def main():
             log.info(
                 f"Received match for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} now attempting to test_create record in Onyx"
             )
-
             try:
                 # Test create from the metadata CSV
                 response_generator = client.csv_create(
                     matched_message["project"],
-                    csv_path=matched_message["local_paths"][
-                        ".csv"
-                    ],  # I don't like having a hardcoded metadata file name like this but hypothetically
+                    csv_file=utils.s3_to_fh(
+                        matched_message["files"][".csv"]["uri"],
+                        matched_message["files"][".csv"]["etag"],
+                    ),  # I don't like having a hardcoded metadata file name like this but hypothetically
                     test=True,  # we should always have a metadata CSV
                 )
             except Exception as e:
                 log.error(
-                    f"Onxy test csv create failed for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} due to client error: {e}"
+                    f"Onxy test csv create failed for artifact: {matched_message['artifact']}, UUID: {matched_message['uuid']} due to client error: {e}"
                 )
                 continue
 
@@ -121,7 +122,7 @@ def main():
             for response in response_generator:
                 if to_test:
                     log.info(
-                        f"Metadata CSV for artifact {payload['artifact']}, UUID: {payload['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
+                        f"Metadata CSV for artifact {matched_message['artifact']}, UUID: {matched_message['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
                     )
                     multiline_csv = True
                     break
@@ -129,7 +130,10 @@ def main():
                     to_test = response
 
         if not multiline_csv:
-            with open(utils.s3_to_fh(payload["files"][".csv"]), "rt") as csv_fh:
+            with utils.s3_to_fh(
+                matched_message["files"][".csv"]["uri"],
+                matched_message["files"][".csv"]["etag"],
+            ) as csv_fh:
                 reader = csv.DictReader(csv_fh, delimiter=",")
 
                 metadata = next(reader)
