@@ -7,7 +7,8 @@ import copy
 
 from onyx import Session as onyx_session
 
-from roz import varys
+import varys
+
 import utils
 
 
@@ -47,11 +48,11 @@ def main():
             sys.exit(3)
 
     # Setup producer / consumer
-    log = varys.init_logger(
+    log = varys.utils.init_logger(
         "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
-    varys_client = varys.varys(
+    varys_client = varys(
         profile="roz",
         in_exchange="inbound.matched",
         out_exchange="inbound.to_validate",
@@ -88,7 +89,9 @@ def main():
     while True:
         payload = copy.deepcopy(ingest_payload_template)
 
-        message = varys_client.receive()
+        message = varys_client.receive(
+            exchange="inbound.matched", queue_suffix="ingest"
+        )
 
         matched_message = json.loads(message.body)
 
@@ -161,7 +164,11 @@ def main():
                         matched_message=matched_message, payload=payload
                     )
 
-                    varys_client.send(to_send)
+                    varys_client.send(
+                        message=to_send,
+                        exchange="inbound.to_validate",
+                        queue_suffix="ingest",
+                    )
                     continue
 
         if multiline_csv:
@@ -218,7 +225,11 @@ def main():
 
         to_send = parse_match_message(matched_message=matched_message, payload=payload)
 
-        varys_client.send(to_send)
+        varys_client.send(
+            message=to_send,
+            exchange="inbound.to_validate",
+            queue_suffix="ingest",
+        )
 
 
 if __name__ == "__main__":

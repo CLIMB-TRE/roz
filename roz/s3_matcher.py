@@ -7,7 +7,7 @@ from collections import defaultdict, namedtuple
 import uuid
 import copy
 
-from roz import varys
+import varys
 import utils
 
 from onyx import Session as onyx_session
@@ -150,7 +150,11 @@ def handle_artifact_messages(
                                     test_bool=test_bool,
                                 )
 
-                                varys_client.send(to_send)
+                                varys_client.send(
+                                    message=to_send,
+                                    exchange="inbound.matched",
+                                    queue_suffix="s3_matcher",
+                                )
 
                                 results.append(
                                     _result(
@@ -278,7 +282,11 @@ def handle_update_messages(
                                 test_bool=test_bool,
                             )
 
-                            varys_client.send(to_send)
+                            varys_client.send(
+                                message=to_send,
+                                exchange="inbound.matched",
+                                queue_suffix="s3_matcher",
+                            )
                             results.append(
                                 _result(
                                     success=True,
@@ -464,7 +472,7 @@ def run(args):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
 
-    log = varys.init_logger(
+    log = varys.utils.init_logger(
         "roz_client", os.getenv("S3_MATCHER_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
@@ -489,13 +497,10 @@ def run(args):
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    varys_client = varys.varys(
+    varys_client = varys(
         profile="roz",
-        in_exchange="inbound.s3",
-        out_exchange="inbound.matched",
         logfile=os.getenv("S3_MATCHER_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),
-        queue_suffix="s3_matcher",
     )
 
     previously_matched = get_already_matched_submissions()
@@ -503,7 +508,10 @@ def run(args):
     artifact_messages = nested_ddict()
 
     while True:
-        messages = varys_client.receive_batch()
+        messages = varys_client.receive_batch(
+            exchange="inbound.s3",
+            queue_suffix="s3_matcher",
+        )
 
         update_messages = nested_ddict()
 

@@ -85,9 +85,9 @@ def parse_nxf_report(report_path):
 
 def run(args):
     # Setup producer / consumer
-    log = varys.init_logger("mscape.ingest", args.logfile, args.log_level)
+    log = varys.utils.init_logger("mscape.ingest", args.logfile, args.log_level)
 
-    varys_client = varys.varys(
+    varys_client = varys(
         profile="roz",
         in_exchange="inbound.to_validate",
         out_exchange="inbound.validated.mscape",
@@ -136,7 +136,9 @@ def run(args):
     )
 
     while True:
-        message = varys_client.receive()
+        message = varys_client.receive(
+            exchange="inbound.to_validate", queue_suffix="validator"
+        )
 
         to_validate = json.loads(message.body)
 
@@ -150,7 +152,11 @@ def run(args):
             continue
 
         if not to_validate["onyx_test_create_status"]:
-            varys_client.send(payload)
+            varys_client.send(
+                message=payload,
+                exchange="inbound.validated.mscape",
+                queue_suffix="validator",
+            )
             continue
 
         parameters = {
@@ -184,7 +190,11 @@ def run(args):
             log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
             payload["ingest_errors"].append("Validation pipeline timeout")
             log.info(f"Sending validation result for UUID: {payload['uuid']}")
-            varys_client.send(payload)
+            varys_client.send(
+                message=payload,
+                exchange="inbound.validated.mscape",
+                queue_suffix="validator",
+            )
             continue
 
         result_path = os.path.join(args.result_dir.resolve(), payload["uuid"])
@@ -222,7 +232,11 @@ def run(args):
                 payload["ingest_errors"].append(
                     "couldn't open nxf ingest pipeline trace"
                 )
-                varys_client.send(payload)
+                varys_client.send(
+                    message=payload,
+                    exchange="inbound.validated.mscape",
+                    queue_suffix="validator",
+                )
                 continue
 
             for process, trace in trace_dict.items():
@@ -243,7 +257,11 @@ def run(args):
                         ingest_fail = True
 
             if ingest_fail:
-                varys_client.send(payload)
+                varys_client.send(
+                    message=payload,
+                    exchange="inbound.validated.mscape",
+                    queue_suffix="validator",
+                )
                 continue
 
             if payload["test_flag"]:
@@ -251,7 +269,11 @@ def run(args):
                     f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
                 )
                 payload["test_ingest_result"] = True
-                varys_client.send(payload)
+                varys_client.send(
+                    message=payload,
+                    exchange="inbound.validated.mscape",
+                    queue_suffix="validator",
+                )
                 continue
 
             with onyx_session(env_password=True) as client:
@@ -356,7 +378,11 @@ def run(args):
                         ]
 
                     if ingest_fail:
-                        varys_client.send(payload)
+                        varys_client.send(
+                            message=payload,
+                            exchange="inbound.validated.mscape",
+                            queue_suffix="validator",
+                        )
                         continue
 
                 except Exception as e:
@@ -366,7 +392,11 @@ def run(args):
                     payload["onyx_errors"]["onyx_client_errors"] = [
                         f"Unhandled client error {e}"
                     ]
-                    varys_client.send(payload)
+                    varys_client.send(
+                        message=payload,
+                        exchange="inbound.validated.mscape",
+                        queue_suffix="validator",
+                    )
                     continue
 
             log.info(
@@ -396,7 +426,11 @@ def run(args):
                         raw_read_fail = True
 
                 if raw_read_fail:
-                    varys_client.send(payload)
+                    varys_client.send(
+                        message=payload,
+                        exchange="inbound.validated.mscape",
+                        queue_suffix="validator",
+                    )
                     continue
 
                 binned_read_fail = False
@@ -427,7 +461,11 @@ def run(args):
                                 binned_read_fail = True
 
                     if binned_read_fail:
-                        varys_client.send(payload)
+                        varys_client.send(
+                            message=payload,
+                            exchange="inbound.validated.mscape",
+                            queue_suffix="validator",
+                        )
                         continue
 
             else:
@@ -475,7 +513,11 @@ def run(args):
                             binned_read_fail = True
 
                     if binned_read_fail:
-                        varys_client.send(payload)
+                        varys_client.send(
+                            message=payload,
+                            exchange="inbound.validated.mscape",
+                            queue_suffix="validator",
+                        )
                         continue
 
             report_fail = False
@@ -501,16 +543,28 @@ def run(args):
                 log.info(
                     f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['cid']}"
                 )
-                varys_client.send(payload)
+                varys_client.send(
+                    message=payload,
+                    exchange="inbound.validated.mscape",
+                    queue_suffix="validator",
+                )
             else:
-                varys_client.send(payload)
+                varys_client.send(
+                    message=payload,
+                    exchange="inbound.validated.mscape",
+                    queue_suffix="validator",
+                )
 
         else:
             log.error(
                 f"Scylla exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
             )
             payload["ingest_errors"].append(f"Scylla exited with non-0 exit code: {rc}")
-            varys_client.send(payload)
+            varys_client.send(
+                message=payload,
+                exchange="inbound.validated.mscape",
+                queue_suffix="validator",
+            )
 
 
 if __name__ == "__main__":
