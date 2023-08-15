@@ -8,9 +8,9 @@ import uuid
 import copy
 
 import varys
-import utils
+import utils.utils as utils
 
-from onyx import Session as onyx_session
+from onyx import OnyxClient
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from snoop_db import db
@@ -97,9 +97,9 @@ def handle_artifact_messages(
                                 platform
                             ]["files"]
                         ):
-                            log.info(
-                                f"Skipping artifact: {artifact} for this loop since files provided do not appear to match the specification for this project and platform"
-                            )
+                            # log.info(
+                            #     f"Skipping artifact: {artifact} for this loop since files provided do not appear to match the specification for this project and platform"
+                            # )
                             results.append(
                                 _result(
                                     success=False,
@@ -325,9 +325,9 @@ def query_onyx(
     fname,
 ):
     try:
-        with onyx_session(env_password=True) as session:
+        with OnyxClient(env_password=True) as client:
             response = next(
-                session.filter(
+                client._filter(
                     project,
                     fields={
                         "sample_id": parsed_fname["sample_id"],
@@ -367,13 +367,13 @@ def query_onyx(
                 return False
 
             elif response.status_code == 200:
-                if len(response.json()["data"]["records"]) == 1:
+                if len(response.json()["data"]) == 1:
                     log.info(
-                        f"Artifact: {artifact} has been sucessfully ingested previously with CID: {response.json()['data']['records'][0]['cid']} and as such cannot be modified by re-submission"
+                        f"Artifact: {artifact} has been sucessfully ingested previously with CID: {response.json()['data'][0]['cid']} and as such cannot be modified by re-submission"
                     )
                     return False
 
-                elif len(response.json()["data"]["records"]) > 1:
+                elif len(response.json()["data"]) > 1:
                     log.error(
                         f"onyx query returned more than one response for artifact: {artifact}"
                     )
@@ -497,7 +497,7 @@ def run(args):
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    varys_client = varys(
+    varys_client = varys.varys(
         profile="roz",
         logfile=os.getenv("S3_MATCHER_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),

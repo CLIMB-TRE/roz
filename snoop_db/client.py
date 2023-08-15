@@ -2,6 +2,7 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 from snoop_db.models import (
     inbound_s3_table,
     inbound_matched_table,
+    inbound_to_validate_table,
     inbound_validated_table,
     inbound_artifacts_table,
 )
@@ -76,19 +77,22 @@ def main():
             with Session(engine) as session:
                 for message in inbound_s3_messages:
                     payload = json.loads(message.body)
-                    log.info(
-                        f"Submitting matched_triplet message #{message.basic_deliver.delivery_tag} to snoop_db"
-                    )
-                    try:
-                        session.add(
-                            inbound_s3_table(
-                                payload=message.body,
+                    for record in payload["Records"]:
+                        log.info(
+                            f"Submitting on_create message from bucket: {record['s3']['bucket']['name']} to snoop_db"
+                        )
+                        try:
+                            session.add(
+                                inbound_s3_table(
+                                    bucket=record["s3"]["bucket"]["name"],
+                                    uploader=record["userIdentity"]["principalId"],
+                                    payload=record,
+                                )
                             )
-                        )
-                    except Exception as e:
-                        log.error(
-                            f"Unable to submit message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}"
-                        )
+                        except Exception as e:
+                            log.error(
+                                f"Unable to submit message #{message.basic_deliver.delivery_tag} to snoop_db session with error: {e}"
+                            )
                 try:
                     session.commit()
                 except Exception as e:
@@ -105,15 +109,17 @@ def main():
                         session.add(
                             inbound_matched_table(
                                 timestamp=payload["match_timestamp"],
+                                uuid=payload["uuid"],
                                 site=payload["site"],
                                 project=payload["project"],
                                 platform=payload["platform"],
+                                uploaders=payload["uploaders"],
                                 artifact=payload["artifact"],
                                 sample_id=payload["sample_id"],
                                 run_name=payload["run_name"],
                                 files=payload["files"],
                                 local_paths=payload["local_paths"],
-                                payload=message.body,
+                                payload=payload,
                             )
                         )
                     except Exception as e:
@@ -134,11 +140,12 @@ def main():
                     )
                     try:
                         session.add(
-                            inbound_validated_table(
-                                mid=payload["mid"],
+                            inbound_to_validate_table(
+                                uuid=payload["uuid"],
                                 timestamp=payload["match_timestamp"],
                                 site_code=payload["site"],
                                 project=payload["project"],
+                                uploaders=payload["uploaders"],
                                 artifact=payload["artifact"],
                                 sample_id=payload["sample_id"],
                                 run_name=payload["run_name"],
@@ -178,9 +185,9 @@ def main():
                                 run_name=payload["run_name"],
                                 files=payload["files"],
                                 local_paths=payload["local_paths"],
-                                onyx_test_status_code=payload["onyx_test_status_code"],
-                                onyx_test_errors=payload["onyx_test_errors"],
-                                onyx_test_status=payload["onyx_test_status"],
+                                onyx_status_code=payload["onyx_test_status_code"],
+                                onyx_errors=payload["onyx_test_errors"],
+                                onyx_status=payload["onyx_test_status"],
                                 payload=message.body,
                             )
                         )

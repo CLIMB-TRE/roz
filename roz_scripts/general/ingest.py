@@ -5,11 +5,11 @@ import time
 import json
 import copy
 
-from onyx import Session as onyx_session
+from onyx import OnyxClient
 
 import varys
 
-import utils
+import utils.utils as utils
 
 
 def handle_status_code(status_code):
@@ -52,13 +52,10 @@ def main():
         "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
-    varys_client = varys(
+    varys_client = varys.varys(
         profile="roz",
-        in_exchange="inbound.matched",
-        out_exchange="inbound.to_validate",
         logfile=os.getenv("ROZ_INGEST_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),
-        queue_suffix="ingest",
     )
 
     ingest_payload_template = {
@@ -99,38 +96,41 @@ def main():
 
         # Not sure how to fully generalise this, the idea is to have a csv as the only file that will always exist, so I guess this is okay?
         # CSV file must always be called '.csv' though
-        with onyx_session(env_password=True) as client:
-            log.info(
-                f"Received match for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} now attempting to test_create record in Onyx"
-            )
-            try:
-                # Test create from the metadata CSV
-                response_generator = client.csv_create(
-                    matched_message["project"],
-                    csv_file=utils.s3_to_fh(
-                        matched_message["files"][".csv"]["uri"],
-                        matched_message["files"][".csv"]["etag"],
-                    ),  # I don't like having a hardcoded metadata file name like this but hypothetically
-                    test=True,  # we should always have a metadata CSV
+        try:
+            with OnyxClient(env_password=True) as client:
+                log.info(
+                    f"Received match for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} now attempting to test_create record in Onyx"
                 )
-            except Exception as e:
-                log.error(
-                    f"Onxy test csv create failed for artifact: {matched_message['artifact']}, UUID: {matched_message['uuid']} due to client error: {e}"
-                )
-                continue
-
-            to_test = False
-            multiline_csv = False
-
-            for response in response_generator:
-                if to_test:
-                    log.info(
-                        f"Metadata CSV for artifact {matched_message['artifact']}, UUID: {matched_message['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
+                try:
+                    # Test create from the metadata CSV
+                    response_generator = client._csv_create(
+                        matched_message["project"],
+                        csv_file=utils.s3_to_fh(
+                            matched_message["files"][".csv"]["uri"],
+                            matched_message["files"][".csv"]["etag"],
+                        ),  # I don't like having a hardcoded metadata file name like this but hypothetically
+                        test=True,  # we should always have a metadata CSV
                     )
-                    multiline_csv = True
-                    break
-                else:
-                    to_test = response
+                except Exception as e:
+                    log.error(
+                        f"Onxy test csv create failed for artifact: {matched_message['artifact']}, UUID: {matched_message['uuid']} due to client error: {e}"
+                    )
+                    continue
+
+                to_test = False
+                multiline_csv = False
+
+                for response in response_generator:
+                    if to_test:
+                        log.info(
+                            f"Metadata CSV for artifact {matched_message['artifact']}, UUID: {matched_message['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
+                        )
+                        multiline_csv = True
+                        break
+                    else:
+                        to_test = response
+        except Exception as e:
+            log.error(f"Failed to connect to Onyx due to error: {e}")
 
         if not multiline_csv:
             with utils.s3_to_fh(
@@ -140,6 +140,37 @@ def main():
                 reader = csv.DictReader(csv_fh, delimiter=",")
 
                 metadata = next(reader)
+
+                fields_present = {"sample_id": False, "run_name": False}
+
+                for field in ("sample_id", "run_name"):
+                    if metadata.get(field):
+                        fields_present[field] = True
+
+                for k, v in fields_present.items():
+                    if not v:
+                        if payload["onyx_test_create_errors"].get(k):
+                            payload["onyx_test_create_errors"][k].append(
+                                "Required field is not present"
+                            )
+                        else:
+                            payload["onyx_test_create_errors"][k] = [
+                                "Required field is not present"
+                            ]
+
+                if not all(fields_present.values()):
+                    to_send = None
+
+                    to_send = parse_match_message(
+                        matched_message=matched_message, payload=payload
+                    )
+
+                    varys_client.send(
+                        message=to_send,
+                        exchange="inbound.to_validate",
+                        queue_suffix="ingest",
+                    )
+                    continue
 
                 name_matches = {
                     x: metadata[x] == matched_message[x]

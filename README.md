@@ -3,10 +3,10 @@ CLIMB-pathogens S3 ingest solution and officious bureaucrat.
 
 
 # TODO
-* Add SSL support before the plebs get access
+* Add SSL support before the users get access
 * Fix add credentials func in s3_config
 
-# Shit I need to remember
+# Stuff I need to remember
 
 * push-endpoint not push_endpoint
 * verify-ssl should be false on ceph side

@@ -5,6 +5,10 @@ import sqlalchemy.types as types
 class inbound_s3_table(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
+    bucket: str = Field(index=True)
+
+    uploader: str = Field(index=True)
+
     payload: str = Field()
 
 
@@ -18,6 +22,8 @@ class inbound_matched_table(SQLModel, table=True):
     site: str = Field(index=True)
 
     project: str = Field(index=True)
+
+    uploaders: list = Field(index=True)
 
     platform: str = Field(index=True)
 

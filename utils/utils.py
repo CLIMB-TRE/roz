@@ -5,16 +5,24 @@ import os
 import sys
 from io import StringIO
 
+__s3_creds = namedtuple(
+    "s3_credentials",
+    ["access_key", "secret_key", "endpoint", "region", "profile_name"],
+)
 
-def get_credentials(args=None):
+
+def get_credentials(
+    args=None,
+) -> __s3_creds["secret_key", "endpoint", "region", "profile_name"]:
     """
-    Get credentials for S3 from a config file, environment variables or command line arguments
-    Serves them as a s3 credentials named tuple with attributes: access_key, secret_key, endpoint, region, profile_name
+    Get credentials for S3 from a config file, environment variables or command line arguments.
+
+    Args:
+        args (argparse.Namespace): Command line arguments
+
+    Returns:
+        namedtuple: Named tuple containing the access key, secret key, endpoint, region and profile name
     """
-    __s3_creds = namedtuple(
-        "s3_credentials",
-        ["access_key", "secret_key", "endpoint", "region", "profile_name"],
-    )
 
     credential_file = configparser.ConfigParser()
 
@@ -68,10 +76,17 @@ def get_credentials(args=None):
     return s3_credentials
 
 
-def s3_to_fh(s3_uri, eTag):
+def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
     """
     Take file from S3 URI and return a file handle-like object using StringIO
-    Requires an S3 URI and an ETag to confirm the file has not been modified since upload
+    Requires an S3 URI and an ETag to confirm the file has not been modified since upload.
+
+    Args:
+        s3_uri (str): S3 URI of the file to be downloaded
+        eTag (str): ETag of the file to be downloaded
+
+    Returns:
+        StringIO: File handle-like object of the downloaded file
     """
 
     s3_credentials = get_credentials()
@@ -93,4 +108,4 @@ def s3_to_fh(s3_uri, eTag):
     if file_obj["ETag"].replace('"', "") != eTag:
         raise Exception("ETag mismatch, CSV has been modified since upload")
 
-    return StringIO(file_obj["Body"].read().decode("utf-8"))
+    return StringIO(file_obj["Body"].read().decode("utf-8-sig"))
