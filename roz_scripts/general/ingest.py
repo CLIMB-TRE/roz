@@ -9,7 +9,7 @@ from onyx import OnyxClient
 
 import varys
 
-import utils.utils as utils
+import utils.utils
 
 
 def handle_status_code(status_code):

@@ -8,9 +8,11 @@ import boto3
 from botocore.exceptions import ClientError
 import time
 import logging
+import argparse
 
-import utils.utils as utils
-from varys import varys, init_logger
+from roz_scripts.utils.utils import s3_to_fh
+from varys import varys
+from varys.utils import init_logger
 
 from onyx import OnyxClient
 import requests
@@ -86,15 +88,75 @@ class pipeline:
         return (proc.returncode, timeout, proc.stdout, proc.stderr)
 
 
+def onyx_update(
+    payload: dict, fields: dict, log: logging.getLogger
+) -> tuple[bool, dict]:
+    """Update an existing Onyx record with the given fields
+
+    Args:
+        payload (dict): Payload dict for the current artifact
+        fields (dict): Fields to update in the format {'field_name': 'field_value'}
+        log (logging.getLogger): Logger object
+
+    Returns:
+        tuple[bool, dict]: Tuple containing a bool indicating whether the update failed and the updated payload dict
+    """
+    update_fail = False
+
+    with OnyxClient(env_password=True) as client:
+        try:
+            response = client._update(
+                project="mscapetest",
+                cid=payload["cid"],
+                fields=fields,
+            )
+
+            if response.status_code == 200:
+                log.info(f"Successfully updated Onyx record for CID: {payload['cid']}")
+
+            else:
+                update_fail = True
+                log.error(
+                    f"Failed to update Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
+                )
+                if response.json().get("messages"):
+                    if not payload.get("onyx_errors"):
+                        payload["onyx_errors"] = {}
+                    for field, messages in response.json()["messages"].items():
+                        if payload["onyx_errors"].get(field):
+                            payload["onyx_errors"][field].extend(messages)
+                        else:
+                            payload["onyx_errors"][field] = messages
+
+        except Exception as e:
+            log.error(
+                f"Failed to update Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
+            )
+            if payload.get("onyx_client_errors"):
+                payload["onyx_errors"]["onyx_client_errors"].extend(
+                    f"Unhandled client error {e}"
+                )
+            else:
+                payload["onyx_errors"]["onyx_client_errors"] = [
+                    f"Unhandled client error {e}"
+                ]
+            update_fail = True
+
+    return (update_fail, payload)
+
+
 def execute_validation_pipeline(
-    payload: dict, args: argparse.Namespace, log: logging.Logger, ingest_pipe: pipeline
+    payload: dict,
+    args: argparse.Namespace,
+    log: logging.getLogger,
+    ingest_pipe: pipeline,
 ) -> tuple[int, bool, str, str]:
     """Execute the validation pipeline for a given artifact
 
     Args:
         payload (dict): The payload dict for the current artifact
         args (argparse.Namespace): The command line arguments object
-        log (logging.Logger): The logger object
+        log (logging.getLogger): The logger object
         ingest_pipe (pipeline): The instance of the ingest pipeline (see pipeline class)
 
     Returns:
@@ -118,10 +180,6 @@ def execute_validation_pipeline(
         parameters["fastq1"] = payload["files"][".1.fastq.gz"]["uri"]
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
-    else:
-        log.error(
-            f"Unrecognised platform: {payload['platform']} for UUID: {payload['uuid']}"
-        )
 
     log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}")
 
@@ -129,22 +187,35 @@ def execute_validation_pipeline(
 
 
 def onyx_submission(
-    log: logging.Logger,
+    log: logging.getLogger,
     payload: dict,
-    varys_client: varys,
 ) -> tuple[bool, dict]:
     """_Description:_
     This function is responsible for submitting a record to Onyx, it is called from the main ingest function
     when a match is found for a given artifact.
 
     Args:
-        log (logging.Logger): The logger object
+        log (logging.getLogger): The logger object
         payload (dict): The payload dict of the currently ingesting artifact
         varys_client (varys.varys): A varys client object
 
     Returns:
         tuple[bool, dict]: A tuple containing a bool indicating the status of the Onyx create request and the payload dict modified to include information about the Onyx create request
     """
+
+    submission_fail = False
+
+    if not payload.get("onyx_errors"):
+        payload["onyx_errors"] = {}
+
+    if not payload.get("onyx_create_status"):
+        payload["onyx_create_status"] = False
+
+    if not payload.get("created"):
+        payload["created"] = False
+
+    if not payload.get("cid"):
+        payload["cid"] = ""
 
     with OnyxClient(env_password=True) as client:
         log.info(
@@ -154,7 +225,7 @@ def onyx_submission(
         try:
             response_generator = client.csv_create(
                 payload["project"],
-                csv_file=utils.s3_to_fh(
+                csv_file=s3_to_fh(
                     payload["files"][".csv"]["uri"],
                     payload["files"][".csv"]["etag"],
                 ),
@@ -168,28 +239,16 @@ def onyx_submission(
                 log.error(
                     f"Onyx create for UUID: {payload['uuid']} lead to onyx internal server error"
                 )
-                ingest_fail = True
+                submission_fail = True
                 payload["onyx_errors"]["onyx_client_errors"] = [
                     "Onyx internal server error"
                 ]
-
-            elif response.status_code == 422:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed, details in validated messages"
-                )
-                ingest_fail = True
-                if response.json().get("messages"):
-                    for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field):
-                            payload["onyx_errors"][field].extend(messages)
-                        else:
-                            payload["onyx_errors"][field] = messages
 
             elif response.status_code == 404:
                 log.error(
                     f"Onyx create for UUID: {payload['uuid']} failed because project: {payload['project']} does not exist"
                 )
-                ingest_fail = True
+                submission_fail = True
                 payload["onyx_errors"]["onyx_client_errors"] = [
                     f"Project {payload['project']} does not exist"
                 ]
@@ -198,34 +257,37 @@ def onyx_submission(
                 log.error(
                     f"Onyx create for UUID: {payload['uuid']} failed due to a permission error"
                 )
-                ingest_fail = True
+                submission_fail = True
                 payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Bad fields in onyx create request"
+                    "Permission error on Onyx create"
                 ]
 
             elif response.status_code == 401:
                 log.error(
                     f"Onyx create for UUID: {payload['uuid']} failed due to incorrect credentials"
                 )
-                ingest_fail = True
+                submission_fail = True
                 payload["onyx_errors"]["onyx_client_errors"] = [
                     "Incorrect Onyx credentials"
                 ]
 
             elif response.status_code == 400:
                 log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed due to a malformed request (should not happen ever)"
+                    f"Onyx create for UUID: {payload['uuid']} failed due to a bad request"
                 )
-                ingest_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Malformed onyx create request"
-                ]
+                submission_fail = True
+                if response.json().get("messages"):
+                    for field, messages in response.json()["messages"].items():
+                        if payload["onyx_errors"].get(field):
+                            payload["onyx_errors"][field].extend(messages)
+                        else:
+                            payload["onyx_errors"][field] = messages
 
             elif response.status_code == 200:
                 log.error(
                     f"Onyx responded with 200 on a create request for UUID: {payload['uuid']} (this should be 201)"
                 )
-                ingest_fail = True
+                submission_fail = True
                 payload["onyx_errors"]["onyx_client_errors"] = [
                     "200 response status on onyx create (should be 201)"
                 ]
@@ -242,17 +304,10 @@ def onyx_submission(
                 log.error(
                     f"Unhandled Onyx response status code {response.status_code} from Onyx create for UUID: {payload['uuid']}"
                 )
-                ingest_fail = True
+                submission_fail = True
                 payload["onyx_errors"]["onyx_client_errors"] = [
                     f"Unhandled response status code {response.status_code} from Onyx create"
                 ]
-
-            if ingest_fail:
-                varys_client.send(
-                    message=payload,
-                    exchange=f"inbound.results.mscape.{payload['site_code']}",
-                    queue_suffix="validator",
-                )
 
         except Exception as e:
             log.error(
@@ -261,19 +316,20 @@ def onyx_submission(
             payload["onyx_errors"]["onyx_client_errors"] = [
                 f"Unhandled client error {e}"
             ]
+            submission_fail = True
 
-    return (ingest_fail, payload)
+    return (submission_fail, payload)
 
 
 def add_taxon_records(
-    payload: dict, result_path: str, log: logging.Logger, s3_client: boto3.client
+    payload: dict, result_path: str, log: logging.getLogger, s3_client: boto3.client
 ) -> tuple[bool, dict]:
     """Function to add nested taxon records to an existing Onyx record from a Scylla reads_summary.json file
 
     Args:
         payload (dict): Dict containing the payload for the current artifact
         result_path (str): Result path for the current artifact
-        log (logging.Logger): Logger object
+        log (logging.getLogger): Logger object
         s3_client (boto3.client): Boto3 client object for S3
 
     Returns:
@@ -287,9 +343,12 @@ def add_taxon_records(
     ) as read_summary_fh:
         summary = json.load(read_summary_fh)
 
+        if not payload.get("ingest_errors"):
+            payload["ingest_errors"] = []
+
         for taxa in summary:
             taxon_dict = {
-                "taxon_id": taxa["taxon_id"],
+                "taxon_id": taxa["taxon"],
                 "human_readable": taxa["human_readable"],
                 "n_reads": taxa["qc_metrics"]["num_reads"],
                 "avg_quality": taxa["qc_metrics"]["avg_qual"],
@@ -315,9 +374,9 @@ def add_taxon_records(
                             f"reads_{i}"
                         ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}_{i}.fastq.gz"
 
-                    except ClientError as e:
+                    except Exception as e:
                         log.error(
-                            f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+                            f"Failed to upload binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
                         )
                         payload["ingest_errors"].append(
                             f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
@@ -341,7 +400,7 @@ def add_taxon_records(
                         f"reads_1"
                     ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}.fastq.gz"
 
-                except ClientError as e:
+                except Exception as e:
                     log.error(
                         f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
                     )
@@ -352,55 +411,35 @@ def add_taxon_records(
                     continue
 
             else:
+                log.error(f"Unknown platform: {payload['platform']}")
+                payload["ingest_errors"].append(
+                    f"Unknown platform: {payload['platform']}"
+                )
                 binned_read_fail = True
+                continue
 
             nested_records.append(taxon_dict)
 
-    with OnyxClient(env_password=True) as client:
-        try:
-            response = client.update(
-                project="mscapetest",
-                cid=payload["cid"],
-                fields={"taxa": nested_records},
-            )
+    if not binned_read_fail:
+        update_fail, payload = onyx_update(
+            payload=payload, fields={"taxa": nested_records}, log=log
+        )
 
-            if response.status_code == 200:
-                log.info(
-                    f"Successfully updated Onyx record for CID: {payload['cid']} with nested taxon records"
-                )
-            else:
-                log.error(
-                    f"Failed to update Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
-                )
-                if response.json().get("messages"):
-                    for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field):
-                            payload["onyx_errors"][field].extend(messages)
-                        else:
-                            payload["onyx_errors"][field] = messages
-                binned_read_fail = True
-
-        except Exception as e:
-            log.error(
-                f"Onyx CSV create failed for UUID: {payload['uuid']} due to client error: {e}"
-            )
-            payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error {e}"
-            ]
+        if update_fail:
             binned_read_fail = True
 
     return (binned_read_fail, payload)
 
 
 def push_report_file(
-    payload: dict, result_path: str, log: logging.Logger, s3_client: boto3.client
+    payload: dict, result_path: str, log: logging.getLogger, s3_client: boto3.client
 ) -> tuple[bool, dict]:
     """Push report file to long-term storage bucket and update the Onyx record with the report URI
 
     Args:
         payload (dict): Payload dict for the current artifact
         result_path (str): Path to the results directory
-        log (logging.Logger): Logger object
+        log (logging.getLogger): Logger object
         s3_client (boto3.client): Boto3 client object for S3
 
     Returns:
@@ -426,59 +465,34 @@ def push_report_file(
         )
         report_fail = True
 
-    with OnyxClient(env_password=True) as client:
-        try:
-            response = client.update(
-                project="mscapetest",
-                cid=payload["cid"],
-                fields={
-                    "validation_report": f"s3://mscapetest-published-reports/{payload['cid']}_validation_report.html"
-                },
-            )
+    if not report_fail:
+        update_fail, payload = onyx_update(
+            payload=payload,
+            fields={
+                "validation_report": f"s3://mscapetest-published-reports/{payload['cid']}_validation_report.html"
+            },
+            log=log,
+        )
 
-            if response.status_code == 200:
-                log.info(
-                    f"Successfully updated Onyx record for CID: {payload['cid']} with report"
-                )
-            else:
-                log.error(
-                    f"Failed to update Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
-                )
-                if response.json().get("messages"):
-                    for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field):
-                            payload["onyx_errors"][field].extend(messages)
-                        else:
-                            payload["onyx_errors"][field] = messages
-                report_fail = True
-
-        except Exception as e:
-            log.error(
-                f"Onyx CSV create failed for UUID: {payload['uuid']} due to client error: {e}"
-            )
-            payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error {e}"
-            ]
+        if update_fail:
             report_fail = True
 
     return (report_fail, payload)
 
 
 def add_reads_record(
-    cid: str,
     payload: dict,
     s3_client: boto3.client,
     result_path: str,
-    log: logging.Logger,
+    log: logging.getLogger,
 ) -> tuple[bool, dict]:
     """Function to upload raw reads to long-term storage bucket and add the reads_1 and reads_2 fields to the Onyx record
 
     Args:
-        cid (str): CID for the record to update
         payload (dict): Payload dict for the record to update
         s3_client (boto3.client): Boto3 client object for S3
         result_path (str): Path to the results directory
-        log (logging.Logger): Logger object
+        log (logging.getLogger): Logger object
 
     Returns:
         tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
@@ -510,19 +524,17 @@ def add_reads_record(
                 continue
 
         if not raw_read_fail:
-            with OnyxClient(env_password=True) as client:
-                try:
-                    response = client.update(
-                        project="mscapetest",
-                        cid=cid,
-                        fields={
-                            "reads_1": f"s3://mscapetest-published-reads/{payload['cid']}_1.fastq.gz",
-                            "reads_2": f"s3://mscapetest-published-reads/{payload['cid']}_2.fastq.gz",
-                        },
-                    )
-                    return response
-                except requests.HTTPError as e:
-                    raw_read_fail = True
+            update_fail, payload = onyx_update(
+                payload=payload,
+                fields={
+                    "reads_1": f"s3://mscapetest-published-reads/{payload['cid']}_1.fastq.gz",
+                    "reads_2": f"s3://mscapetest-published-reads/{payload['cid']}_2.fastq.gz",
+                },
+                log=log,
+            )
+
+            if update_fail:
+                raw_read_fail = True
 
     else:
         fastq_path = os.path.join(
@@ -545,38 +557,32 @@ def add_reads_record(
             raw_read_fail = True
 
         if not raw_read_fail:
-            with OnyxClient(env_password=True) as client:
-                try:
-                    response = client.update(
-                        project="mscapetest",
-                        cid=cid,
-                        fields={
-                            "reads_1": f"s3://mscapetest-published-reads/{payload['cid']}_1.fastq.gz"
-                        },
-                    )
-                    return response
-                except requests.HTTPError as e:
-                    raw_read_fail = True
+            update_fail, payload = onyx_update(
+                payload=payload,
+                fields={
+                    "reads_1": f"s3://mscapetest-published-reads/{payload['cid']}.fastq.gz"
+                },
+                log=log,
+            )
+
+            if update_fail:
+                raw_read_fail = True
 
     return (raw_read_fail, payload)
 
 
 def ret_0_parser(
-    log: logging.logger,
+    log: logging.getLogger,
     payload: dict,
-    message: dict,
     result_path: str,
-    varys_client: varys,
     ingest_fail: bool = False,
 ) -> tuple[bool, dict]:
     """Function to parse the execution trace of a Nextflow pipeline run to determine whether any of the processes failed.
 
     Args:
-        log (logging.logger): Logger object
+        log (logging.getLogger): Logger object
         payload (dict): Payload dictionary
-        message (dict): Message dictionary
         result_path (str): Path to the results directory
-        varys_client (varys): Varys client object
         ingest_fail (bool): Boolean to indicate whether the ingest has failed up to this point (default: False)
 
     Returns:
@@ -602,11 +608,6 @@ def ret_0_parser(
             f"Could not open pipeline trace for UUID: {payload['uuid']} despite NXF exit code 0 due to error: {e}"
         )
         payload["ingest_errors"].append("couldn't open nxf ingest pipeline trace")
-        varys_client.send(
-            message=payload,
-            exchange=f"inbound.results.mscape.{message['site']}",
-            queue_suffix="validator",
-        )
         ingest_fail = True
 
     for process, trace in trace_dict.items():
@@ -638,15 +639,12 @@ def onyx_unsuppress():
 
 def run(args):
     # Setup producer / consumer
-    log = varys.init_logger("mscape.ingest", args.logfile, args.log_level)
+    log = init_logger("mscape.ingest", args.logfile, args.log_level)
 
     varys_client = varys(
         profile="roz",
-        in_exchange="inbound.to_validate",
-        out_exchange="inbound.validated.mscape",
         logfile=args.logfile,
         log_level=args.log_level,
-        queue_suffix="validator",
         config_path="/home/jovyan/roz_profiles.json",
     )
 
@@ -738,9 +736,11 @@ def run(args):
 
         if rc != 0:
             log.error(
-                f"Scylla exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
+                f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
             )
-            payload["ingest_errors"].append(f"Scylla exited with non-0 exit code: {rc}")
+            payload["ingest_errors"].append(
+                f"Validation pipeline exited with non-0 exit code: {rc}"
+            )
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{message['site']}",

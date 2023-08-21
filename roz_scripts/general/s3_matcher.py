@@ -342,12 +342,6 @@ def query_onyx(
                 )
                 return False
 
-            elif response.status_code == 422:
-                log.error(
-                    f"Onyx query for artifact: {artifact} failed due to bad fields in request (should not happen ever)"
-                )
-                return False
-
             elif response.status_code == 404:
                 log.error(
                     f"Onyx query for artifact: {artifact} failed because project: {project} does not exist"
@@ -362,7 +356,7 @@ def query_onyx(
 
             elif response.status_code == 400:
                 log.error(
-                    f"Onyx query for artifact: {artifact} failed due to a malformed request (should not happen ever)"
+                    f"Onyx query for artifact: {artifact} failed due to a bad request"
                 )
                 return False
 
