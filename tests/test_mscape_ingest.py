@@ -64,8 +64,7 @@ class onyx_update_tests(TestCase):
                 payload=payload, fields=fields, log=mock_logger
             )
 
-        assert update_fail is False
-        assert payload == payload
+        self.assertFalse(update_fail)
         mock_logger.error.assert_not_called()
         mock_logger.info.assert_called_with(
             "Successfully updated Onyx record for CID: test_cid"
@@ -89,10 +88,10 @@ class onyx_update_tests(TestCase):
                 payload, fields, mock_logger
             )
 
-            assert update_fail is True
-            assert "onyx_errors" in payload
-            assert "field_name" in payload["onyx_errors"]
-            assert payload["onyx_errors"]["field_name"] == ["Error message"]
+            self.assertTrue(update_fail)
+            self.assertIn("onyx_errors", payload)
+            self.assertIn("field_name", payload["onyx_errors"])
+            self.assertEqual(payload["onyx_errors"]["field_name"], ["Error message"])
             mock_logger.error.assert_called_with(
                 "Failed to update Onyx record for CID: test_cid with status code: 400"
             )
@@ -116,11 +115,12 @@ class onyx_update_tests(TestCase):
                 payload, fields, mock_logger
             )
 
-            assert update_fail is True
-            assert "onyx_client_errors" in payload["onyx_errors"]
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                "Unhandled client error TEST EXCEPTION"
-            ]
+            self.assertTrue(update_fail)
+            self.assertIn("onyx_client_errors", payload["onyx_errors"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["Unhandled client error TEST EXCEPTION"],
+            )
             mock_logger.error.assert_called_once_with(
                 "Failed to update Onyx record for CID: test_cid with unhandled onyx client error: TEST EXCEPTION"
             )
@@ -143,8 +143,8 @@ class test_execute_validation_pipeline(TestCase):
             payload, mock_args, mock_logger, mock_ingest_pipe
         )
 
-        assert mock_ingest_pipe.execute_called
-        assert result == (0, False, "stdout_output", "stderr_output")
+        self.assertTrue(mock_ingest_pipe.execute_called)
+        self.assertEqual(result, (0, False, "stdout_output", "stderr_output"))
         mock_logger.info.assert_called_once_with(
             f"Submitted ingest pipeline for UUID: {payload['uuid']}"
         )
@@ -168,8 +168,8 @@ class test_execute_validation_pipeline(TestCase):
             payload, mock_args, mock_logger, mock_ingest_pipe
         )
 
-        assert mock_ingest_pipe.execute_called
-        assert result == (0, False, "stdout_output", "stderr_output")
+        self.assertTrue(mock_ingest_pipe.execute_called)
+        self.assertEqual(result, (0, False, "stdout_output", "stderr_output"))
         mock_logger.info.assert_called_once_with(
             f"Submitted ingest pipeline for UUID: {payload['uuid']}"
         )
@@ -177,11 +177,10 @@ class test_execute_validation_pipeline(TestCase):
 
 class test_onyx_submission(TestCase):
     def test_onyx_submission_success(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=201, json_data={"data": {"cid": "test_cid"}}
             )
@@ -204,10 +203,10 @@ class test_onyx_submission(TestCase):
                 mock_logger, payload
             )
 
-            assert submission_fail is False
-            assert payload["onyx_create_status"] is True
-            assert payload["created"] is True
-            assert payload["cid"] == "test_cid"
+            self.assertFalse(submission_fail)
+            self.assertTrue(payload["onyx_create_status"])
+            self.assertTrue(payload["created"])
+            self.assertEqual(payload["cid"], "test_cid")
 
             mock_logger.error.assert_not_called()
 
@@ -223,11 +222,10 @@ class test_onyx_submission(TestCase):
             )
 
     def test_onyx_ret_200(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=200, json_data={}
             )
@@ -251,24 +249,24 @@ class test_onyx_submission(TestCase):
                 mock_logger, payload
             )
 
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                "200 response status on onyx create (should be 201)"
-            ]
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["200 response status on onyx create (should be 201)"],
+            )
 
             mock_logger.error.assert_called_once_with(
                 "Onyx responded with 200 on a create request for UUID: test_uuid (this should be 201)"
             )
 
     def test_onyx_submission_internal_server_error(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=500, json_data={}
             )
@@ -292,23 +290,23 @@ class test_onyx_submission(TestCase):
                 mock_logger, payload
             )
 
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                "Onyx internal server error"
-            ]
-            assert mock_logger.error.called_once_with(
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["Onyx internal server error"],
+            )
+            mock_logger.error.assert_called_once_with(
                 "Onyx create for UUID: test_uuid lead to onyx internal server error"
             )
 
     def test_onyx_submission_project_doesnt_exist(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=404, json_data={}
             )
@@ -332,23 +330,23 @@ class test_onyx_submission(TestCase):
                 mock_logger, payload
             )
 
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                "Project test_project does not exist"
-            ]
-            assert mock_logger.error.called_once_with(
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["Project test_project does not exist"],
+            )
+            mock_logger.error.assert_called_once_with(
                 "Onyx create for UUID: test_uuid failed because project: test_project does not exist"
             )
 
     def test_onyx_submission_permission_error(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=403, json_data={}
             )
@@ -371,23 +369,23 @@ class test_onyx_submission(TestCase):
             ) = roz_scripts.mscape_ingest_validation.onyx_submission(
                 mock_logger, payload
             )
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                "Permission error on Onyx create"
-            ]
-            assert mock_logger.error.called_once_with(
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["Permission error on Onyx create"],
+            )
+            mock_logger.error.assert_called_once_with(
                 "Onyx create for UUID: test_uuid failed due to a permission error"
             )
 
     def test_onyx_submission_incorrect_credentials(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=401, json_data={}
             )
@@ -410,23 +408,23 @@ class test_onyx_submission(TestCase):
             ) = roz_scripts.mscape_ingest_validation.onyx_submission(
                 mock_logger, payload
             )
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                "Incorrect Onyx credentials"
-            ]
-            mock_logger.error.called_once_with(
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["Incorrect Onyx credentials"],
+            )
+            mock_logger.error.assert_called_once_with(
                 "Onyx create for UUID: test_uuid failed due to incorrect credentials"
             )
 
     def test_onyx_submission_bad_request(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=400,
                 json_data={"messages": {"field_name": ["Error message"]}},
@@ -450,21 +448,20 @@ class test_onyx_submission(TestCase):
             ) = roz_scripts.mscape_ingest_validation.onyx_submission(
                 mock_logger, payload
             )
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["field_name"] == ["Error message"]
-            assert mock_logger.error.called_once_with(
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(payload["onyx_errors"]["field_name"], ["Error message"])
+            mock_logger.error.assert_called_once_with(
                 "Onyx create for UUID: test_uuid failed due to a bad request"
             )
 
     def test_onyx_submission_unknown_status_code(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=69,
                 json_data={"messages": {"field_name": ["Error message"]}},
@@ -488,23 +485,23 @@ class test_onyx_submission(TestCase):
             ) = roz_scripts.mscape_ingest_validation.onyx_submission(
                 mock_logger, payload
             )
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                f"Unhandled response status code 69 from Onyx create"
-            ]
-            assert mock_logger.error.called_once_with(
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["Unhandled response status code 69 from Onyx create"],
+            )
+            mock_logger.error.assert_called_once_with(
                 "Unhandled Onyx response status code 69 from Onyx create for UUID: test_uuid"
             )
 
     def test_onxy_submission_client_exception(self):
-        with patch(
-            "roz_scripts.mscape_ingest_validation.OnyxClient"
-        ) as mock_client, patch(
-            "roz_scripts.mscape_ingest_validation.s3_to_fh"
-        ) as mock_s3_to_fh:
+        with (
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
+        ):
             mock_client.return_value.__enter__.return_value.csv_create.side_effect = (
                 Exception("TEST EXCEPTION")
             )
@@ -527,14 +524,15 @@ class test_onyx_submission(TestCase):
             ) = roz_scripts.mscape_ingest_validation.onyx_submission(
                 mock_logger, payload
             )
-            assert submission_fail is True
-            assert payload["onyx_create_status"] is False
-            assert payload["created"] is False
-            assert payload["cid"] == ""
-            assert payload["onyx_errors"]["onyx_client_errors"] == [
-                f"Unhandled client error TEST EXCEPTION"
-            ]
-            assert mock_logger.error.called_once_with(
+            self.assertTrue(submission_fail)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["cid"])
+            self.assertEqual(
+                payload["onyx_errors"]["onyx_client_errors"],
+                ["Unhandled client error TEST EXCEPTION"],
+            )
+            mock_logger.error.assert_called_once_with(
                 "Onyx CSV create failed for UUID: {payload['uuid']} due to client error: TEST EXCEPTION"
             )
 
