@@ -48,7 +48,7 @@ class pipeline:
         self.profile = profile
         self.timeout_seconds = timeout_seconds
 
-    def execute(self, params: dict) -> tuple[int, bool, str, str]:
+    def execute(self, params: dict, docker: bool) -> tuple[int, bool, str, str]:
         """
         Execute the pipeline with the given parameters
 
@@ -61,7 +61,18 @@ class pipeline:
 
         timeout = False
 
-        cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
+        if docker:
+            cmd = [
+                "/opt/bin/entry.sh",
+                "nextflow",
+                "run",
+                "-r",
+                "main",
+                "-latest",
+                self.pipe,
+            ]
+        else:
+            cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])
@@ -184,7 +195,7 @@ def execute_validation_pipeline(
 
     log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}")
 
-    return ingest_pipe.execute(params=parameters)
+    return ingest_pipe.execute(params=parameters, docker=args.docker)
 
 
 def onyx_submission(
@@ -881,6 +892,7 @@ def main():
     parser.add_argument("--nxf_config")
     parser.add_argument("--work_bucket")
     parser.add_argument("--nxf_executable", default="nextflow")
+    parser.add_argument("--docker", action="store_true", default=False)
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--temp_dir", type=Path)
     args = parser.parse_args()
