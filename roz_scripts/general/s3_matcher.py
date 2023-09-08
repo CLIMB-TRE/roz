@@ -8,7 +8,7 @@ import uuid
 import copy
 
 import varys
-import utils.utils as utils
+from roz_scripts.utils import utils
 
 from onyx import OnyxClient
 

@@ -9,7 +9,7 @@ from onyx import OnyxClient
 
 import varys
 
-import utils.utils
+from roz_scripts.utils import utils
 
 
 def handle_status_code(status_code):
