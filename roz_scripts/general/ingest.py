@@ -17,6 +17,8 @@ def handle_status_code(status_code):
         return (False, "validation_failure")
     elif status_code == 403:
         return (False, "perm_failure")
+    elif status_code == 400:
+        return (False, "bad_request")
     elif status_code == 201:
         return (True, "success")
     else:
@@ -213,13 +215,13 @@ def main():
                 ]
 
         else:
-            status, reason = handle_status_code(to_test.status_code)
+            # status, reason = handle_status_code(to_test.status_code)
 
             log.info(
                 f"Received Onyx test create response for artifact: {matched_message['artifact']}"
             )
 
-            payload["onyx_test_create_status"] = status
+            payload["onyx_test_create_status"] = to_test.ok
             payload["onyx_test_status_code"] = to_test.status_code
 
             if to_test.json().get("messages"):
@@ -229,28 +231,28 @@ def main():
                     else:
                         payload["onyx_test_create_errors"][field] = messages
 
-            if not status:
-                if reason == "unknown":
-                    log.error(
-                        f"Onyx test create returned an unknown status code: {to_test.status_code} for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
-                    )
-                    continue
+            # if not status:
+            #     if reason == "unknown":
+            #         log.error(
+            #             f"Onyx test create returned an unknown status code: {to_test.status_code} for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
+            #         )
+            #         continue
 
-                elif reason == "perm_failure":
-                    log.error(
-                        f"Onyx test create for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} due to Onyx permissions failure"
-                    )
-                    continue
+            #     elif reason == "perm_failure":
+            #         log.error(
+            #             f"Onyx test create for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} due to Onyx permissions failure"
+            #         )
+            #         continue
 
-            elif reason == "success":
-                log.info(
-                    f"Onyx test create success for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
-                )
-                if to_test.json()["data"]["cid"]:
-                    log.error(
-                        f"Onyx appears to have assigned a CID ({response['data']['cid']}) to artifact: {matched_message['artifact']}. This should NOT happen in any circumstance."
-                    )
-                    continue
+            # elif reason == "success":
+            #     log.info(
+            #         f"Onyx test create success for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
+            #     )
+            #     if to_test.json()["data"]["cid"]:
+            #         log.error(
+            #             f"Onyx appears to have assigned a CID ({response['data']['cid']}) to artifact: {matched_message['artifact']}. This should NOT happen in any circumstance."
+            #         )
+            #         continue
 
         to_send = None
 
