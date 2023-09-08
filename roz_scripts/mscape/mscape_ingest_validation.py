@@ -698,14 +698,14 @@ def run(args):
         # This client is purely for Mscape, ignore all other messages
         if to_validate["project"] != "mscapetest":
             log.info(
-                f"Ignoring file set with UUID: {message['uuid']} due non-mscape project ID"
+                f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
             )
             continue
 
         if not to_validate["onyx_test_create_status"]:
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
             continue
@@ -722,7 +722,7 @@ def run(args):
             log.info(f"Sending validation result for UUID: {payload['uuid']}")
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
             continue
@@ -747,7 +747,7 @@ def run(args):
             )
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
             continue
@@ -767,7 +767,7 @@ def run(args):
             payload["test_ingest_result"] = True
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
             continue
@@ -783,7 +783,7 @@ def run(args):
             log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
             continue
@@ -803,7 +803,7 @@ def run(args):
         if raw_read_fail:
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
 
@@ -814,7 +814,7 @@ def run(args):
         if binned_read_fail:
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
 
@@ -825,7 +825,7 @@ def run(args):
         if report_fail:
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
 
@@ -835,7 +835,7 @@ def run(args):
             )
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
             continue
@@ -846,7 +846,7 @@ def run(args):
             log.error(f"Failed to unsuppress Onyx record for CID: {payload['cid']}")
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{message['site']}",
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
             continue
@@ -871,7 +871,7 @@ def run(args):
 
         varys_client.send(
             message=payload,
-            exchange=f"inbound.results.mscape.{message['site']}",
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
             queue_suffix="validator",
         )
 
