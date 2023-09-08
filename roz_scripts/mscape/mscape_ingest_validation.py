@@ -44,11 +44,7 @@ class pipeline:
 
         self.pipe = pipe
         self.config = Path(config) if config else None
-        self.nxf_executable = (
-            Path(nxf_executable).resolve()
-            if nxf_executable != "nextflow"
-            else "nextflow"
-        )
+        self.nxf_executable = nxf_executable
         self.profile = profile
         self.timeout_seconds = timeout_seconds
 
