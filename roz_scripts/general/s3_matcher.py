@@ -12,9 +12,9 @@ from roz_scripts.utils import utils
 
 from onyx import OnyxClient
 
-from sqlmodel import Field, Session, SQLModel, create_engine, select
-from snoop_db import db
-from snoop_db.models import inbound_matched_table
+# from sqlmodel import Field, Session, SQLModel, create_engine, select
+# from snoop_db import db
+# from snoop_db.models import inbound_matched_table
 
 
 def generate_file_uri(record):
@@ -497,7 +497,8 @@ def run(args):
         log_level=os.getenv("INGEST_LOG_LEVEL"),
     )
 
-    previously_matched = get_already_matched_submissions()
+    # previously_matched = get_already_matched_submissions()
+    previously_matched = nested_ddict()
 
     artifact_messages = nested_ddict()
 
