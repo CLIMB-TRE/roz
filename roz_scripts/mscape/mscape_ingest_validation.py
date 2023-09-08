@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import csv
 import os
 import subprocess
@@ -52,7 +53,8 @@ class pipeline:
         self.timeout_seconds = timeout_seconds
 
     def execute(self, params: dict) -> tuple[int, bool, str, str]:
-        """Execute the pipeline with the given parameters
+        """
+        Execute the pipeline with the given parameters
 
         Args:
             params (dict): A dictionary of parameters to pass to the pipeline in the format {'param_name': 'param_value'} (no --)
@@ -60,6 +62,7 @@ class pipeline:
         Returns:
             tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
         """
+
         timeout = False
 
         cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
@@ -92,7 +95,8 @@ class pipeline:
 def onyx_update(
     payload: dict, fields: dict, log: logging.getLogger
 ) -> tuple[bool, dict]:
-    """Update an existing Onyx record with the given fields
+    """
+    Update an existing Onyx record with the given fields
 
     Args:
         payload (dict): Payload dict for the current artifact
@@ -873,7 +877,7 @@ def run(args):
         )
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -887,3 +891,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run(args)
+
+
+if __name__ == "__main__":
+    main()
