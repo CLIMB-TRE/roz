@@ -13,7 +13,7 @@ __s3_creds = namedtuple(
 
 def get_credentials(
     args=None,
-) -> __s3_creds["secret_key", "endpoint", "region", "profile_name"]:
+) -> __s3_creds:
     """
     Get credentials for S3 from a config file, environment variables or command line arguments.
 
