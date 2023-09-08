@@ -650,7 +650,6 @@ def run(args):
         profile="roz",
         logfile=args.logfile,
         log_level=args.log_level,
-        config_path="/home/jovyan/roz_profiles.json",
     )
 
     validation_payload_template = {
