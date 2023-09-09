@@ -47,7 +47,7 @@ class pipeline:
         self.nxf_executable = nxf_executable
         self.profile = profile
         self.timeout_seconds = timeout_seconds
-        self.command = None
+        self.cmd = None
 
     def execute(self, params: dict, docker: bool) -> tuple[int, bool, str, str]:
         """
@@ -196,7 +196,7 @@ def execute_validation_pipeline(
         parameters["paired"] = ""
 
     log.info(
-        f"Submitted ingest pipeline for UUID: {payload['uuid']} with command: {' '.join(str(x) for x in ingest_pipe.cmd)}"
+        f"Submitted ingest pipeline for UUID: {payload['uuid']} with command: '{' '.join(str(x) for x in ingest_pipe.cmd)}'"
     )
 
     return ingest_pipe.execute(params=parameters, docker=args.docker)
