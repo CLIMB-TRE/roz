@@ -195,9 +195,7 @@ def execute_validation_pipeline(
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
 
-    log.info(
-        f"Submitted ingest pipeline for UUID: {payload['uuid']} with command: '{' '.join(str(x) for x in ingest_pipe.cmd)}'"
-    )
+    log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}'")
 
     return ingest_pipe.execute(params=parameters, docker=args.docker)
 
@@ -724,6 +722,10 @@ def run(args):
         rc, timeout, stdout, stderr = execute_validation_pipeline(
             payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
         )
+        if ingest_pipe.cmd:
+            log.info(
+                f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
+            )
 
         if not timeout:
             log.info(f"Pipeline execution for message id: {payload['uuid']}, complete.")
