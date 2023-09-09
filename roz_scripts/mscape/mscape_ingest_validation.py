@@ -47,6 +47,7 @@ class pipeline:
         self.nxf_executable = nxf_executable
         self.profile = profile
         self.timeout_seconds = timeout_seconds
+        self.command = None
 
     def execute(self, params: dict, docker: bool) -> tuple[int, bool, str, str]:
         """
@@ -85,6 +86,7 @@ class pipeline:
                 cmd.extend([f"--{k}", v])
 
         try:
+            self.cmd = cmd
             proc = subprocess.run(
                 args=cmd,
                 capture_output=True,
@@ -193,7 +195,9 @@ def execute_validation_pipeline(
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
 
-    log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}")
+    log.info(
+        f"Submitted ingest pipeline for UUID: {payload['uuid']} with command: {' '.join(str(x) for x in ingest_pipe.cmd)}"
+    )
 
     return ingest_pipe.execute(params=parameters, docker=args.docker)
 
