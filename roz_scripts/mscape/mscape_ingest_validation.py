@@ -178,7 +178,7 @@ def execute_validation_pipeline(
     """
 
     parameters = {
-        "out_dir": args.result_dir,
+        "outdir": args.result_dir,
         "unique_id": payload["uuid"],
         "climb": "",
         "max_human_reads_before_rejection": "10000",
