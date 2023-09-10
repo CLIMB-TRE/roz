@@ -182,7 +182,7 @@ def execute_validation_pipeline(
         "unique_id": payload["uuid"],
         "climb": "",
         "max_human_reads_before_rejection": "10000",
-        "k2_host": "10.1.185.58",  # Parameterise this and deal with DNS stuff
+        "k2_host": args.k2_host,  # Parameterise this and deal with DNS stuff
         "k2_port": "8080",
         "db": "/shared/public/db/kraken2/k2_pluspf/",
     }
@@ -899,6 +899,7 @@ def main():
     parser.add_argument("--work_bucket")
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--docker", action="store_true", default=False)
+    parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--temp_dir", type=Path)
     args = parser.parse_args()
