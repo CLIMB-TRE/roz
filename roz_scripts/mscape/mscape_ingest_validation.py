@@ -768,9 +768,7 @@ def run(args):
         ingest_fail, payload = ret_0_parser(
             log=log,
             payload=payload,
-            message=message,
             result_path=result_path,
-            varys_client=varys_client,
         )
 
         if payload["test_flag"]:
@@ -788,8 +786,6 @@ def run(args):
         ingest_fail, payload = onyx_submission(
             log=log,
             payload=payload,
-            varys_client=varys_client,
-            ingest_fail=ingest_fail,
         )
 
         if ingest_fail:
@@ -806,7 +802,6 @@ def run(args):
         )
 
         raw_read_fail, payload = add_reads_record(
-            cid=payload["cid"],
             payload=payload,
             s3_client=s3_client,
             result_path=result_path,
