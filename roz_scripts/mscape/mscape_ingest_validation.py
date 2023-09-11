@@ -237,7 +237,7 @@ def onyx_submission(
         )
 
         try:
-            response_generator = client.csv_create(
+            response_generator = client._csv_create(
                 payload["project"],
                 csv_file=s3_to_fh(
                     payload["files"][".csv"]["uri"],
