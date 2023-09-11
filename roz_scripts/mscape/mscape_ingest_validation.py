@@ -49,7 +49,7 @@ class pipeline:
         self.timeout_seconds = timeout_seconds
         self.cmd = None
 
-    def execute(self, params: dict, docker: bool) -> tuple[int, bool, str, str]:
+    def execute(self, params: dict) -> tuple[int, bool, str, str]:
         """
         Execute the pipeline with the given parameters
 
@@ -62,18 +62,7 @@ class pipeline:
 
         timeout = False
 
-        if docker:
-            cmd = [
-                "/opt/bin/entry.sh",
-                "nextflow",
-                "run",
-                "-r",
-                "main",
-                "-latest",
-                self.pipe,
-            ]
-        else:
-            cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
+        cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])
@@ -197,7 +186,7 @@ def execute_validation_pipeline(
 
     log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}'")
 
-    return ingest_pipe.execute(params=parameters, docker=args.docker)
+    return ingest_pipe.execute(params=parameters)
 
 
 def onyx_submission(
@@ -206,7 +195,7 @@ def onyx_submission(
 ) -> tuple[bool, dict]:
     """_Description:_
     This function is responsible for submitting a record to Onyx, it is called from the main ingest function
-    when a match is found for a given artifact.
+    when a match is received for a given artifact.
 
     Args:
         log (logging.getLogger): The logger object
@@ -243,6 +232,7 @@ def onyx_submission(
                     payload["files"][".csv"]["uri"],
                     payload["files"][".csv"]["etag"],
                 ),
+                fields={"suppressed": True},
             )
 
             response = next(response_generator)
@@ -385,7 +375,7 @@ def add_taxon_records(
                         )
 
                         taxon_dict[
-                            f"reads_{i}"
+                            f"fastq_{i}"
                         ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}_{i}.fastq.gz"
 
                     except Exception as e:
@@ -411,7 +401,7 @@ def add_taxon_records(
                     )
 
                     taxon_dict[
-                        f"reads_1"
+                        f"fastq_1"
                     ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}.fastq.gz"
 
                 except Exception as e:
@@ -500,7 +490,7 @@ def add_reads_record(
     result_path: str,
     log: logging.getLogger,
 ) -> tuple[bool, dict]:
-    """Function to upload raw reads to long-term storage bucket and add the reads_1 and reads_2 fields to the Onyx record
+    """Function to upload raw reads to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
     Args:
         payload (dict): Payload dict for the record to update
@@ -541,8 +531,8 @@ def add_reads_record(
             update_fail, payload = onyx_update(
                 payload=payload,
                 fields={
-                    "reads_1": f"s3://mscapetest-published-reads/{payload['cid']}_1.fastq.gz",
-                    "reads_2": f"s3://mscapetest-published-reads/{payload['cid']}_2.fastq.gz",
+                    "fastq_1": f"s3://mscapetest-published-reads/{payload['cid']}_1.fastq.gz",
+                    "fastq_2": f"s3://mscapetest-published-reads/{payload['cid']}_2.fastq.gz",
                 },
                 log=log,
             )
@@ -574,7 +564,7 @@ def add_reads_record(
             update_fail, payload = onyx_update(
                 payload=payload,
                 fields={
-                    "reads_1": f"s3://mscapetest-published-reads/{payload['cid']}.fastq.gz"
+                    "fastq_1": f"s3://mscapetest-published-reads/{payload['cid']}.fastq.gz"
                 },
                 log=log,
             )
@@ -644,11 +634,56 @@ def ret_0_parser(
     return (ingest_fail, payload)
 
 
-def onyx_unsuppress():
+def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
+    """Function to unsuppress an existing Onyx record
+
+    Args:
+        payload (dict): Payload dict for the current artifact
+        log (logging.getLogger): Logger object
+
+    Returns:
+        tuple[bool, dict]: Tuple containing a bool indicating whether the unsuppress failed and the updated payload dict
+    """
     unsuppress_fail = False
-    with OnyxClient(env_password=True) as client:
-        # Unsuppress the record
-        pass
+
+    try:
+        with OnyxClient(env_password=True) as client:
+            response = client._update(
+                project="mscapetest", cid=payload["cid"], fields={"suppressed": False}
+            )
+
+        if response.status_code == 200:
+            log.info(f"Successfully unsupressed Onyx record for CID: {payload['cid']}")
+
+        else:
+            unsuppress_fail = True
+            log.error(
+                f"Failed to unsupress Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
+            )
+            if response.json().get("messages"):
+                if not payload.get("onyx_errors"):
+                    payload["onyx_errors"] = {}
+                for field, messages in response.json()["messages"].items():
+                    if payload["onyx_errors"].get(field):
+                        payload["onyx_errors"][field].extend(messages)
+                    else:
+                        payload["onyx_errors"][field] = messages
+
+    except Exception as e:
+        log.error(
+            f"Failed to unsupress Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
+        )
+        if payload.get("onyx_client_errors"):
+            payload["onyx_errors"]["onyx_client_errors"].extend(
+                f"Unhandled client error {e}"
+            )
+        else:
+            payload["onyx_errors"]["onyx_client_errors"] = [
+                f"Unhandled client error {e}"
+            ]
+        unsuppress_fail = True
+
+    return (unsuppress_fail, payload)
 
 
 def run(args):
@@ -808,34 +843,13 @@ def run(args):
             log=log,
         )
 
-        if raw_read_fail:
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
-            )
-
         binned_read_fail, payload = add_taxon_records(
             payload=payload, result_path=result_path, log=log, s3_client=s3_client
         )
 
-        if binned_read_fail:
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
-            )
-
         report_fail, payload = push_report_file(
             payload=payload, result_path=result_path, log=log, s3_client=s3_client
         )
-
-        if report_fail:
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
-            )
 
         if raw_read_fail or binned_read_fail or report_fail:
             log.error(
@@ -848,10 +862,9 @@ def run(args):
             )
             continue
 
-        unsuppress_fail, payload = onyx_unsuppress()
+        unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
 
         if unsuppress_fail:
-            log.error(f"Failed to unsuppress Onyx record for CID: {payload['cid']}")
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
@@ -893,10 +906,8 @@ def main():
     parser.add_argument("--nxf_config")
     parser.add_argument("--work_bucket")
     parser.add_argument("--nxf_executable", default="nextflow")
-    parser.add_argument("--docker", action="store_true", default=False)
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
-    parser.add_argument("--temp_dir", type=Path)
     args = parser.parse_args()
 
     run(args)
