@@ -333,6 +333,7 @@ def query_onyx(
                         "sample_id": parsed_fname["sample_id"],
                         "run_name": parsed_fname["run_name"],
                     },
+                    scope=["admin"],
                 )
             )
 
