@@ -806,6 +806,14 @@ def run(args):
             result_path=result_path,
         )
 
+        if ingest_fail:
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound.results.mscape.{to_validate['site']}",
+                queue_suffix="validator",
+            )
+            continue
+
         if payload["test_flag"]:
             log.info(
                 f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
