@@ -110,8 +110,8 @@ def main():
                         csv_file=utils.s3_to_fh(
                             matched_message["files"][".csv"]["uri"],
                             matched_message["files"][".csv"]["etag"],
-                        ),  # I don't like having a hardcoded metadata file name like this but hypothetically
-                        test=True,  # we should always have a metadata CSV
+                        ),  # I don't like having a hardcoded metadata file name like this but hypothetically we should always have a metadata CSV
+                        test=True,
                         fields={"site": matched_message["site"]},
                     )
                 except Exception as e:
