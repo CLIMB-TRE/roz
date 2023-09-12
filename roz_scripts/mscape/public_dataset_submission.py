@@ -13,7 +13,6 @@ rows_of_interest = [
     "collection_date",
     "study_id",
     "study_centre_id",
-    "is_public",
     "public_database_name",
     "public_database_accession",
     "library_protocol",
@@ -47,6 +46,9 @@ with open(sys.argv[1]) as manifest_fh:
             row["collection_date"], "%Y-%m-%d"
         ).strftime("%Y-%m")
 
+        if out_cols["sample_site"] == "gut":
+            out_cols["sample_site"] = "faecal"
+
         if row["sequencing_protocol"] == "ILLUMINA":
             with open(
                 f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv", "wt"
@@ -56,6 +58,9 @@ with open(sys.argv[1]) as manifest_fh:
                 writer.writerow(out_cols)
 
             ftp_split = row["submitted_ftp"].split(";")
+
+            if len(ftp_split) != 2:
+                continue
 
             fastq_1 = ftp_split[0]
             fastq_2 = ftp_split[1]
