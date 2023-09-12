@@ -60,42 +60,45 @@ with open(sys.argv[1]) as manifest_fh:
             ftp_split = row["submitted_ftp"].split(";")
 
             if len(ftp_split) != 2:
+                print(f"Skipping single file illumina record")
                 continue
 
             fastq_1 = ftp_split[0]
             fastq_2 = ftp_split[1]
 
-            local_path_1, response_1 = urllib.request.urlretrieve(f"ftp://{fastq_1}")
-            local_path_2, response_2 = urllib.request.urlretrieve(f"ftp://{fastq_2}")
+            local_path_1, response_1 = urllib.request.urlretrieve(
+                f"ftp://{fastq_1}",
+                f"{os.getcwd()}/mscapetest.{row['sample_id']}.{row['run_name']}.1.fastq.gz",
+            )
+            local_path_2, response_2 = urllib.request.urlretrieve(
+                f"ftp://{fastq_2}",
+                f"{os.getcwd()}/mscapetest.{row['sample_id']}.{row['run_name']}.2.fastq.gz",
+            )
 
-            if response_1.status_code == 200 and response_2.status_code == 200:
-                s3_client.upload_file(
-                    local_path_1,
-                    "mscapetest-public-illumina-prod",
-                    f"mscapetest.{row['sample_id']}.{row['run_name']}.1.fastq.gz",
-                )
+            s3_client.upload_file(
+                local_path_1,
+                "mscapetest-public-illumina-prod",
+                f"mscapetest.{row['sample_id']}.{row['run_name']}.1.fastq.gz",
+            )
 
-                s3_client.upload_file(
-                    local_path_2,
-                    "mscapetest-public-illumina-prod",
-                    f"mscapetest.{row['sample_id']}.{row['run_name']}.2.fastq.gz",
-                )
+            s3_client.upload_file(
+                local_path_2,
+                "mscapetest-public-illumina-prod",
+                f"mscapetest.{row['sample_id']}.{row['run_name']}.2.fastq.gz",
+            )
 
-                s3_client.upload_file(
-                    f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv",
-                    "mscapetest-public-illumina-prod",
-                    f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv",
-                )
+            s3_client.upload_file(
+                f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv",
+                "mscapetest-public-illumina-prod",
+                f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv",
+            )
 
-                # os.remove(local_path_1)
-                # os.remove(local_path_2)
-                # os.remove(
-                #     f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv"
-                # )
-            else:
-                print(
-                    f"Failed to download 1 or 2 for artifact: {row['sample_id']}.{row['run_name']}"
-                )
+            # os.remove(local_path_1)
+            # os.remove(local_path_2)
+            # os.remove(
+            #     f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv"
+            # )
+
         elif row["sequencing_protocol"] == "OXFORD NANOPORE":
             with open(
                 f"mscapetest.{row['sample_id']}.{row['run_name']}.ont.csv", "wt"
@@ -105,28 +108,24 @@ with open(sys.argv[1]) as manifest_fh:
                 writer.writerow(out_cols)
 
             local_path, response = urllib.request.urlretrieve(
-                f"ftp://{row['submitted_ftp']}"
+                f"ftp://{row['submitted_ftp']}",
+                f"{os.getcwd()}/mscapetest.{row['sample_id']}.{row['run_name']}.fastq.gz",
             )
 
-            if response.status_code == 200:
-                s3_client.upload_file(
-                    local_path_1,
-                    "mscapetest-public-ont-prod",
-                    f"mscapetest.{row['sample_id']}.{row['run_name']}.fastq.gz",
-                )
+            s3_client.upload_file(
+                local_path_1,
+                "mscapetest-public-ont-prod",
+                f"mscapetest.{row['sample_id']}.{row['run_name']}.fastq.gz",
+            )
 
-                s3_client.upload_file(
-                    f"mscapetest.{row['sample_id']}.{row['run_name']}.ont.csv",
-                    "mscapetest-public-ont-prod",
-                    f"mscapetest.{row['sample_id']}.{row['run_name']}.ont.csv",
-                )
+            s3_client.upload_file(
+                f"mscapetest.{row['sample_id']}.{row['run_name']}.ont.csv",
+                "mscapetest-public-ont-prod",
+                f"mscapetest.{row['sample_id']}.{row['run_name']}.ont.csv",
+            )
 
-                # os.remove(local_path_1)
-                # os.remove(local_path_2)
-                # os.remove(
-                #     f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv"
-                # )
-            else:
-                print(
-                    f"Failed to download fastq for artifact: {row['sample_id']}.{row['run_name']}"
-                )
+            # os.remove(local_path_1)
+            # os.remove(local_path_2)
+            # os.remove(
+            #     f"mscapetest.{row['sample_id']}.{row['run_name']}.illumina.csv"
+            # )
