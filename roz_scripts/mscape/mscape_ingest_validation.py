@@ -232,7 +232,7 @@ def onyx_submission(
                     payload["files"][".csv"]["uri"],
                     payload["files"][".csv"]["etag"],
                 ),
-                fields={"suppressed": True},
+                fields={"suppressed": True, "site": payload["site"]},
             )
 
             response = next(response_generator)

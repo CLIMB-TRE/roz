@@ -112,6 +112,7 @@ def main():
                             matched_message["files"][".csv"]["etag"],
                         ),  # I don't like having a hardcoded metadata file name like this but hypothetically
                         test=True,  # we should always have a metadata CSV
+                        fields={"site": matched_message["site"]},
                     )
                 except Exception as e:
                     log.error(
