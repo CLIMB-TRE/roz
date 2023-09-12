@@ -60,8 +60,8 @@ with open(sys.argv[1]) as manifest_fh:
             fastq_1 = ftp_split[0]
             fastq_2 = ftp_split[1]
 
-            local_path_1, response_1 = urllib.request.urlretrieve(fastq_1)
-            local_path_2, response_2 = urllib.request.urlretrieve(fastq_2)
+            local_path_1, response_1 = urllib.request.urlretrieve(f"ftp://{fastq_1}")
+            local_path_2, response_2 = urllib.request.urlretrieve(f"ftp://{fastq_2}")
 
             if response_1.status_code == 200 and response_2.status_code == 200:
                 s3_client.upload_file(
@@ -99,7 +99,9 @@ with open(sys.argv[1]) as manifest_fh:
                 writer.writeheader()
                 writer.writerow(out_cols)
 
-            local_path, response = urllib.request.urlretrieve(row["submitted_ftp"])
+            local_path, response = urllib.request.urlretrieve(
+                f"ftp://{row['submitted_ftp']}"
+            )
 
             if response.status_code == 200:
                 s3_client.upload_file(
