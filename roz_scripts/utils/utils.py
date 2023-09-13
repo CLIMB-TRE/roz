@@ -169,7 +169,7 @@ def onyx_update(
     with OnyxClient(env_password=True) as client:
         try:
             response = client._update(
-                project="mscapetest",
+                project=payload["project"]"],
                 cid=payload["cid"],
                 fields=fields,
             )
@@ -223,7 +223,7 @@ def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
     try:
         with OnyxClient(env_password=True) as client:
             response = client._update(
-                project="mscapetest", cid=payload["cid"], fields={"suppressed": False}
+                project=payload["project"], cid=payload["cid"], fields={"suppressed": False}
             )
 
         if response.status_code == 200:
