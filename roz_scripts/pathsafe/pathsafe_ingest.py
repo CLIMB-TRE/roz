@@ -276,10 +276,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--logfile", type=Path, required=True, help="Path to logfile")
     parser.add_argument(
-        "log_level",
+        "--log_level",
         type=str,
         help="Log level for logger object",
         choices=["NOTSET", "INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL"],
+        default="DEBUG",
     )
     parser.add_argument(
         "--result_dir", type=Path, required=True, help="Path to store results"
