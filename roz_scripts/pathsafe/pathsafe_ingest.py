@@ -14,7 +14,7 @@ import time
 from roz_scripts.utils.utils import onyx_submission, onyx_unsuppress, onyx_update
 from varys.utils import init_logger
 from varys import varys
-from Onyx import OnyxClient
+from onyx import OnyxClient
 
 
 class pipeline:

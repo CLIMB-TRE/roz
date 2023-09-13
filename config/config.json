@@ -103,7 +103,7 @@
                 }
             }
         },
-        "pathsafe": {
+        "pathsafetest": {
             "file_naming": {
                 "identical": true,
                 "allowed_characters": "alphanumeric,_,-,."
