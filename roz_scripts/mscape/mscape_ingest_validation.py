@@ -732,7 +732,7 @@ def run(args):
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.to_validate", queue_suffix="validator"
+            exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
         )
 
         to_validate = json.loads(message.body)

@@ -337,7 +337,7 @@ def main():
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.to_validate", queue_suffix="validator"
+            exchange="inbound.to_validate.pathsafetest", queue_suffix="validator"
         )
 
         to_validate = json.loads(message.body)

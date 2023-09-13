@@ -170,7 +170,7 @@ def main():
 
                     varys_client.send(
                         message=to_send,
-                        exchange="inbound.to_validate",
+                        exchange=f"inbound.to_validate.{matched_message['project']}",
                         queue_suffix="ingest",
                     )
                     continue
@@ -200,7 +200,7 @@ def main():
 
                     varys_client.send(
                         message=to_send,
-                        exchange="inbound.to_validate",
+                        exchange=f"inbound.to_validate.{matched_message['project']}",
                         queue_suffix="ingest",
                     )
                     continue
@@ -261,7 +261,7 @@ def main():
 
         varys_client.send(
             message=to_send,
-            exchange="inbound.to_validate",
+            exchange=f"inbound.to_validate.{matched_message['project']}",
             queue_suffix="ingest",
         )
 
