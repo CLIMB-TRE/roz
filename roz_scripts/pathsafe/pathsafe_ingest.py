@@ -171,7 +171,9 @@ def pathogenwatch_submission(
             scope=["admin"],
         )
 
-        fields = {k: v for k, v in record["data"].items() if v}
+        ignore_fields = ["suppressed", "sample_id", "run_name"]
+
+        fields = {k: v for k, v in record.items() if v and k not in ignore_fields}
 
     body = {
         "url": payload["presigned_url"],
