@@ -5,6 +5,8 @@ import os
 import sys
 from io import StringIO
 import logging
+import subprocess
+from pathlib import Path
 
 from onyx import OnyxClient
 
@@ -12,6 +14,103 @@ __s3_creds = namedtuple(
     "s3_credentials",
     ["access_key", "secret_key", "endpoint", "region", "profile_name"],
 )
+
+
+class pipeline:
+    def __init__(
+        self,
+        pipe: str,
+        config: Path,
+        nxf_executable: Path,
+        profile=None,
+        timeout_seconds=7200,
+    ):
+        """
+        Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
+        If local execution is needed then you should use something else.
+
+        Args:
+            pipe (str): The pipeline to run as a github repo in the format 'user/repo'
+            config (str): Path to a nextflow config file
+            nxf_executable (str): Path to the nextflow executable
+            profile (str): The nextflow profile to use
+            timeout_seconds (int): The number of seconds to wait before timing out the pipeline
+
+        """
+
+        self.pipe = pipe
+        self.config = Path(config) if config else None
+        self.nxf_executable = nxf_executable
+        self.profile = profile
+        self.timeout_seconds = timeout_seconds
+        self.cmd = None
+
+    def execute(self, params: dict) -> tuple[int, bool, str, str]:
+        """
+        Execute the pipeline with the given parameters
+
+        Args:
+            params (dict): A dictionary of parameters to pass to the pipeline in the format {'param_name': 'param_value'} (no --)
+
+        Returns:
+            tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
+        """
+
+        timeout = False
+
+        cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
+
+        if self.config:
+            cmd.extend(["-c", self.config.resolve()])
+
+        if self.profile:
+            cmd.extend(["-profile", self.profile])
+
+        if params:
+            for k, v in params.items():
+                cmd.extend([f"--{k}", v])
+
+        try:
+            self.cmd = cmd
+            proc = subprocess.run(
+                args=cmd,
+                capture_output=True,
+                universal_newlines=True,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+
+        except subprocess.TimeoutExpired:
+            timeout = True
+
+        return (proc.returncode, timeout, proc.stdout, proc.stderr)
+
+    def cleanup(self):
+        """Cleanup the pipeline intermediate files
+
+        Returns:
+            tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
+        """
+
+        timeout = False
+
+        cmd = [self.nxf_executable, "clean"]
+
+        if self.config:
+            cmd.extend(["-c", self.config.resolve()])
+
+        try:
+            proc = subprocess.run(
+                args=cmd,
+                capture_output=True,
+                universal_newlines=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            timemout = True
+
+        return (proc.returncode, timeout, proc.stdout, proc.stderr)
 
 
 def onyx_submission(

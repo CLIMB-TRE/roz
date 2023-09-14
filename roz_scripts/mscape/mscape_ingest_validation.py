@@ -2,7 +2,6 @@
 
 import csv
 import os
-import subprocess
 from pathlib import Path
 import json
 import copy
@@ -12,82 +11,11 @@ import time
 import logging
 import argparse
 
-from roz_scripts.utils.utils import s3_to_fh
+from roz_scripts.utils.utils import s3_to_fh, pipeline
 from varys import varys
 from varys.utils import init_logger
 
 from onyx import OnyxClient
-import requests
-
-
-class pipeline:
-    def __init__(
-        self,
-        pipe: str,
-        config: Path,
-        nxf_executable: Path,
-        profile=None,
-        timeout_seconds=3600,
-    ):
-        """
-        Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
-        If local execution is needed then you should use something else.
-
-        Args:
-            pipe (str): The pipeline to run as a github repo in the format 'user/repo'
-            config (str): Path to a nextflow config file
-            nxf_executable (str): Path to the nextflow executable
-            profile (str): The nextflow profile to use
-            timeout_seconds (int): The number of seconds to wait before timing out the pipeline
-
-        """
-
-        self.pipe = pipe
-        self.config = Path(config) if config else None
-        self.nxf_executable = nxf_executable
-        self.profile = profile
-        self.timeout_seconds = timeout_seconds
-        self.cmd = None
-
-    def execute(self, params: dict) -> tuple[int, bool, str, str]:
-        """
-        Execute the pipeline with the given parameters
-
-        Args:
-            params (dict): A dictionary of parameters to pass to the pipeline in the format {'param_name': 'param_value'} (no --)
-
-        Returns:
-            tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
-        """
-
-        timeout = False
-
-        cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
-
-        if self.config:
-            cmd.extend(["-c", self.config.resolve()])
-
-        if self.profile:
-            cmd.extend(["-profile", self.profile])
-
-        if params:
-            for k, v in params.items():
-                cmd.extend([f"--{k}", v])
-
-        try:
-            self.cmd = cmd
-            proc = subprocess.run(
-                args=cmd,
-                capture_output=True,
-                universal_newlines=True,
-                text=True,
-                timeout=self.timeout_seconds,
-            )
-
-        except subprocess.TimeoutExpired:
-            timeout = True
-
-        return (proc.returncode, timeout, proc.stdout, proc.stderr)
 
 
 def onyx_update(
@@ -433,6 +361,59 @@ def add_taxon_records(
             binned_read_fail = True
 
     return (binned_read_fail, payload)
+
+
+def push_taxon_reports(
+    payload: dict, result_path: str, log: logging.getLogger, s3_client: boto3.client
+) -> tuple[bool, dict]:
+    """Push taxa reports to long-term storage bucket and update the Onyx record with the S3 directory URI
+
+    Args:
+        payload (dict): Payload dict for the current artifact
+        result_path (str): Path to the results directory
+        log (logging.getLogger): Logger object
+        s3_client (boto3.client): S3 boto3 client object
+
+    Returns:
+        tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
+    """
+
+    taxon_report_fail = False
+
+    taxon_report_path = os.path.join(result_path, f"classifications")
+    try:
+        reports = os.listdir(taxon_report_path)
+
+        for report in reports:
+            # Add handling for Db in name etc
+            s3_client.upload_file(
+                os.path.join(taxon_report_path, report),
+                "mscapetest-taxon-reports",
+                f"{payload['cid']}/{report}",
+            )
+
+    except ClientError as e:
+        log.error(
+            f"Failed to upload taxon classification to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+        )
+        payload["ingest_errors"].append(
+            f"Failed to upload taxon classification to storage bucket"
+        )
+        taxon_report_fail = True
+
+    if not taxon_report_fail:
+        update_fail, payload = onyx_update(
+            payload=payload,
+            fields={
+                "taxon_reports": f"s3://mscapetest-taxon-reports/{payload['cid']}/"
+            },
+            log=log,
+        )
+
+        if update_fail:
+            taxon_report_fail = True
+
+    return (taxon_report_fail, payload)
 
 
 def push_report_file(
@@ -859,7 +840,11 @@ def run(args):
             payload=payload, result_path=result_path, log=log, s3_client=s3_client
         )
 
-        if raw_read_fail or binned_read_fail or report_fail:
+        taxon_report_fail, payload = push_taxon_reports(
+            payload=payload, result_path=result_path, log=log, s3_client=s3_client
+        )
+
+        if raw_read_fail or binned_read_fail or report_fail or taxon_report_fail:
             log.error(
                 f"Failed to upload at least one file to long-term storage for CID: {payload['cid']}"
             )
@@ -903,6 +888,21 @@ def run(args):
             exchange=f"inbound.results.mscape.{to_validate['site']}",
             queue_suffix="validator",
         )
+
+        (
+            cleanup_status,
+            cleanup_timeout,
+            cleanup_stdout,
+            cleanup_stderr,
+        ) = ingest_pipe.cleanup()
+
+        if cleanup_timeout:
+            log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
+
+        if cleanup_status != 0:
+            log.error(
+                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}"
+            )
 
 
 def main():

@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-import subprocess
 import boto3
 from botocore.exceptions import ClientError
 import json
@@ -11,80 +10,15 @@ import csv
 import requests
 import time
 
-from roz_scripts.utils.utils import onyx_submission, onyx_unsuppress, onyx_update
+from roz_scripts.utils.utils import (
+    onyx_submission,
+    onyx_unsuppress,
+    onyx_update,
+    pipeline,
+)
 from varys.utils import init_logger
 from varys import varys
 from onyx import OnyxClient
-
-
-class pipeline:
-    def __init__(
-        self,
-        pipe: str,
-        config: Path,
-        nxf_executable: Path,
-        profile=None,
-        timeout_seconds=7200,
-    ):
-        """
-        Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
-        If local execution is needed then you should use something else.
-
-        Args:
-            pipe (str): The pipeline to run as a github repo in the format 'user/repo'
-            config (str): Path to a nextflow config file
-            nxf_executable (str): Path to the nextflow executable
-            profile (str): The nextflow profile to use
-            timeout_seconds (int): The number of seconds to wait before timing out the pipeline
-
-        """
-
-        self.pipe = pipe
-        self.config = Path(config) if config else None
-        self.nxf_executable = nxf_executable
-        self.profile = profile
-        self.timeout_seconds = timeout_seconds
-        self.cmd = None
-
-    def execute(self, params: dict) -> tuple[int, bool, str, str]:
-        """
-        Execute the pipeline with the given parameters
-
-        Args:
-            params (dict): A dictionary of parameters to pass to the pipeline in the format {'param_name': 'param_value'} (no --)
-
-        Returns:
-            tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
-        """
-
-        timeout = False
-
-        cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
-
-        if self.config:
-            cmd.extend(["-c", self.config.resolve()])
-
-        if self.profile:
-            cmd.extend(["-profile", self.profile])
-
-        if params:
-            for k, v in params.items():
-                cmd.extend([f"--{k}", v])
-
-        try:
-            self.cmd = cmd
-            proc = subprocess.run(
-                args=cmd,
-                capture_output=True,
-                universal_newlines=True,
-                text=True,
-                timeout=self.timeout_seconds,
-            )
-
-        except subprocess.TimeoutExpired:
-            timeout = True
-
-        return (proc.returncode, timeout, proc.stdout, proc.stderr)
 
 
 def assembly_to_s3(
@@ -508,6 +442,21 @@ def main():
             exchange=f"inbound.results.pathsafe.{to_validate['site']}",
             queue_suffix="validator",
         )
+
+        (
+            cleanup_status,
+            cleanup_timeout,
+            cleanup_stdout,
+            cleanup_stderr,
+        ) = ingest_pipe.cleanup()
+
+        if cleanup_timeout:
+            log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
+
+        if cleanup_status != 0:
+            log.error(
+                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}"
+            )
 
 
 if __name__ == "__main__":
