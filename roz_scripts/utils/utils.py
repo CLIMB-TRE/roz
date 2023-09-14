@@ -94,7 +94,7 @@ class pipeline:
 
         timeout = False
 
-        cmd = [self.nxf_executable, "clean"]
+        cmd = [self.nxf_executable, "clean", "-f"]
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])
