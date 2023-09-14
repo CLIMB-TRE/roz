@@ -901,7 +901,7 @@ def run(args):
 
         if cleanup_status != 0:
             log.error(
-                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}"
+                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
             )
 
 
