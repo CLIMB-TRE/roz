@@ -103,9 +103,6 @@ class pipeline:
 
         cmd = [self.nxf_executable, "clean", "-f", pipeline_id]
 
-        if self.config:
-            cmd.extend(["-c", self.config.resolve()])
-
         try:
             proc = subprocess.run(
                 args=cmd,
