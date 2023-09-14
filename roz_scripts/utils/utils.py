@@ -85,8 +85,11 @@ class pipeline:
 
         return (proc.returncode, timeout, proc.stdout, proc.stderr)
 
-    def cleanup(self):
+    def cleanup(self, stdout: str) -> tuple[int, bool, str, str]:
         """Cleanup the pipeline intermediate files
+
+        Args:
+            stdout (str): The stdout from the pipeline execution
 
         Returns:
             tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
@@ -94,7 +97,11 @@ class pipeline:
 
         timeout = False
 
-        cmd = [self.nxf_executable, "clean", "-f"]
+        pipeline_id = (
+            stdout.split("\n")[3].split(" ")[2].replace("[", "").replace("]", "")
+        )
+
+        cmd = [self.nxf_executable, "clean", "-f", pipeline_id]
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])

@@ -894,7 +894,7 @@ def run(args):
             cleanup_timeout,
             cleanup_stdout,
             cleanup_stderr,
-        ) = ingest_pipe.cleanup()
+        ) = ingest_pipe.cleanup(stdout=stdout)
 
         if cleanup_timeout:
             log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
