@@ -175,26 +175,30 @@ def pathogenwatch_submission(
 
         fields = {k: v for k, v in record.items() if v and k not in ignore_fields}
 
-    body = {
-        "url": payload["presigned_url"],
-        "collectionId": 41,
-        "metadata": fields,
-    }
+        body = {
+            "url": payload["presigned_url"],
+            "collectionId": 41,
+            "metadata": fields,
+        }
 
-    headers = {"X-API-Key": os.getenv("PATHOGENWATCH_API_KEY")}
+        headers = {"X-API-Key": os.getenv("PATHOGENWATCH_API_KEY")}
 
-    endpoint_url = os.getenv("PATHOGENWATCH_ENDPOINT_URL")
+        endpoint_url = os.getenv("PATHOGENWATCH_ENDPOINT_URL")
 
-    r = requests.post(url=endpoint_url, headers=headers, json=body)
+        r = requests.post(url=endpoint_url, headers=headers, json=body)
 
-    if r.status_code != 200:
-        log.error(
-            f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['cid']} due to error: {r.text}"
+        if r.status_code != 201:
+            log.error(
+                f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['cid']} due to error: {r.text}"
+            )
+            payload["ingest_errors"].append(
+                f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
+            )
+            pathogenwatch_fail = True
+
+        update_fail, payload = onyx_update(
+            payload=payload, fields={"pathogenwatch_uuid": r.json()["id"]}, log=log
         )
-        payload["ingest_errors"].append(
-            f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
-        )
-        pathogenwatch_fail = True
 
     return (pathogenwatch_fail, payload)
 
