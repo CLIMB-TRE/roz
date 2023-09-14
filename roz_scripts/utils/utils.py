@@ -108,7 +108,7 @@ class pipeline:
                 timeout=60,
             )
         except subprocess.TimeoutExpired:
-            timemout = True
+            timeout = True
 
         return (proc.returncode, timeout, proc.stdout, proc.stderr)
 
