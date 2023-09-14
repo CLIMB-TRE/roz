@@ -165,7 +165,11 @@ def pathogenwatch_submission(
     pathogenwatch_fail = False
 
     with OnyxClient(env_password=True) as client:
-        record = client.get("pathsafetest", payload["cid"])
+        record = client.get(
+            "pathsafetest",
+            payload["cid"],
+            scope=["admin"],
+        )
 
         fields = {k: v for k, v in record["data"].items() if v}
 
