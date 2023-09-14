@@ -451,11 +451,13 @@ def main():
         ) = ingest_pipe.cleanup()
 
         if cleanup_timeout:
-            log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
+            log.error(
+                f"Cleanup of pipeline for UUID: {payload['uuid']} timed out. Stdout: {cleanup_stdout}, Stderr: {cleanup_stderr}"
+            )
 
         if cleanup_status != 0:
             log.error(
-                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}"
+                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}, Stdout: {cleanup_stdout}, Stderr: {cleanup_stderr}"
             )
 
 
