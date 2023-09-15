@@ -598,8 +598,8 @@ def ret_0_parser(
     for process, trace in trace_dict.items():
         if trace["exit"] != "0":
             if (
-                process == "extract_paired_reads"
-                or process == "extract_reads"
+                process.startswith("extract_paired_reads")
+                or process.startswith("extract_reads")
                 and trace["exit"] == "2"
             ):
                 payload["ingest_errors"].append(
@@ -779,6 +779,7 @@ def run(args):
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         ingest_fail, payload = ret_0_parser(
@@ -793,6 +794,7 @@ def run(args):
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         if payload["test_flag"]:
@@ -805,6 +807,7 @@ def run(args):
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         ingest_fail, payload = onyx_submission(
@@ -819,6 +822,7 @@ def run(args):
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         log.info(
@@ -853,6 +857,7 @@ def run(args):
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
@@ -863,6 +868,7 @@ def run(args):
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         payload["ingested"] = True

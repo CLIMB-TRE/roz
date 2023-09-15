@@ -321,6 +321,7 @@ def main():
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         result_path = os.path.join(args.result_dir.resolve(), payload["uuid"])
@@ -346,6 +347,7 @@ def main():
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         ingest_fail, payload = ret_0_parser(
@@ -360,6 +362,7 @@ def main():
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         submission_fail, payload = onyx_submission(log=log, payload=payload)
@@ -373,6 +376,7 @@ def main():
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         s3_fail, payload = assembly_to_s3(
@@ -391,6 +395,7 @@ def main():
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         pathogenwatch_fail, payload = pathogenwatch_submission(
@@ -407,6 +412,7 @@ def main():
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
@@ -420,6 +426,7 @@ def main():
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
                 queue_suffix="validator",
             )
+            ingest_pipe.cleanup(stdout=stdout)
             continue
 
         payload["ingested"] = True
