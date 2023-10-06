@@ -713,7 +713,7 @@ def run(args):
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
+            exchange="inbound.to_validate.mscapetest", queue_suffix=args.identifier
         )
 
         to_validate = json.loads(message.body)
@@ -731,7 +731,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             continue
 
@@ -752,7 +752,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             continue
 
@@ -777,7 +777,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -792,7 +792,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -805,7 +805,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -820,7 +820,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -855,7 +855,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -866,7 +866,7 @@ def run(args):
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -886,13 +886,13 @@ def run(args):
         varys_client.send(
             message=new_artifact_payload,
             exchange="inbound.new_artifact.mscape",
-            queue_suffix="validator",
+            queue_suffix=args.identifier,
         )
 
         varys_client.send(
             message=payload,
             exchange=f"inbound.results.mscape.{to_validate['site']}",
-            queue_suffix="validator",
+            queue_suffix=args.identifier,
         )
 
         (
@@ -922,6 +922,12 @@ def main():
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
+    parser.add_argument(
+        "--identifier",
+        type=str,
+        default="validator",
+        help="Identifier for this instance of the validator (Usually a pod name)",
+    )
     args = parser.parse_args()
 
     run(args)

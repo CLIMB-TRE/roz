@@ -235,6 +235,12 @@ def main():
     parser.add_argument(
         "--nxf_executable", type=Path, required=False, default="nextflow"
     )
+    parser.add_argument(
+        "--identifier",
+        type=str,
+        default="validator",
+        help="Identifier for this instance of the validator (Usually a pod name)",
+    )
     args = parser.parse_args()
 
     log = init_logger("pathsafe.ingest", args.logfile, args.log_level)
@@ -281,7 +287,8 @@ def main():
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.to_validate.pathsafetest", queue_suffix="validator"
+            exchange="inbound.to_validate.pathsafetest",
+            queue_suffix=args.identifier,
         )
 
         to_validate = json.loads(message.body)
@@ -299,7 +306,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             continue
 
@@ -319,7 +326,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -345,7 +352,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -360,7 +367,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -374,7 +381,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -393,7 +400,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -410,7 +417,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -424,7 +431,7 @@ def main():
             varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-                queue_suffix="validator",
+                queue_suffix=args.identifier,
             )
             ingest_pipe.cleanup(stdout=stdout)
             continue
@@ -441,13 +448,13 @@ def main():
         varys_client.send(
             message=new_artifact_payload,
             exchange="inbound.new_artifact.pathsafe",
-            queue_suffix="validator",
+            queue_suffix=args.identifier,
         )
 
         varys_client.send(
             message=payload,
             exchange=f"inbound.results.pathsafe.{to_validate['site']}",
-            queue_suffix="validator",
+            queue_suffix=args.identifier,
         )
 
         (
