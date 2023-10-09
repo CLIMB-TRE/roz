@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError
 import time
 import logging
 import argparse
+from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 
 from roz_scripts.utils.utils import s3_to_fh, pipeline
 from varys import varys
@@ -667,6 +668,211 @@ def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
     return (unsuppress_fail, payload)
 
 
+def validate(
+    message,
+    args: argparse.Namespace,
+    log: logging.getLogger,
+    ingest_pipe: pipeline,
+    s3_client: boto3.client,
+    varys_client: varys.varys,
+):
+    to_validate = json.loads(message.body)
+
+    payload = copy.deepcopy(to_validate)
+
+    # This client is purely for Mscape, ignore all other messages
+    if to_validate["project"] != "mscapetest":
+        log.info(
+            f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
+        )
+        return False
+
+    if not to_validate["onyx_test_create_status"]:
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        return False
+
+    rc, timeout, stdout, stderr = execute_validation_pipeline(
+        payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
+    )
+    if ingest_pipe.cmd:
+        log.info(
+            f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
+        )
+
+    if not timeout:
+        log.info(f"Pipeline execution for message id: {payload['uuid']}, complete.")
+    else:
+        log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
+        payload["ingest_errors"].append("Validation pipeline timeout")
+        log.info(f"Sending validation result for UUID: {payload['uuid']}")
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        return False
+
+    result_path = os.path.join(args.result_dir.resolve(), payload["uuid"])
+
+    if not os.path.exists(result_path):
+        os.makedirs(result_path)
+
+    with open(os.path.join(result_path, "nextflow.stdout"), "wt") as out_fh, open(
+        os.path.join(result_path, "nextflow.stderr"), "wt"
+    ) as err_fh:
+        out_fh.write(stdout)
+        err_fh.write(stderr)
+
+    if rc != 0:
+        log.error(
+            f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
+        )
+        payload["ingest_errors"].append(
+            f"Validation pipeline exited with non-0 exit code: {rc}"
+        )
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return False
+
+    ingest_fail, payload = ret_0_parser(
+        log=log,
+        payload=payload,
+        result_path=result_path,
+    )
+
+    if ingest_fail:
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return False
+
+    if payload["test_flag"]:
+        log.info(
+            f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
+        )
+        payload["test_ingest_result"] = True
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return False
+
+    ingest_fail, payload = onyx_submission(
+        log=log,
+        payload=payload,
+    )
+
+    if ingest_fail:
+        log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return False
+
+    log.info(
+        f"Uploading files to long-term storage buckets for CID: {payload['cid']} after sucessful Onyx submission"
+    )
+
+    raw_read_fail, payload = add_reads_record(
+        payload=payload,
+        s3_client=s3_client,
+        result_path=result_path,
+        log=log,
+    )
+
+    binned_read_fail, payload = add_taxon_records(
+        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+    )
+
+    report_fail, payload = push_report_file(
+        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+    )
+
+    taxon_report_fail, payload = push_taxon_reports(
+        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+    )
+
+    if raw_read_fail or binned_read_fail or report_fail or taxon_report_fail:
+        log.error(
+            f"Failed to upload at least one file to long-term storage for CID: {payload['cid']}"
+        )
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return False
+
+    unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
+
+    if unsuppress_fail:
+        varys_client.send(
+            message=payload,
+            exchange=f"inbound.results.mscape.{to_validate['site']}",
+            queue_suffix="validator",
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return False
+
+    payload["ingested"] = True
+    log.info(
+        f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['cid']}"
+    )
+
+    new_artifact_payload = {
+        "ingest_timestamp": time.time_ns(),
+        "cid": payload["cid"],
+        "site": payload["site"],
+        "match_uuid": payload["uuid"],
+    }
+
+    varys_client.send(
+        message=new_artifact_payload,
+        exchange="inbound.new_artifact.mscape",
+        queue_suffix="validator",
+    )
+
+    varys_client.send(
+        message=payload,
+        exchange=f"inbound.results.mscape.{to_validate['site']}",
+        queue_suffix="validator",
+    )
+
+    (
+        cleanup_status,
+        cleanup_timeout,
+        cleanup_stdout,
+        cleanup_stderr,
+    ) = ingest_pipe.cleanup(stdout=stdout)
+
+    if cleanup_timeout:
+        log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
+
+    if cleanup_status != 0:
+        log.error(
+            f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
+        )
+
+    return True
+
+
 def run(args):
     # Setup producer / consumer
     log = init_logger("mscape.ingest", args.logfile, args.log_level)
@@ -711,203 +917,31 @@ def run(args):
         aws_secret_access_key=os.getenv("ROZ_AWS_SECRET"),
     )
 
-    while True:
-        message = varys_client.receive(
-            exchange="inbound.to_validate.mscapetest", queue_suffix=args.identifier
-        )
+    max_concurrent = args.n_workers  # how many futures to use at most
+    pending = set()  # currently running futures
 
-        to_validate = json.loads(message.body)
+    with ProcessPoolExecutor(max_workers=args.n_workers) as executor:
+        while True:
+            # Don't continue until there is a free worker
+            while len(pending) >= max_concurrent:
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
 
-        payload = copy.deepcopy(to_validate)
-
-        # This client is purely for Mscape, ignore all other messages
-        if to_validate["project"] != "mscapetest":
-            log.info(
-                f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
-            )
-            continue
-
-        if not to_validate["onyx_test_create_status"]:
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            continue
-
-        rc, timeout, stdout, stderr = execute_validation_pipeline(
-            payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
-        )
-        if ingest_pipe.cmd:
-            log.info(
-                f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
+            message = varys_client.receive(
+                exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
             )
 
-        if not timeout:
-            log.info(f"Pipeline execution for message id: {payload['uuid']}, complete.")
-        else:
-            log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
-            payload["ingest_errors"].append("Validation pipeline timeout")
-            log.info(f"Sending validation result for UUID: {payload['uuid']}")
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            continue
-
-        result_path = os.path.join(args.result_dir.resolve(), payload["uuid"])
-
-        if not os.path.exists(result_path):
-            os.makedirs(result_path)
-
-        with open(os.path.join(result_path, "nextflow.stdout"), "wt") as out_fh, open(
-            os.path.join(result_path, "nextflow.stderr"), "wt"
-        ) as err_fh:
-            out_fh.write(stdout)
-            err_fh.write(stderr)
-
-        if rc != 0:
-            log.error(
-                f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
-            )
-            payload["ingest_errors"].append(
-                f"Validation pipeline exited with non-0 exit code: {rc}"
-            )
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            ingest_pipe.cleanup(stdout=stdout)
-            continue
-
-        ingest_fail, payload = ret_0_parser(
-            log=log,
-            payload=payload,
-            result_path=result_path,
-        )
-
-        if ingest_fail:
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            ingest_pipe.cleanup(stdout=stdout)
-            continue
-
-        if payload["test_flag"]:
-            log.info(
-                f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
-            )
-            payload["test_ingest_result"] = True
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            ingest_pipe.cleanup(stdout=stdout)
-            continue
-
-        ingest_fail, payload = onyx_submission(
-            log=log,
-            payload=payload,
-        )
-
-        if ingest_fail:
-            log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            ingest_pipe.cleanup(stdout=stdout)
-            continue
-
-        log.info(
-            f"Uploading files to long-term storage buckets for CID: {payload['cid']} after sucessful Onyx submission"
-        )
-
-        raw_read_fail, payload = add_reads_record(
-            payload=payload,
-            s3_client=s3_client,
-            result_path=result_path,
-            log=log,
-        )
-
-        binned_read_fail, payload = add_taxon_records(
-            payload=payload, result_path=result_path, log=log, s3_client=s3_client
-        )
-
-        report_fail, payload = push_report_file(
-            payload=payload, result_path=result_path, log=log, s3_client=s3_client
-        )
-
-        taxon_report_fail, payload = push_taxon_reports(
-            payload=payload, result_path=result_path, log=log, s3_client=s3_client
-        )
-
-        if raw_read_fail or binned_read_fail or report_fail or taxon_report_fail:
-            log.error(
-                f"Failed to upload at least one file to long-term storage for CID: {payload['cid']}"
-            )
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            ingest_pipe.cleanup(stdout=stdout)
-            continue
-
-        unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
-
-        if unsuppress_fail:
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{to_validate['site']}",
-                queue_suffix=args.identifier,
-            )
-            ingest_pipe.cleanup(stdout=stdout)
-            continue
-
-        payload["ingested"] = True
-        log.info(
-            f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['cid']}"
-        )
-
-        new_artifact_payload = {
-            "ingest_timestamp": time.time_ns(),
-            "cid": payload["cid"],
-            "site": payload["site"],
-            "match_uuid": payload["uuid"],
-        }
-
-        varys_client.send(
-            message=new_artifact_payload,
-            exchange="inbound.new_artifact.mscape",
-            queue_suffix=args.identifier,
-        )
-
-        varys_client.send(
-            message=payload,
-            exchange=f"inbound.results.mscape.{to_validate['site']}",
-            queue_suffix=args.identifier,
-        )
-
-        (
-            cleanup_status,
-            cleanup_timeout,
-            cleanup_stdout,
-            cleanup_stderr,
-        ) = ingest_pipe.cleanup(stdout=stdout)
-
-        if cleanup_timeout:
-            log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
-
-        if cleanup_status != 0:
-            log.error(
-                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
+            pending.add(
+                executor.submit(
+                    validate,
+                    kwargs={
+                        "message": message,
+                        "args": args,
+                        "log": log,
+                        "ingest_pipe": ingest_pipe,
+                        "s3_client": s3_client,
+                        "varys_client": varys_client,
+                    },
+                )
             )
 
 
@@ -922,12 +956,7 @@ def main():
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
-    parser.add_argument(
-        "--identifier",
-        type=str,
-        default="validator",
-        help="Identifier for this instance of the validator (Usually a pod name)",
-    )
+    parser.add_argument("--n_workers", type=int, default=5)
     args = parser.parse_args()
 
     run(args)
