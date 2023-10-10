@@ -190,7 +190,7 @@ class TestRoz(unittest.TestCase):
         )
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
-        s3_matcher_process.terminate()
+        s3_matcher_process.kill()
 
 
 # example_out = {
