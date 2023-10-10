@@ -32,7 +32,7 @@ jobs:
       run: python3 -m pip install -e .
     - name: Test with pytest
       run: |
-        timeout 120s PYTHONPATH=tests pytest --cov-report=term-missing --cov=roz 
+        timeout 120s pytest --cov-report=term-missing --cov=roz tests/integration_test.py
     - name: 'Upload Logfile'
       uses: actions/upload-artifact@v3
       with:
