@@ -148,6 +148,7 @@ class TestRoz(unittest.TestCase):
         self.mock_s3.stop()
 
     def test_successful_match(self):
+        print(os.getenv("VARYS_CFG"))
         varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
 
         args = SimpleNamespace(sleep_time=5)
