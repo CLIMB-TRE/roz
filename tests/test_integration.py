@@ -171,21 +171,24 @@ class TestRoz(unittest.TestCase):
         )
 
         self.assertIsNotNone(message)
-        self.assertEqual(message["artifact"], "mscapetest.sample-test.run-test")
-        self.assertEqual(message["sample_id"], "sample-test")
-        self.assertEqual(message["run_name"], "run-test")
-        self.assertEqual(message["project"], "mscapetest")
-        self.assertEqual(message["platform"], "ont")
-        self.assertEqual(message["site"], "birm")
-        self.assertEqual(message["uploaders"], ["testuser"])
+        message_dict = json.loads(message.body)
+
+        self.assertEqual(message_dict["sample_id"], "sample-test")
+        self.assertEqual(message_dict["artifact"], "mscapetest.sample-test.run-test")
+        self.assertEqual(message_dict["run_name"], "run-test")
+        self.assertEqual(message_dict["project"], "mscapetest")
+        self.assertEqual(message_dict["platform"], "ont")
+        self.assertEqual(message_dict["site"], "birm")
+        self.assertEqual(message_dict["uploaders"], ["testuser"])
         self.assertEqual(
-            message["files"][".csv"]["key"], "mscapetest.sample-test.run-test.ont.csv"
+            message_dict["files"][".csv"]["key"],
+            "mscapetest.sample-test.run-test.ont.csv",
         )
         self.assertEqual(
-            message["files"][".fastq.gz"]["key"],
+            message_dict["files"][".fastq.gz"]["key"],
             "mscapetest.sample-test.run-test.fastq.gz",
         )
-        self.assertTrue(uuid.UUID(message["uuid"], version=4))
+        self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
         s3_matcher_process.terminate()
 
