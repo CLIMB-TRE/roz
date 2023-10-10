@@ -19,7 +19,7 @@ DIR = os.path.dirname(__file__)
 S3_MATCHER_LOG_FILENAME = os.path.join(DIR, "s3_matcher.log")
 ROZ_INGEST_LOG_FILENAME = os.path.join(DIR, "ingest.log")
 
-TMP_HANDLE, TMP_FILENAME = tempfile.mkstemp()
+VARYS_CFG_PATH = os.path.join(DIR, "varys_cfg.json")
 TEXT = "Hello, world!"
 
 example_csv_msg = {
@@ -134,10 +134,10 @@ class TestRoz(unittest.TestCase):
         s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
         s3_client.create_bucket(Bucket="pathsafetest-birm-ont-prod")
 
-        with open(TMP_FILENAME, "w") as f:
+        with open(VARYS_CFG_PATH, "w") as f:
             json.dump(config, f, ensure_ascii=False)
 
-        os.environ["VARYS_CFG"] = TMP_FILENAME
+        os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = S3_MATCHER_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
@@ -148,9 +148,7 @@ class TestRoz(unittest.TestCase):
         self.mock_s3.stop()
 
     def test_successful_match(self):
-        s3_client = boto3.client("s3")
-
-        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME, config_path=TMP_FILENAME)
+        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
 
         args = SimpleNamespace(sleep_time=5)
 
