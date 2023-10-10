@@ -32,12 +32,12 @@ jobs:
       run: python3 -m pip install -e .
     - name: Test with pytest
       run: |
-        timeout 120s pytest --cov-report=term-missing --cov=roz tests/test_integration.py
+        timeout 120s pytest --cov-report=term-missing --cov=roz_scripts tests/test_integration.py
     - name: 'Upload Logfile'
       uses: actions/upload-artifact@v3
       with:
-        name: roz-logfile-${{ matrix.python-version }}
-        path: tests/test.log
+        name: s3-matcher-logfile-${{ matrix.python-version }}
+        path: tests/s3_matcher.log
         retention-days: 5
         if-no-files-found: error
       if: ${{ always() }}

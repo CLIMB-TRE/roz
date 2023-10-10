@@ -150,7 +150,7 @@ class TestRoz(unittest.TestCase):
     def test_successful_match(self):
         s3_client = boto3.client("s3")
 
-        varys_client = varys("test", S3_MATCHER_LOG_FILENAME, config_path=TMP_FILENAME)
+        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME, config_path=TMP_FILENAME)
 
         s3_matcher_process = mp.Process(target=s3_matcher.main)
         s3_matcher_process.start()
