@@ -3,7 +3,7 @@ from unittest.mock import Mock, mock_open, patch, MagicMock, call
 
 from roz_scripts import s3_matcher
 
-
+from types import SimpleNamespace
 import multiprocessing as mp
 import time
 from threading import Thread
@@ -152,7 +152,9 @@ class TestRoz(unittest.TestCase):
 
         varys_client = varys("roz", S3_MATCHER_LOG_FILENAME, config_path=TMP_FILENAME)
 
-        s3_matcher_process = mp.Process(target=s3_matcher.main)
+        args = SimpleNamespace(sleep_time=5)
+
+        s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
         s3_matcher_process.start()
 
         varys_client.send(
