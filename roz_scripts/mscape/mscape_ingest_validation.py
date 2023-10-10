@@ -129,7 +129,7 @@ def onyx_submission(
     Args:
         log (logging.getLogger): The logger object
         payload (dict): The payload dict of the currently ingesting artifact
-        varys_client (varys.varys): A varys client object
+        varys_client (varys): A varys client object
 
     Returns:
         tuple[bool, dict]: A tuple containing a bool indicating the status of the Onyx create request and the payload dict modified to include information about the Onyx create request
@@ -674,7 +674,7 @@ def validate(
     log: logging.getLogger,
     ingest_pipe: pipeline,
     s3_client: boto3.client,
-    varys_client: varys.varys,
+    varys_client: varys,
 ):
     to_validate = json.loads(message.body)
 
