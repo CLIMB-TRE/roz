@@ -148,7 +148,6 @@ class TestRoz(unittest.TestCase):
         self.mock_s3.stop()
 
     def test_successful_match(self):
-        print(os.getenv("VARYS_CFG"))
         varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
 
         args = SimpleNamespace(sleep_time=5)
@@ -168,7 +167,7 @@ class TestRoz(unittest.TestCase):
         message = varys_client.receive(
             exchange="inbound.matched",
             queue_suffix="s3_matcher",
-            timeout=60,
+            timeout=20,
         )
 
         self.assertIsNotNone(message)
