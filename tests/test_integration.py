@@ -202,6 +202,10 @@ class TestRoz(unittest.TestCase):
         self.mock_s3.stop()
         self.varys_client.close()
 
+        os.system("rabbitmqctl stop_app")
+        os.system("rabbitmqctl reset")
+        os.system("rabbitmqctl start_app")
+
     def test_s3_successful_match(self):
         args = SimpleNamespace(sleep_time=5)
 
