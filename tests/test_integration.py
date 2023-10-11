@@ -6,14 +6,13 @@ from roz_scripts import s3_matcher
 from types import SimpleNamespace
 import multiprocessing as mp
 import time
-from threading import Thread
-import tempfile
 import os
 import json
 from varys import varys
 from moto import mock_s3
 import boto3
 import uuid
+import pika
 
 DIR = os.path.dirname(__file__)
 S3_MATCHER_LOG_FILENAME = os.path.join(DIR, "s3_matcher.log")
@@ -202,9 +201,17 @@ class TestRoz(unittest.TestCase):
         self.mock_s3.stop()
         self.varys_client.close()
 
-        os.system("rabbitmqctl stop_app")
-        os.system("rabbitmqctl reset")
-        os.system("rabbitmqctl start_app")
+        credentials = pika.PlainCredentials("guest", "guest")
+
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters("localhost"), credentials=credentials
+        )
+        channel = connection.channel()
+
+        channel.queue_delete(queue="inbound.s3")
+        channel.queue_delete(queue="inbound.matched")
+
+        connection.close()
 
     def test_s3_successful_match(self):
         args = SimpleNamespace(sleep_time=5)
