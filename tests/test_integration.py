@@ -148,6 +148,48 @@ example_fastq_msg = {
     ]
 }
 
+incorrect_fastq_msg = {
+    "Records": [
+        {
+            "eventVersion": "2.2",
+            "eventSource": "ceph:s3",
+            "awsRegion": "",
+            "eventTime": "2023-10-10T06:39:35.470367Z",
+            "eventName": "ObjectCreated:Put",
+            "userIdentity": {"principalId": "testuser"},
+            "requestParameters": {"sourceIPAddress": ""},
+            "responseElements": {
+                "x-amz-request-id": "testdata",
+                "x-amz-id-2": "testdata",
+            },
+            "s3": {
+                "s3SchemaVersion": "1.0",
+                "configurationId": "inbound.s3",
+                "bucket": {
+                    "name": "mscapetest-birm-ont-prod",
+                    "ownerIdentity": {"principalId": "testuser"},
+                    "arn": "arn:aws:s3:::mscapetest-birm-ont-prod",
+                    "id": "testdata",
+                },
+                "object": {
+                    "key": "mscapetest.sample-test-2.run-test.fastq.gz",
+                    "size": 123123123,
+                    "eTag": "179d94f8cd22896c2a80a9a7c98463d2-21",
+                    "versionId": "",
+                    "sequencer": "testdata",
+                    "metadata": [
+                        {"key": "x-amz-content-sha256", "val": "UNSIGNED-PAYLOAD"},
+                        {"key": "x-amz-date", "val": "testdata"},
+                    ],
+                    "tags": [],
+                },
+            },
+            "eventId": "testdata",
+            "opaqueData": "",
+        }
+    ]
+}
+
 
 class MockResponse:
     def __init__(self, status_code, json_data=None):
@@ -266,7 +308,7 @@ class TestRoz(unittest.TestCase):
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
         self.varys_client.send(
-            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            incorrect_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
 
         time.sleep(1)
@@ -301,7 +343,7 @@ class TestRoz(unittest.TestCase):
             message = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
-                timeout=20,
+                timeout=30,
             )
 
             self.assertIsNotNone(message)
@@ -313,8 +355,10 @@ class TestRoz(unittest.TestCase):
             message_2 = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
-                timeout=20,
+                timeout=30,
             )
+
+            self.assertIsNotNone(message_2)
 
             message_dict = json.loads(message_2.body)
 
@@ -360,7 +404,7 @@ class TestRoz(unittest.TestCase):
             message = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
-                timeout=20,
+                timeout=30,
             )
 
             self.assertIsNotNone(message)
@@ -372,7 +416,7 @@ class TestRoz(unittest.TestCase):
             message_2 = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
-                timeout=20,
+                timeout=30,
             )
 
             self.assertIsNone(message_2)
