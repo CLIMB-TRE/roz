@@ -25,7 +25,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install pytest pytest-cov moto
     - name: Install Varys
-      run: python3 -m pip install git+https://github.com/CLIMB-TRE/varys.git
+      run: python3 -m pip install git+https://github.com/biowilko/varys.git
     - name: Install Onyx-client
       run: python3 -m pip install git+https://github.com/CLIMB-TRE/onyx-client.git
     - name: Install Roz
