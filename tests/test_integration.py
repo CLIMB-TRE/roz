@@ -324,7 +324,7 @@ class TestRoz(unittest.TestCase):
         time.sleep(1)
 
     def test_s3_updated_csv(self):
-        with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
+        with patch("roz_scripts.s3_matcher.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._filter.return_value = (
                 MockResponse(status_code=200, json_data=[])
             )
@@ -386,7 +386,7 @@ class TestRoz(unittest.TestCase):
             time.sleep(1)
 
     def test_s3_identical_csv(self):
-        with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
+        with patch("roz_scripts.s3_matcher.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._filter.return_value = (
                 MockResponse(status_code=200, json_data=[])
             )
