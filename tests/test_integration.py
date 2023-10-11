@@ -18,6 +18,7 @@ import uuid
 DIR = os.path.dirname(__file__)
 S3_MATCHER_LOG_FILENAME = os.path.join(DIR, "s3_matcher.log")
 ROZ_INGEST_LOG_FILENAME = os.path.join(DIR, "ingest.log")
+TEST_MESSAGE_LOG_FILENAME = os.path.join(DIR, "test_messages.log")
 
 VARYS_CFG_PATH = os.path.join(DIR, "varys_cfg.json")
 TEXT = "Hello, world!"

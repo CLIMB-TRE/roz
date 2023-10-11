@@ -33,7 +33,7 @@ jobs:
     - name: Test with pytest
       run: |
         timeout 120s pytest --cov-report=term-missing --cov=roz_scripts tests/test_integration.py
-    - name: 'Upload Logfile'
+    - name: 'Upload S3 Matcher Logfile'
       uses: actions/upload-artifact@v3
       with:
         name: s3-matcher-logfile-${{ matrix.python-version }}
@@ -41,3 +41,11 @@ jobs:
         retention-days: 5
         if-no-files-found: error
       if: ${{ always() }}
+    - name: 'Upload Test Messages Logfile'
+      uses: actions/upload-artifact@v3
+      with:
+        name: s3-matcher-logfile-${{ matrix.python-version }}
+        path: tests/test_messages.log
+        retention-days: 5
+        if-no-files-found: error
+      if: ${{ always() }}      
