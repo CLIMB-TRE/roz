@@ -44,7 +44,7 @@ jobs:
     - name: 'Upload Test Messages Logfile'
       uses: actions/upload-artifact@v3
       with:
-        name: s3-matcher-logfile-${{ matrix.python-version }}
+        name: test-messages-logfile-${{ matrix.python-version }}
         path: tests/test_messages.log
         retention-days: 5
         if-no-files-found: error
