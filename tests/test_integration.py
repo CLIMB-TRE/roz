@@ -186,8 +186,6 @@ class TestRoz(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
         self.s3_client.create_bucket(Bucket="pathsafetest-birm-ont-prod")
 
-        self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
-
         with open(VARYS_CFG_PATH, "w") as f:
             json.dump(config, f, ensure_ascii=False)
 
@@ -197,6 +195,8 @@ class TestRoz(unittest.TestCase):
         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
+
+        self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
     def tearDown(self):
         self.mock_s3.stop()
