@@ -64,6 +64,48 @@ example_csv_msg = {
     ]
 }
 
+example_csv_msg_2 = {
+    "Records": [
+        {
+            "eventVersion": "2.2",
+            "eventSource": "ceph:s3",
+            "awsRegion": "",
+            "eventTime": "2023-10-10T06:39:35.470367Z",
+            "eventName": "ObjectCreated:Put",
+            "userIdentity": {"principalId": "testuser"},
+            "requestParameters": {"sourceIPAddress": ""},
+            "responseElements": {
+                "x-amz-request-id": "testdata",
+                "x-amz-id-2": "testdata",
+            },
+            "s3": {
+                "s3SchemaVersion": "1.0",
+                "configurationId": "inbound.s3",
+                "bucket": {
+                    "name": "mscapetest-birm-ont-prod",
+                    "ownerIdentity": {"principalId": "testuser"},
+                    "arn": "arn:aws:s3:::mscapetest-birm-ont-prod",
+                    "id": "testdata",
+                },
+                "object": {
+                    "key": "mscapetest.sample-test.run-test.ont.csv",
+                    "size": 275,
+                    "eTag": "29d33a6a67446891caf00d228b954ba7",
+                    "versionId": "",
+                    "sequencer": "testdata",
+                    "metadata": [
+                        {"key": "x-amz-content-sha256", "val": "UNSIGNED-PAYLOAD"},
+                        {"key": "x-amz-date", "val": "testdata"},
+                    ],
+                    "tags": [],
+                },
+            },
+            "eventId": "testdata",
+            "opaqueData": "",
+        }
+    ]
+}
+
 example_fastq_msg = {
     "Records": [
         {
@@ -107,6 +149,15 @@ example_fastq_msg = {
 }
 
 
+class MockResponse:
+    def __init__(self, status_code, json_data=None):
+        self.status_code = status_code
+        self.json_data = json_data
+
+    def json(self):
+        return self.json_data
+
+
 class TestRoz(unittest.TestCase):
     def setUp(self):
         self.mock_s3 = mock_s3()
@@ -147,7 +198,7 @@ class TestRoz(unittest.TestCase):
     def tearDown(self):
         self.mock_s3.stop()
 
-    def test_successful_match(self):
+    def test_s3_successful_match(self):
         varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
 
         args = SimpleNamespace(sleep_time=5)
@@ -191,6 +242,131 @@ class TestRoz(unittest.TestCase):
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
         s3_matcher_process.kill()
+
+    def test_s3_incorrect_match(self):
+        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
+
+        args = SimpleNamespace(sleep_time=5)
+
+        s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+        s3_matcher_process.start()
+
+        varys_client.send(
+            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
+        varys_client.send(
+            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
+
+        time.sleep(1)
+
+        message = varys_client.receive(
+            exchange="inbound.matched",
+            queue_suffix="s3_matcher",
+            timeout=10,
+        )
+        self.assertIsNone(message)
+
+        s3_matcher_process.kill()
+
+    def test_s3_updated_csv(self):
+        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
+
+        with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value._filter.return_value = (
+                MockResponse(status_code=200, json_data=[])
+            )
+
+            args = SimpleNamespace(sleep_time=5)
+
+            s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+            s3_matcher_process.start()
+
+            varys_client.send(
+                example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            )
+            varys_client.send(
+                example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            )
+
+            message = varys_client.receive(
+                exchange="inbound.matched",
+                queue_suffix="s3_matcher",
+                timeout=20,
+            )
+
+            self.assertIsNotNone(message)
+
+            varys_client.send(
+                example_csv_msg_2, exchange="inbound.s3", queue_suffix="s3_matcher"
+            )
+
+            message_2 = varys_client.receive(
+                exchange="inbound.matched",
+                queue_suffix="s3_matcher",
+                timeout=20,
+            )
+
+            message_dict = json.loads(message_2.body)
+
+            self.assertEqual(message_dict["sample_id"], "sample-test")
+            self.assertEqual(
+                message_dict["artifact"], "mscapetest.sample-test.run-test"
+            )
+            self.assertEqual(message_dict["run_name"], "run-test")
+            self.assertEqual(message_dict["project"], "mscapetest")
+            self.assertEqual(message_dict["platform"], "ont")
+            self.assertEqual(message_dict["site"], "birm")
+            self.assertEqual(message_dict["uploaders"], ["testuser"])
+            self.assertEqual(
+                message_dict["files"][".csv"]["key"],
+                "mscapetest.sample-test.run-test.ont.csv",
+            )
+            self.assertEqual(
+                message_dict["files"][".fastq.gz"]["key"],
+                "mscapetest.sample-test.run-test.fastq.gz",
+            )
+            self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
+
+    def test_s3_identical_csv(self):
+        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
+
+        with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value._filter.return_value = (
+                MockResponse(status_code=200, json_data=[])
+            )
+
+            args = SimpleNamespace(sleep_time=5)
+
+            s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+            s3_matcher_process.start()
+
+            varys_client.send(
+                example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            )
+            varys_client.send(
+                example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            )
+
+            message = varys_client.receive(
+                exchange="inbound.matched",
+                queue_suffix="s3_matcher",
+                timeout=20,
+            )
+
+            self.assertIsNotNone(message)
+
+            varys_client.send(
+                example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            )
+
+            message_2 = varys_client.receive(
+                exchange="inbound.matched",
+                queue_suffix="s3_matcher",
+                timeout=20,
+            )
+
+            self.assertIsNone(message_2)
 
 
 # example_out = {
