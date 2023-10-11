@@ -328,6 +328,8 @@ class TestRoz(unittest.TestCase):
             )
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
+            s3_matcher_process.kill()
+
     def test_s3_identical_csv(self):
         varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
 
@@ -367,6 +369,8 @@ class TestRoz(unittest.TestCase):
             )
 
             self.assertIsNone(message_2)
+
+            s3_matcher_process.kill()
 
 
 # example_out = {
