@@ -182,9 +182,11 @@ class TestRoz(unittest.TestCase):
             },
         }
 
-        s3_client = boto3.client("s3")
-        s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
-        s3_client.create_bucket(Bucket="pathsafetest-birm-ont-prod")
+        self.s3_client = boto3.client("s3")
+        self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
+        self.s3_client.create_bucket(Bucket="pathsafetest-birm-ont-prod")
+
+        self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
         with open(VARYS_CFG_PATH, "w") as f:
             json.dump(config, f, ensure_ascii=False)
@@ -198,25 +200,24 @@ class TestRoz(unittest.TestCase):
 
     def tearDown(self):
         self.mock_s3.stop()
+        self.varys_client.stop()
 
     def test_s3_successful_match(self):
-        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
-
         args = SimpleNamespace(sleep_time=5)
 
         s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
         s3_matcher_process.start()
 
-        varys_client.send(
+        self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
-        varys_client.send(
+        self.varys_client.send(
             example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
 
         time.sleep(1)
 
-        message = varys_client.receive(
+        message = self.varys_client.receive(
             exchange="inbound.matched",
             queue_suffix="s3_matcher",
             timeout=20,
@@ -245,23 +246,21 @@ class TestRoz(unittest.TestCase):
         s3_matcher_process.kill()
 
     def test_s3_incorrect_match(self):
-        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
-
         args = SimpleNamespace(sleep_time=5)
 
         s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
         s3_matcher_process.start()
 
-        varys_client.send(
+        self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
-        varys_client.send(
+        self.varys_client.send(
             example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
 
         time.sleep(1)
 
-        message = varys_client.receive(
+        message = self.varys_client.receive(
             exchange="inbound.matched",
             queue_suffix="s3_matcher",
             timeout=10,
@@ -271,8 +270,6 @@ class TestRoz(unittest.TestCase):
         s3_matcher_process.kill()
 
     def test_s3_updated_csv(self):
-        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
-
         with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._filter.return_value = (
                 MockResponse(status_code=200, json_data=[])
@@ -283,14 +280,14 @@ class TestRoz(unittest.TestCase):
             s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
             s3_matcher_process.start()
 
-            varys_client.send(
+            self.varys_client.send(
                 example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
             )
-            varys_client.send(
+            self.varys_client.send(
                 example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
             )
 
-            message = varys_client.receive(
+            message = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
                 timeout=20,
@@ -298,11 +295,11 @@ class TestRoz(unittest.TestCase):
 
             self.assertIsNotNone(message)
 
-            varys_client.send(
+            self.varys_client.send(
                 example_csv_msg_2, exchange="inbound.s3", queue_suffix="s3_matcher"
             )
 
-            message_2 = varys_client.receive(
+            message_2 = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
                 timeout=20,
@@ -332,8 +329,6 @@ class TestRoz(unittest.TestCase):
             s3_matcher_process.kill()
 
     def test_s3_identical_csv(self):
-        varys_client = varys("roz", S3_MATCHER_LOG_FILENAME)
-
         with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._filter.return_value = (
                 MockResponse(status_code=200, json_data=[])
@@ -344,14 +339,14 @@ class TestRoz(unittest.TestCase):
             s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
             s3_matcher_process.start()
 
-            varys_client.send(
+            self.varys_client.send(
                 example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
             )
-            varys_client.send(
+            self.varys_client.send(
                 example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
             )
 
-            message = varys_client.receive(
+            message = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
                 timeout=20,
@@ -359,11 +354,11 @@ class TestRoz(unittest.TestCase):
 
             self.assertIsNotNone(message)
 
-            varys_client.send(
+            self.varys_client.send(
                 example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
             )
 
-            message_2 = varys_client.receive(
+            message_2 = self.varys_client.receive(
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
                 timeout=20,
