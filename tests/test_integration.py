@@ -254,6 +254,7 @@ class TestRoz(unittest.TestCase):
         channel.queue_delete(queue="inbound.matched")
 
         connection.close()
+        time.sleep(1)
 
     def test_s3_successful_match(self):
         args = SimpleNamespace(sleep_time=5)
@@ -297,6 +298,7 @@ class TestRoz(unittest.TestCase):
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
         s3_matcher_process.kill()
+        time.sleep(1)
 
     def test_s3_incorrect_match(self):
         args = SimpleNamespace(sleep_time=5)
@@ -311,8 +313,6 @@ class TestRoz(unittest.TestCase):
             incorrect_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
 
-        time.sleep(1)
-
         message = self.varys_client.receive(
             exchange="inbound.matched",
             queue_suffix="s3_matcher",
@@ -321,6 +321,7 @@ class TestRoz(unittest.TestCase):
         self.assertIsNone(message)
 
         s3_matcher_process.kill()
+        time.sleep(1)
 
     def test_s3_updated_csv(self):
         with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
@@ -382,6 +383,7 @@ class TestRoz(unittest.TestCase):
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
             s3_matcher_process.kill()
+            time.sleep(1)
 
     def test_s3_identical_csv(self):
         with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
@@ -422,6 +424,7 @@ class TestRoz(unittest.TestCase):
             self.assertIsNone(message_2)
 
             s3_matcher_process.kill()
+            time.sleep(1)
 
 
 # example_out = {
