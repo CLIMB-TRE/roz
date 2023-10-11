@@ -200,7 +200,7 @@ class TestRoz(unittest.TestCase):
 
     def tearDown(self):
         self.mock_s3.stop()
-        self.varys_client.stop()
+        self.varys_client.close()
 
     def test_s3_successful_match(self):
         args = SimpleNamespace(sleep_time=5)
