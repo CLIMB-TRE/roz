@@ -204,7 +204,7 @@ class TestRoz(unittest.TestCase):
         credentials = pika.PlainCredentials("guest", "guest")
 
         connection = pika.BlockingConnection(
-            pika.ConnectionParameters("localhost"), credentials=credentials
+            pika.ConnectionParameters("localhost", credentials=credentials)
         )
         channel = connection.channel()
 
