@@ -383,7 +383,7 @@ class TestRoz(unittest.TestCase):
     def test_s3_identical_csv(self):
         with patch("roz_scripts.s3_matcher.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._filter.return_value.__next__.return_value = MockResponse(
-                status_code=200, json_data=[]
+                status_code=200, json_data={"data": []}
             )
 
             args = SimpleNamespace(sleep_time=5)
