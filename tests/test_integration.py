@@ -482,7 +482,7 @@ class Test_ingest(unittest.TestCase):
             json.dump(config, f, ensure_ascii=False)
 
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
-        os.environ["S3_MATCHER_LOG"] = S3_MATCHER_LOG_FILENAME
+        os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
         os.environ["ONYX_ROZ_PASSWORD"] = "password"

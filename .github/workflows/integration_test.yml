@@ -48,4 +48,12 @@ jobs:
         path: tests/test_messages.log
         retention-days: 5
         if-no-files-found: error
-      if: ${{ always() }}      
+      if: ${{ always() }}
+    - name: 'Upload Ingest Logfile'
+      uses: actions/upload-artifact@v3
+      with:
+        name: roz-ingest-logfile-${{ matrix.python-version }}
+        path: tests/ingest.log
+        retention-days: 5
+        if-no-files-found: error
+      if: ${{ always() }}     
