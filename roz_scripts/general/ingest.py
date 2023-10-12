@@ -161,6 +161,23 @@ def main():
             )
             continue
 
+        log.info(
+            f"Received Onyx test create response for artifact: {matched_message['artifact']}"
+        )
+
+        payload["onyx_test_create_status"] = to_test.ok
+        payload["onyx_test_status_code"] = to_test.status_code
+
+        if not payload["onyx_test_create_status"]:
+            payload["validate"] = False
+
+        if to_test.json().get("messages"):
+            for field, messages in to_test.json()["messages"].items():
+                if payload["onyx_test_create_errors"].get(field):
+                    payload["onyx_test_create_errors"][field].extend(messages)
+                else:
+                    payload["onyx_test_create_errors"][field] = messages
+
         with s3_to_fh(
             matched_message["files"][".csv"]["uri"],
             matched_message["files"][".csv"]["etag"],
@@ -230,23 +247,6 @@ def main():
                     queue_suffix="ingest",
                 )
                 continue
-
-        log.info(
-            f"Received Onyx test create response for artifact: {matched_message['artifact']}"
-        )
-
-        payload["onyx_test_create_status"] = to_test.ok
-        payload["onyx_test_status_code"] = to_test.status_code
-
-        if not payload["onyx_test_create_status"]:
-            payload["validate"] = False
-
-        if to_test.json().get("messages"):
-            for field, messages in to_test.json()["messages"].items():
-                if payload["onyx_test_create_errors"].get(field):
-                    payload["onyx_test_create_errors"][field].extend(messages)
-                else:
-                    payload["onyx_test_create_errors"][field] = messages
 
         to_send = None
 
