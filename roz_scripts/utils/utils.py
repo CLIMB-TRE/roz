@@ -407,7 +407,10 @@ def get_credentials(
     else:
         profile = "default"
 
-    endpoint = "https://s3.climb.ac.uk"
+    if not os.getenv("UNIT_TESTING"):
+        endpoint = "https://s3.climb.ac.uk"
+    else:
+        endpoint = "http://localhost:5000"
 
     region = "s3"
 

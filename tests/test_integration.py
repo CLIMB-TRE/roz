@@ -445,10 +445,7 @@ class Test_S3_matcher(unittest.TestCase):
 
 class Test_ingest(unittest.TestCase):
     def setUp(self):
-        # self.mock_s3 = mock_s3()
-        # self.mock_s3.start()
-
-        self.server = ThreadedMotoServer(ip_address="https://s3.climb.ac.uk/")
+        self.server = ThreadedMotoServer()
         self.server.start()
 
         os.environ["AWS_ACCESS_KEY_ID"] = "testing"
@@ -457,7 +454,9 @@ class Test_ingest(unittest.TestCase):
         os.environ["AWS_SESSION_TOKEN"] = "testing"
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
-        self.s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk:5000")
+        os.environ["UNIT_TESTING"] = "True"
+
+        self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
         self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
 
         with open(TEST_CSV_FILENAME, "w") as f:
@@ -513,14 +512,6 @@ class Test_ingest(unittest.TestCase):
         time.sleep(1)
 
     def test_ingest_successful(self):
-        # Import here so that boto client is mocked
-        from roz_scripts.utils.utils import s3_to_fh
-
-        csv_fh = s3_to_fh(
-            "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
-            "7022ea6a3adb39323b5039c1d6587d08",
-        )
-
         with patch("roz_scripts.ingest.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=201, json_data={"data": []}, ok=True
