@@ -469,6 +469,12 @@ class Test_ingest(unittest.TestCase):
             "mscapetest.sample-test.run-test.ont.csv",
         )
 
+        csv_etag = self.s3_client.head_object(
+            "mscapetest-birm-ont-prod", "mscapetest.sample-test.run-test.ont.csv"
+        )["ETag"]
+
+        example_match_message["files"][".csv"]["etag"] = csv_etag
+
         config = {
             "version": "0.1",
             "profiles": {
