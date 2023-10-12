@@ -264,6 +264,7 @@ class Test_S3_matcher(unittest.TestCase):
 
     def tearDown(self):
         self.varys_client.close()
+        self.s3_matcher_process.kill()
 
         credentials = pika.PlainCredentials("guest", "guest")
 
@@ -281,8 +282,8 @@ class Test_S3_matcher(unittest.TestCase):
     def test_s3_successful_match(self):
         args = SimpleNamespace(sleep_time=5)
 
-        s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-        s3_matcher_process.start()
+        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+        self.s3_matcher_process.start()
 
         self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
@@ -317,13 +318,11 @@ class Test_S3_matcher(unittest.TestCase):
         )
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
-        s3_matcher_process.kill()
-
     def test_s3_incorrect_match(self):
         args = SimpleNamespace(sleep_time=5)
 
-        s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-        s3_matcher_process.start()
+        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+        self.s3_matcher_process.start()
 
         self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
@@ -339,8 +338,6 @@ class Test_S3_matcher(unittest.TestCase):
         )
         self.assertIsNone(message)
 
-        s3_matcher_process.kill()
-
     def test_s3_updated_csv(self):
         with patch("roz_scripts.s3_matcher.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._filter.return_value.__next__.return_value = MockResponse(
@@ -349,8 +346,8 @@ class Test_S3_matcher(unittest.TestCase):
 
             args = SimpleNamespace(sleep_time=5)
 
-            s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-            s3_matcher_process.start()
+            self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+            self.s3_matcher_process.start()
 
             self.varys_client.send(
                 example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
@@ -400,8 +397,6 @@ class Test_S3_matcher(unittest.TestCase):
             )
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
-            s3_matcher_process.kill()
-
     def test_s3_identical_csv(self):
         with patch("roz_scripts.s3_matcher.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._filter.return_value.__next__.return_value = MockResponse(
@@ -410,8 +405,8 @@ class Test_S3_matcher(unittest.TestCase):
 
             args = SimpleNamespace(sleep_time=5)
 
-            s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-            s3_matcher_process.start()
+            self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+            self.s3_matcher_process.start()
 
             self.varys_client.send(
                 example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
@@ -439,8 +434,6 @@ class Test_S3_matcher(unittest.TestCase):
             )
 
             self.assertIsNone(message_2)
-
-            s3_matcher_process.kill()
 
 
 class Test_ingest(unittest.TestCase):
@@ -472,7 +465,7 @@ class Test_ingest(unittest.TestCase):
         csv_etag = self.s3_client.head_object(
             Bucket="mscapetest-birm-ont-prod",
             Key="mscapetest.sample-test.run-test.ont.csv",
-        )["ETag"]
+        )["ETag"].replace('\\"', "")
 
         example_match_message["files"][".csv"]["etag"] = csv_etag
 
@@ -504,6 +497,7 @@ class Test_ingest(unittest.TestCase):
         # self.varys_client.close()
         # self.mock_s3.stop()
         self.server.stop()
+        self.ingest_process.kill()
 
         credentials = pika.PlainCredentials("guest", "guest")
 
@@ -524,8 +518,8 @@ class Test_ingest(unittest.TestCase):
                 status_code=201, json_data={"data": []}, ok=True
             )
 
-            ingest_process = mp.Process(target=ingest.main)
-            ingest_process.start()
+            self.ingest_process = mp.Process(target=ingest.main)
+            self.ingest_process.start()
 
             self.varys_client.send(
                 example_match_message,
