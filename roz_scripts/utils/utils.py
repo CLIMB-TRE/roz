@@ -393,10 +393,12 @@ def get_credentials(
 
     credential_file = configparser.ConfigParser()
 
+    credentials = {}
+
     try:
         credential_file.read_file(open(os.path.expanduser("~/.aws/credentials"), "rt"))
-        access_key = credential_file[profile]["aws_access_key_id"]
-        secret_key = credential_file[profile]["aws_secret_access_key"]
+        credentials["access_key"] = credential_file[profile]["aws_access_key_id"]
+        credentials["secret_key"] = credential_file[profile]["aws_secret_access_key"]
     except FileNotFoundError:
         pass
 
@@ -410,20 +412,20 @@ def get_credentials(
     region = "s3"
 
     if os.getenv("AWS_ACCESS_KEY_ID"):
-        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        credentials["access_key"] = os.getenv("AWS_ACCESS_KEY_ID")
 
     if os.getenv("AWS_SECRET_ACCESS_KEY"):
-        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        credentials["secret_key"] = os.getenv("AWS_SECRET_ACCESS_KEY")
 
     if args:
         if args.access_key:
-            access_key = args.access_key
+            credentials["access_key"] = args.access_key
 
         if args.secret_key:
-            secret_key = args.secret_key
+            credentials["secret_key"] = args.secret_key
 
     # Make this actually work
-    if not access_key or not secret_key:
+    if not credentials.get("access_key") or not credentials.get("secret_key"):
         error = """CLIMB S3 credentials could not be found, please provide valid credentials in one of the following ways:
             - In a correctly formatted config file (~/.aws/credentials)
             - As environmental variables 'AWS_ACCESS_KEY_ID' and 'AWS_SECRET_ACCESS_KEY'
@@ -433,8 +435,8 @@ def get_credentials(
         sys.exit(1)
 
     s3_credentials = __s3_creds(
-        access_key=access_key,
-        secret_key=secret_key,
+        access_key=credentials["access_key"],
+        secret_key=credentials["secret_key"],
         endpoint=endpoint,
         region=region,
         profile_name=profile,
