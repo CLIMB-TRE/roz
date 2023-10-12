@@ -10,6 +10,7 @@ import os
 import json
 from varys import varys
 from moto import mock_s3
+from moto.server import ThreadedMotoServer
 import boto3
 import uuid
 import pika
@@ -444,8 +445,11 @@ class Test_S3_matcher(unittest.TestCase):
 
 class Test_ingest(unittest.TestCase):
     def setUp(self):
-        self.mock_s3 = mock_s3()
-        self.mock_s3.start()
+        # self.mock_s3 = mock_s3()
+        # self.mock_s3.start()
+
+        self.server = ThreadedMotoServer(ip_address="https://s3.climb.ac.uk/")
+        self.server.start()
 
         os.environ["AWS_ACCESS_KEY_ID"] = "testing"
         os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
@@ -453,7 +457,7 @@ class Test_ingest(unittest.TestCase):
         os.environ["AWS_SESSION_TOKEN"] = "testing"
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
-        self.s3_client = boto3.client("s3")
+        self.s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk:5000")
         self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
 
         with open(TEST_CSV_FILENAME, "w") as f:
@@ -491,8 +495,9 @@ class Test_ingest(unittest.TestCase):
         self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
     def tearDown(self):
-        self.varys_client.close()
-        self.mock_s3.stop()
+        # self.varys_client.close()
+        # self.mock_s3.stop()
+        self.server.stop()
 
         credentials = pika.PlainCredentials("guest", "guest")
 
