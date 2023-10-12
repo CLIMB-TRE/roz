@@ -120,6 +120,8 @@ def main():
                     )
                     continue
 
+                multiline_csv = False
+
                 responses = [response for response in response_generator]
 
                 if len(responses) == 0:
