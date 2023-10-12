@@ -237,7 +237,7 @@ def validate(
         )
         return False
 
-    if not to_validate["onyx_test_create_status"]:
+    if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         varys_client.send(
             message=payload,
             exchange=f"inbound.results.pathsafe.{to_validate['site']}",

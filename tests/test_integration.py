@@ -580,6 +580,7 @@ class Test_ingest(unittest.TestCase):
                 message_dict["files"][".csv"]["key"],
                 "mscapetest.sample-test.run-test.ont.csv",
             )
+            self.assertTrue(message_dict["validate"])
             self.assertEqual(message_dict["onyx_test_create_errors"], {})
             self.assertEqual(message_dict["onyx_test_status_code"], 201)
             self.assertTrue(message_dict["onyx_test_create_status"])
@@ -633,8 +634,9 @@ class Test_ingest(unittest.TestCase):
                 "Field does not match filename",
                 message_dict["onyx_test_create_errors"]["run_name"],
             )
+            self.assertFalse(message_dict["validate"])
             self.assertEqual(message_dict["onyx_test_status_code"], 201)
-            self.assertFalse(message_dict["onyx_test_create_status"])
+            self.assertTrue(message_dict["onyx_test_create_status"])
             self.assertFalse(message_dict["cid"])
             self.assertFalse(message_dict["test_flag"])
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
@@ -670,6 +672,7 @@ class Test_ingest(unittest.TestCase):
                 message_dict["onyx_test_create_errors"]["metadata_csv"],
             )
             self.assertFalse(message_dict["onyx_test_create_status"])
+            self.assertFalse(message_dict["validate"])
 
     def test_onyx_create_error_handling(self):
         with patch("roz_scripts.ingest.OnyxClient") as mock_client:
@@ -709,3 +712,4 @@ class Test_ingest(unittest.TestCase):
             )
             self.assertFalse(message_dict["onyx_test_create_status"])
             self.assertEqual(message_dict["onyx_test_status_code"], 400)
+            self.assertFalse(message_dict["validate"])

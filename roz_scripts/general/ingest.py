@@ -70,6 +70,7 @@ def main():
         "platform": "",
         "ingest_timestamp": "",
         "cid": False,
+        "validate": True,
         "site": "",
         "created": False,
         "ingested": False,
@@ -144,6 +145,9 @@ def main():
             payload["onyx_test_create_errors"]["metadata_csv"] = [
                 "Multiline metadata CSVs are not permitted"
             ]
+
+            payload["validate"] = False
+
             to_send = None
 
             to_send = parse_match_message(
@@ -212,6 +216,8 @@ def main():
                         ]
 
             if not all(name_matches.keys()):
+                payload["validate"] = False
+
                 to_send = None
 
                 to_send = parse_match_message(
@@ -231,6 +237,9 @@ def main():
 
         payload["onyx_test_create_status"] = to_test.ok
         payload["onyx_test_status_code"] = to_test.status_code
+
+        if not payload["onyx_test_create_status"]:
+            payload["validate"] = False
 
         if to_test.json().get("messages"):
             for field, messages in to_test.json()["messages"].items():
