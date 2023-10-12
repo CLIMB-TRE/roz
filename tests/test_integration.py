@@ -468,11 +468,8 @@ class Test_ingest(unittest.TestCase):
         )
 
         csv_etag = resp["ETag"]
-        print(csv_etag)
 
-        example_match_message["files"][".csv"]["etag"] = csv_etag.replace('\\"', "")
-
-        print(example_match_message)
+        example_match_message["files"][".csv"]["etag"] = csv_etag.replace('"', "")
 
         config = {
             "version": "0.1",
