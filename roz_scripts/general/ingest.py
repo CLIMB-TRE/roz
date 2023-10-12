@@ -215,7 +215,7 @@ def main():
                             "Field does not match filename"
                         ]
 
-            if not all(name_matches.keys()):
+            if not all(name_matches.values()):
                 payload["validate"] = False
 
                 to_send = None
