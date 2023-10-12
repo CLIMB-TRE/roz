@@ -237,9 +237,9 @@ example_mismatch_match_message = {
             "key": "mscapetest.sample-test-2.run-test-2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test-2.run-test-2.ont.csv",
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test-2.run-test-2.ont.csv",
+            "key": "mscapetest.sample-test.run-test.ont.csv",
         },
     },
     "test_flag": False,
