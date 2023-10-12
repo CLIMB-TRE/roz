@@ -232,29 +232,6 @@ def main():
                     else:
                         payload["onyx_test_create_errors"][field] = messages
 
-            # if not status:
-            #     if reason == "unknown":
-            #         log.error(
-            #             f"Onyx test create returned an unknown status code: {to_test.status_code} for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
-            #         )
-            #         continue
-
-            #     elif reason == "perm_failure":
-            #         log.error(
-            #             f"Onyx test create for artifact: {matched_message['artifact']}, UUID: {payload['uuid']} due to Onyx permissions failure"
-            #         )
-            #         continue
-
-            # elif reason == "success":
-            #     log.info(
-            #         f"Onyx test create success for artifact: {matched_message['artifact']}, UUID: {payload['uuid']}"
-            #     )
-            #     if to_test.json()["data"]["cid"]:
-            #         log.error(
-            #             f"Onyx appears to have assigned a CID ({response['data']['cid']}) to artifact: {matched_message['artifact']}. This should NOT happen in any circumstance."
-            #         )
-            #         continue
-
         to_send = None
 
         to_send = parse_match_message(matched_message=matched_message, payload=payload)
