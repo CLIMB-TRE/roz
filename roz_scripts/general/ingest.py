@@ -120,117 +120,118 @@ def main():
                     )
                     continue
 
-                to_test = False
-                multiline_csv = False
+                responses = [response for response in response_generator]
 
-                for response in response_generator:
-                    if to_test:
-                        log.info(
-                            f"Metadata CSV for artifact {matched_message['artifact']}, UUID: {matched_message['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
-                        )
-                        multiline_csv = True
-                        break
-                    else:
-                        to_test = response
+                if len(responses) > 1:
+                    log.info(
+                        f"Metadata CSV for artifact {matched_message['artifact']}, UUID: {matched_message['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
+                    )
+                    multiline_csv = True
+
+                else:
+                    to_test = responses[0]
+
         except Exception as e:
             log.error(f"Failed to connect to Onyx due to error: {e}")
 
-        if not multiline_csv:
-            with s3_to_fh(
-                matched_message["files"][".csv"]["uri"],
-                matched_message["files"][".csv"]["etag"],
-            ) as csv_fh:
-                reader = csv.DictReader(csv_fh, delimiter=",")
-
-                metadata = next(reader)
-
-                fields_present = {"sample_id": False, "run_name": False}
-
-                for field in ("sample_id", "run_name"):
-                    if metadata.get(field):
-                        fields_present[field] = True
-
-                for k, v in fields_present.items():
-                    if not v:
-                        if payload["onyx_test_create_errors"].get(k):
-                            payload["onyx_test_create_errors"][k].append(
-                                "Required field is not present"
-                            )
-                        else:
-                            payload["onyx_test_create_errors"][k] = [
-                                "Required field is not present"
-                            ]
-
-                if not all(fields_present.values()):
-                    to_send = None
-
-                    to_send = parse_match_message(
-                        matched_message=matched_message, payload=payload
-                    )
-
-                    varys_client.send(
-                        message=to_send,
-                        exchange=f"inbound.to_validate.{matched_message['project']}",
-                        queue_suffix="ingest",
-                    )
-                    continue
-
-                name_matches = {
-                    x: metadata[x] == matched_message[x]
-                    for x in ("sample_id", "run_name")
-                }
-
-                for k, v in name_matches.items():
-                    if not v:
-                        if payload["onyx_test_create_errors"].get(k):
-                            payload["onyx_test_create_errors"][k].append(
-                                "Field does not match filename"
-                            )
-                        else:
-                            payload["onyx_test_create_errors"][k] = [
-                                "Field does not match filename"
-                            ]
-
-                if not all(name_matches.keys()):
-                    to_send = None
-
-                    to_send = parse_match_message(
-                        matched_message=matched_message, payload=payload
-                    )
-
-                    varys_client.send(
-                        message=to_send,
-                        exchange=f"inbound.to_validate.{matched_message['project']}",
-                        queue_suffix="ingest",
-                    )
-                    continue
-
         if multiline_csv:
-            if payload["onyx_test_create_errors"].get("metadata_csv"):
-                payload["onyx_test_create_errors"]["metadata_csv"].append(
-                    "Multiline metadata CSVs are not permitted"
-                )
-            else:
-                payload["onyx_test_create_errors"]["metadata_csv"] = [
-                    "Multiline metadata CSVs are not permitted"
-                ]
+            payload["onyx_test_create_errors"]["metadata_csv"] = [
+                "Multiline metadata CSVs are not permitted"
+            ]
+            to_send = None
 
-        else:
-            # status, reason = handle_status_code(to_test.status_code)
-
-            log.info(
-                f"Received Onyx test create response for artifact: {matched_message['artifact']}"
+            to_send = parse_match_message(
+                matched_message=matched_message, payload=payload
             )
 
-            payload["onyx_test_create_status"] = to_test.ok
-            payload["onyx_test_status_code"] = to_test.status_code
+            varys_client.send(
+                message=to_send,
+                exchange=f"inbound.to_validate.{matched_message['project']}",
+                queue_suffix="ingest",
+            )
+            continue
 
-            if to_test.json().get("messages"):
-                for field, messages in to_test.json()["messages"].items():
-                    if payload["onyx_test_create_errors"].get(field):
-                        payload["onyx_test_create_errors"][field].extend(messages)
+        with s3_to_fh(
+            matched_message["files"][".csv"]["uri"],
+            matched_message["files"][".csv"]["etag"],
+        ) as csv_fh:
+            reader = csv.DictReader(csv_fh, delimiter=",")
+
+            metadata = next(reader)
+
+            fields_present = {"sample_id": False, "run_name": False}
+
+            for field in ("sample_id", "run_name"):
+                if metadata.get(field):
+                    fields_present[field] = True
+
+            for k, v in fields_present.items():
+                if not v:
+                    if payload["onyx_test_create_errors"].get(k):
+                        payload["onyx_test_create_errors"][k].append(
+                            "Required field is not present"
+                        )
                     else:
-                        payload["onyx_test_create_errors"][field] = messages
+                        payload["onyx_test_create_errors"][k] = [
+                            "Required field is not present"
+                        ]
+
+            if not all(fields_present.values()):
+                to_send = None
+
+                to_send = parse_match_message(
+                    matched_message=matched_message, payload=payload
+                )
+
+                varys_client.send(
+                    message=to_send,
+                    exchange=f"inbound.to_validate.{matched_message['project']}",
+                    queue_suffix="ingest",
+                )
+                continue
+
+            name_matches = {
+                x: metadata[x] == matched_message[x] for x in ("sample_id", "run_name")
+            }
+
+            for k, v in name_matches.items():
+                if not v:
+                    if payload["onyx_test_create_errors"].get(k):
+                        payload["onyx_test_create_errors"][k].append(
+                            "Field does not match filename"
+                        )
+                    else:
+                        payload["onyx_test_create_errors"][k] = [
+                            "Field does not match filename"
+                        ]
+
+            if not all(name_matches.keys()):
+                to_send = None
+
+                to_send = parse_match_message(
+                    matched_message=matched_message, payload=payload
+                )
+
+                varys_client.send(
+                    message=to_send,
+                    exchange=f"inbound.to_validate.{matched_message['project']}",
+                    queue_suffix="ingest",
+                )
+                continue
+
+        log.info(
+            f"Received Onyx test create response for artifact: {matched_message['artifact']}"
+        )
+
+        payload["onyx_test_create_status"] = to_test.ok
+        payload["onyx_test_status_code"] = to_test.status_code
+
+        if to_test.json().get("messages"):
+            for field, messages in to_test.json()["messages"].items():
+                if payload["onyx_test_create_errors"].get(field):
+                    payload["onyx_test_create_errors"][field].extend(messages)
+                else:
+                    payload["onyx_test_create_errors"][field] = messages
 
         to_send = None
 

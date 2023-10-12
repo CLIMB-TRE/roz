@@ -496,8 +496,7 @@ class Test_ingest(unittest.TestCase):
         self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
     def tearDown(self):
-        # self.varys_client.close()
-        # self.mock_s3.stop()
+        self.varys_client.close()
         self.server.stop()
         self.ingest_process.kill()
 
