@@ -515,9 +515,9 @@ class Test_ingest(unittest.TestCase):
 
     def test_ingest_successful(self):
         with patch("roz_scripts.ingest.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-                status_code=201, json_data={"data": []}, ok=True
-            )
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.__iter__.return_value = [
+                MockResponse(status_code=201, json_data={"data": []}, ok=True)
+            ]
 
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()

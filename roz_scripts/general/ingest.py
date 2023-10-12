@@ -122,6 +122,10 @@ def main():
 
                 responses = [response for response in response_generator]
 
+                if len(responses) == 0:
+                    log.error("Onyx test csv create failed to return any responses")
+                    continue
+
                 if len(responses) > 1:
                     log.info(
                         f"Metadata CSV for artifact {matched_message['artifact']}, UUID: {matched_message['uuid']} contains more than one record, metadata CSVs should only ever contain a single record"
