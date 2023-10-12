@@ -471,7 +471,7 @@ class Test_ingest(unittest.TestCase):
 
         csv_etag = self.s3_client.head_object(
             Bucket="mscapetest-birm-ont-prod",
-            key="mscapetest.sample-test.run-test.ont.csv",
+            Key="mscapetest.sample-test.run-test.ont.csv",
         )["ETag"]
 
         example_match_message["files"][".csv"]["etag"] = csv_etag
