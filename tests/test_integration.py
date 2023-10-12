@@ -462,12 +462,17 @@ class Test_ingest(unittest.TestCase):
             "mscapetest.sample-test.run-test.ont.csv",
         )
 
-        csv_etag = self.s3_client.head_object(
+        resp = self.s3_client.head_object(
             Bucket="mscapetest-birm-ont-prod",
             Key="mscapetest.sample-test.run-test.ont.csv",
-        )["ETag"].replace('\\"', "")
+        )
 
-        example_match_message["files"][".csv"]["etag"] = csv_etag
+        csv_etag = resp["ETag"]
+        print(csv_etag)
+
+        example_match_message["files"][".csv"]["etag"] = csv_etag.replace('\\"', "")
+
+        print(example_match_message)
 
         config = {
             "version": "0.1",
