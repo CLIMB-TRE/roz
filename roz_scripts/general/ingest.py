@@ -9,7 +9,7 @@ from onyx import OnyxClient
 
 import varys
 
-from roz_scripts.utils import utils
+from roz_scripts.utils.utils import init_logger, s3_to_fh
 
 
 def handle_status_code(status_code):
@@ -50,7 +50,7 @@ def main():
             sys.exit(3)
 
     # Setup producer / consumer
-    log = varys.utils.init_logger(
+    log = init_logger(
         "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
@@ -107,7 +107,7 @@ def main():
                     # Test create from the metadata CSV
                     response_generator = client._csv_create(
                         matched_message["project"],
-                        csv_file=utils.s3_to_fh(
+                        csv_file=s3_to_fh(
                             matched_message["files"][".csv"]["uri"],
                             matched_message["files"][".csv"]["etag"],
                         ),  # I don't like having a hardcoded metadata file name like this but hypothetically we should always have a metadata CSV
@@ -136,7 +136,7 @@ def main():
             log.error(f"Failed to connect to Onyx due to error: {e}")
 
         if not multiline_csv:
-            with utils.s3_to_fh(
+            with s3_to_fh(
                 matched_message["files"][".csv"]["uri"],
                 matched_message["files"][".csv"]["etag"],
             ) as csv_fh:

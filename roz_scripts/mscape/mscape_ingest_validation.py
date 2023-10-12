@@ -12,9 +12,8 @@ import logging
 import argparse
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 
-from roz_scripts.utils.utils import s3_to_fh, pipeline
+from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger
 from varys import varys
-from varys.utils import init_logger
 
 from onyx import OnyxClient
 
