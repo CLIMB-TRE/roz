@@ -508,6 +508,14 @@ class Test_ingest(unittest.TestCase):
         time.sleep(1)
 
     def test_ingest_successful(self):
+        # Import here so that boto client is mocked
+        from roz_scripts.utils.utils import s3_to_fh
+
+        csv_fh = s3_to_fh(
+            "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "7022ea6a3adb39323b5039c1d6587d08",
+        )
+
         with patch("roz_scripts.ingest.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=201, json_data={"data": []}, ok=True
