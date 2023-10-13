@@ -964,7 +964,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.assertIsNotNone(new_artifact_message)
         new_artifact_message_dict = json.loads(new_artifact_message.body)
 
-        self.assertEqual(new_artifact_message_dict["cid"], "test-cid")
+        self.assertEqual(new_artifact_message_dict["cid"], "test_cid")
         self.assertEqual(new_artifact_message_dict["platform"], "ont")
         self.assertEqual(new_artifact_message_dict["site"], "birm")
         self.assertTrue(uuid.UUID(new_artifact_message_dict["match_uuid"], version=4))
