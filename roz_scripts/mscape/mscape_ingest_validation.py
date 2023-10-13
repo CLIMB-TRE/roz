@@ -79,7 +79,6 @@ def onyx_update(
 def execute_validation_pipeline(
     payload: dict,
     args: argparse.Namespace,
-    log: logging.getLogger,
     ingest_pipe: pipeline,
 ) -> tuple[int, bool, str, str]:
     """Execute the validation pipeline for a given artifact
@@ -111,8 +110,6 @@ def execute_validation_pipeline(
         parameters["fastq1"] = payload["files"][".1.fastq.gz"]["uri"]
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
-
-    log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}'")
 
     return ingest_pipe.execute(params=parameters)
 
@@ -676,6 +673,8 @@ def validate(
 ):
     to_validate = json.loads(message.body)
 
+    log.info(f"Started validation func for UUID: {to_validate['uuid']}")
+
     payload = copy.deepcopy(to_validate)
 
     # This client is purely for Mscape, ignore all other messages
@@ -693,17 +692,18 @@ def validate(
         )
         return False
 
+    log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}'")
+
     rc, timeout, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
     )
+
     if ingest_pipe.cmd:
         log.info(
             f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
         )
 
-    if not timeout:
-        log.info(f"Pipeline execution for message id: {payload['uuid']}, complete.")
-    else:
+    if timeout:
         log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
         payload["ingest_errors"].append("Validation pipeline timeout")
         log.info(f"Sending validation result for UUID: {payload['uuid']}")
