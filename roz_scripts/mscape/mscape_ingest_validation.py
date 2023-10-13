@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 import time
 import logging
 import argparse
-from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger, get_credentials
 from varys import varys
@@ -919,7 +919,7 @@ def run(args):
     max_concurrent = args.n_workers  # how many futures to use at most
     pending = set()  # currently running futures
 
-    with ProcessPoolExecutor(max_workers=args.n_workers) as executor:
+    with ThreadPoolExecutor(max_workers=args.n_workers) as executor:
         try:
             while True:
                 # Don't continue until there is a free worker
@@ -928,6 +928,9 @@ def run(args):
 
                 message = varys_client.receive(
                     exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
+                )
+                log.info(
+                    f"Submitting job to thread pool for UUID: {json.loads(message.body)['uuid']}"
                 )
 
                 pending.add(
