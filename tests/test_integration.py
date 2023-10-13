@@ -929,6 +929,8 @@ class Test_mscape_validator(unittest.TestCase):
 
         self.validator_process.start()
 
+        print(self.mock_pipeline.call_args_list)
+
         self.varys_client.send(
             example_validator_message,
             exchange="inbound.to_validate.mscapetest",
