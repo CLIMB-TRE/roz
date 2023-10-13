@@ -920,28 +920,31 @@ def run(args):
     pending = set()  # currently running futures
 
     with ProcessPoolExecutor(max_workers=args.n_workers) as executor:
-        while True:
-            # Don't continue until there is a free worker
-            while len(pending) >= max_concurrent:
-                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+        try:
+            while True:
+                # Don't continue until there is a free worker
+                while len(pending) >= max_concurrent:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
 
-            message = varys_client.receive(
-                exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
-            )
-
-            pending.add(
-                executor.submit(
-                    validate,
-                    kwargs={
-                        "message": message,
-                        "args": args,
-                        "log": log,
-                        "ingest_pipe": ingest_pipe,
-                        "s3_client": s3_client,
-                        "varys_client": varys_client,
-                    },
+                message = varys_client.receive(
+                    exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
                 )
-            )
+
+                pending.add(
+                    executor.submit(
+                        validate,
+                        kwargs={
+                            "message": message,
+                            "args": args,
+                            "log": log,
+                            "ingest_pipe": ingest_pipe,
+                            "s3_client": s3_client,
+                            "varys_client": varys_client,
+                        },
+                    )
+                )
+        except Exception as e:
+            log.error(f"Fatal error in ingest validator: {e}")
 
 
 def main():

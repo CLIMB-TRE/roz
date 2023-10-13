@@ -920,7 +920,7 @@ class Test_mscape_validator(unittest.TestCase):
             nxf_config="test",
             k2_host="test",
             result_dir=DIR,
-            n_workers=1,
+            n_workers=2,
         )
 
         self.validator_process = mp.Process(
