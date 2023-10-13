@@ -800,10 +800,30 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["UNIT_TESTING"] = "True"
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
+        self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
         self.s3_client.create_bucket(Bucket="mscapetest-published-reads")
         self.s3_client.create_bucket(Bucket="mscapetest-published-reports")
         self.s3_client.create_bucket(Bucket="mscapetest-published-taxon-reports")
         self.s3_client.create_bucket(Bucket="mscapetest-published-binned-reads")
+
+        with open(TEST_CSV_FILENAME, "w") as f:
+            f.write("sample_id,run_name,project,platform,site\n")
+            f.write("sample-test,run-test,mscapetest,ont,birm")
+
+        self.s3_client.upload_file(
+            TEST_CSV_FILENAME,
+            "mscapetest-birm-ont-prod",
+            "mscapetest.sample-test.run-test.ont.csv",
+        )
+
+        resp = self.s3_client.head_object(
+            Bucket="mscapetest-birm-ont-prod",
+            Key="mscapetest.sample-test.run-test.ont.csv",
+        )
+
+        csv_etag = resp["ETag"].replace('"', "")
+
+        example_match_message["files"][".csv"]["etag"] = csv_etag
 
         config = {
             "version": "0.1",
