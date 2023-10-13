@@ -385,7 +385,7 @@ def push_taxon_reports(
             # Add handling for Db in name etc
             s3_client.upload_file(
                 os.path.join(taxon_report_path, report),
-                "mscapetest-taxon-reports",
+                "mscapetest-published-taxon-reports",
                 f"{payload['cid']}/{report}",
             )
 
