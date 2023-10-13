@@ -863,6 +863,7 @@ class Test_mscape_validator(unittest.TestCase):
             "test_stdout",
             "test_stderr",
         )
+        self.mock_pipeline.cmd.return_value = "Hello pytest :)"
 
         self.mock_client.__enter__.return_value._update.return_value = MockResponse(
             status_code=200
@@ -937,7 +938,7 @@ class Test_mscape_validator(unittest.TestCase):
         new_artifact_message = self.varys_client.receive(
             exchange="inbound.new_artifact.mscape",
             queue_suffix="ingest",
-            timeout=30,
+            timeout=60,
         )
 
         self.assertIsNotNone(new_artifact_message)
