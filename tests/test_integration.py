@@ -886,7 +886,9 @@ class Test_mscape_validator(unittest.TestCase):
             ),
             "w",
         ).close()
-        open(os.path.join(classifications_path, "PlusPF.kraken_report.txt")).close()
+        open(
+            os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+        ).close()
         open(
             os.path.join(binned_reads_path, "reads_by_taxa/reads.286.fastq.gz"), "w"
         ).close()
