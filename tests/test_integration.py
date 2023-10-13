@@ -912,9 +912,12 @@ class Test_mscape_validator(unittest.TestCase):
 
         args = SimpleNamespace(
             logfile=os.path.join(DIR, "mscape_ingest.log"),
+            log_level="DEBUG",
+            nxf_executable="test",
             nxf_config="test",
             k2_host="test",
             result_dir=DIR,
+            n_workers=1,
         )
 
         self.validator_process = mp.Process(
