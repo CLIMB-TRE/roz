@@ -850,20 +850,20 @@ class Test_mscape_validator(unittest.TestCase):
         self.validator_process.kill()
 
     def test_validator_successful(self):
-        self.mock_pipeline.execute.return_value = (
+        self.mock_pipeline.return_value.execute.return_value = (
             0,
             False,
             "test_stdout",
             "test_stderr",
         )
 
-        self.mock_pipeline.cleanup.return_value = (
+        self.mock_pipeline.return_value.cleanup.return_value = (
             0,
             False,
             "test_stdout",
             "test_stderr",
         )
-        self.mock_pipeline.cmd.return_value = "Hello pytest :)"
+        self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
         self.mock_client.__enter__.return_value._update.return_value = MockResponse(
             status_code=200
@@ -940,7 +940,7 @@ class Test_mscape_validator(unittest.TestCase):
         new_artifact_message = self.varys_client.receive(
             exchange="inbound.new_artifact.mscape",
             queue_suffix="ingest",
-            timeout=60,
+            timeout=30,
         )
 
         self.assertIsNotNone(new_artifact_message)
