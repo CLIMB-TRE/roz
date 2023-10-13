@@ -914,7 +914,10 @@ class Test_mscape_validator(unittest.TestCase):
         ).close()
         open(os.path.join(binned_reads_path, "reads.286.fastq.gz"), "w").close()
         open(
-            os.path.join(DIR, f"{example_validator_message['uuid']}_report.html"), "w"
+            os.path.join(
+                result_path, f"{example_validator_message['uuid']}_report.html"
+            ),
+            "w",
         ).close()
 
         with open(
