@@ -978,7 +978,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.assertTrue(uuid.UUID(detailed_result_message_dict["uuid"], version=4))
         self.assertEqual(
             detailed_result_message_dict["artifact"],
-            "mscape.birm.sample-test.run-test",
+            "mscapetest.birm.sample-test.run-test",
         )
         self.assertEqual(detailed_result_message_dict["project"], "mscapetest")
         self.assertEqual(detailed_result_message_dict["site"], "birm")
