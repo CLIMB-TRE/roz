@@ -12,7 +12,7 @@ import logging
 import argparse
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 
-from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger
+from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger, get_credentials
 from varys import varys
 
 from onyx import OnyxClient
@@ -405,7 +405,7 @@ def push_taxon_reports(
         update_fail, payload = onyx_update(
             payload=payload,
             fields={
-                "taxon_reports": f"s3://mscapetest-taxon-reports/{payload['cid']}/"
+                "taxon_reports": f"s3://mscapetest-published-taxon-reports/{payload['cid']}/"
             },
             log=log,
         )
@@ -600,8 +600,7 @@ def ret_0_parser(
             if (
                 process.startswith("extract_paired_reads")
                 or process.startswith("extract_reads")
-                and trace["exit"] == "2"
-            ):
+            ) and trace["exit"] == "2":
                 payload["ingest_errors"].append(
                     "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
                 )
@@ -909,11 +908,13 @@ def run(args):
         nxf_executable=args.nxf_executable,
     )
 
+    s3_credentials = get_credentials()
+
     s3_client = boto3.client(
         "s3",
-        endpoint_url="https://s3.climb.ac.uk",
-        aws_access_key_id=os.getenv("ROZ_AWS_ACCESS"),
-        aws_secret_access_key=os.getenv("ROZ_AWS_SECRET"),
+        endpoint_url=s3_credentials.endpoint,
+        aws_access_key_id=s3_credentials.access_key,
+        aws_secret_access_key=s3_credentials.secret_key,
     )
 
     max_concurrent = args.n_workers  # how many futures to use at most
@@ -951,7 +952,6 @@ def main():
     parser.add_argument("--logfile", type=Path)
     parser.add_argument("--log_level", type=str, default="DEBUG")
     parser.add_argument("--nxf_config")
-    parser.add_argument("--work_bucket")
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
