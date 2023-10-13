@@ -695,7 +695,7 @@ def validate(
     log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}'")
 
     rc, timeout, stdout, stderr = execute_validation_pipeline(
-        payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
+        payload=payload, args=args, ingest_pipe=ingest_pipe
     )
 
     if ingest_pipe.cmd:
