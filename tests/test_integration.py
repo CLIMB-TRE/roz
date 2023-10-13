@@ -882,7 +882,7 @@ class Test_mscape_validator(unittest.TestCase):
 
         open(
             os.path.join(
-                DIR, f"preprocess/{example_validator_message['uuid']}.fastp.fastq.gz"
+                preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
             )
         ).close()
         open(os.path.join(classifications_path, "PlusPF.kraken_report.txt")).close()
