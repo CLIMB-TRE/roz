@@ -255,7 +255,7 @@ example_validator_message = {
     "platform": "ont",
     "ingest_timestamp": 1694780451766213337,
     "cid": False,
-    "site": "public",
+    "site": "birm",
     "created": False,
     "ingested": False,
     "files": {
@@ -838,6 +838,8 @@ class Test_mscape_validator(unittest.TestCase):
         channel = connection.channel()
 
         channel.queue_delete(queue="inbound.to_validate.mscapetest")
+        channel.queue_delete(queue="inbound.new_artifact.mscape")
+        channel.queue_delete(queue="inbound.results.mscape.birm")
 
         connection.close()
 
@@ -929,7 +931,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.varys_client.send(
             example_validator_message,
             exchange="inbound.to_validate.mscapetest",
-            queue_suffix="ingest",
+            queue_suffix="validator",
         )
 
         new_artifact_message = self.varys_client.receive(

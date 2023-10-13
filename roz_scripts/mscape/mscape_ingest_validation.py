@@ -685,7 +685,7 @@ def validate(
         )
         return False
 
-    if not to_validate["onyx_test_create_status"] or to_validate["validate"]:
+    if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         varys_client.send(
             message=payload,
             exchange=f"inbound.results.mscape.{to_validate['site']}",
@@ -872,7 +872,6 @@ def validate(
 
 
 def run(args):
-    # Setup producer / consumer
     log = init_logger("mscape.ingest", args.logfile, args.log_level)
 
     varys_client = varys(
