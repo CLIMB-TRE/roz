@@ -997,14 +997,14 @@ class Test_mscape_validator(unittest.TestCase):
             Bucket="mscapetest-published-reads"
         )
         self.assertEqual(
-            published_reads_contents["Contents"][0]["key"], "test_cid.fastq.gz"
+            published_reads_contents["Contents"][0]["Key"], "test_cid.fastq.gz"
         )
 
         published_reports_contents = self.s3_client.list_objects(
             Bucket="mscapetest-published-reports"
         )
         self.assertEqual(
-            published_reports_contents["Contents"][0]["key"],
+            published_reports_contents["Contents"][0]["Key"],
             "test_cid_scylla_report.html",
         )
 
@@ -1012,7 +1012,7 @@ class Test_mscape_validator(unittest.TestCase):
             Bucket="mscapetest-published-taxon-reports"
         )
         self.assertEqual(
-            published_taxon_reports_contents["Contents"][0]["key"],
+            published_taxon_reports_contents["Contents"][0]["Key"],
             "test_cid/PlusPF.kraken_report.txt",
         )
 
@@ -1020,6 +1020,6 @@ class Test_mscape_validator(unittest.TestCase):
             Bucket="mscapetest-published-binned-reads"
         )
         self.assertEqual(
-            published_binned_reads_contents["Contents"][0]["key"],
+            published_binned_reads_contents["Contents"][0]["Key"],
             "test_cid/286.fastq.gz",
         )
