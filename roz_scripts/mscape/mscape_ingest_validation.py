@@ -840,6 +840,7 @@ def validate(
         "ingest_timestamp": time.time_ns(),
         "cid": payload["cid"],
         "site": payload["site"],
+        "platform": payload["platform"],
         "match_uuid": payload["uuid"],
     }
 
