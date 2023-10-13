@@ -823,7 +823,7 @@ class Test_mscape_validator(unittest.TestCase):
 
         csv_etag = resp["ETag"].replace('"', "")
 
-        example_match_message["files"][".csv"]["etag"] = csv_etag
+        example_validator_message["files"][".csv"]["etag"] = csv_etag
 
         config = {
             "version": "0.1",
@@ -948,8 +948,6 @@ class Test_mscape_validator(unittest.TestCase):
         )
 
         self.validator_process.start()
-
-        print(self.mock_pipeline.call_args_list)
 
         self.varys_client.send(
             example_validator_message,
