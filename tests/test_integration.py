@@ -919,7 +919,7 @@ class Test_mscape_validator(unittest.TestCase):
             nxf_executable="test",
             nxf_config="test",
             k2_host="test",
-            result_dir=DIR,
+            result_dir=os.path(DIR),
             n_workers=2,
         )
 
