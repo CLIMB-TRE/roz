@@ -885,9 +885,10 @@ class Test_mscape_validator(unittest.TestCase):
         )
         self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-        self.mock_client.__enter__.return_value._update.return_value = MockResponse(
-            status_code=200
+        self.mock_client.return_value.__enter__.return_value._update.return_value = (
+            MockResponse(status_code=200)
         )
+
         self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
             status_code=201, json_data={"data": {"cid": "test_cid"}}
         )
@@ -931,10 +932,6 @@ class Test_mscape_validator(unittest.TestCase):
 
         with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
             json.dump(example_reads_summary, f)
-
-        self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-            status_code=201, json_data={"data": {"cid": "test_cid"}}
-        )
 
         args = SimpleNamespace(
             logfile=os.path.join(DIR, "mscape_ingest.log"),
