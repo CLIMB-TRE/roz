@@ -1472,7 +1472,7 @@ class Test_mscape_validator(unittest.TestCase):
                 detailed_result_message_dict["onyx_errors"]["sample_id"],
             )
             self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-            self.assertEqual(detailed_result_message_dict["onyx_test_status_code"], 400)
+            self.assertEqual(detailed_result_message_dict["onyx_status_code"], 400)
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscapetest-published-reads"
