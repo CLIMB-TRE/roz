@@ -652,6 +652,8 @@ class Test_ingest(unittest.TestCase):
         )
         channel = connection.channel()
 
+        os.remove(TEST_CSV_FILENAME)
+
         channel.queue_delete(queue="inbound.matched")
         channel.queue_delete(queue="inbound.to_validate.mscapetest")
 
@@ -1311,7 +1313,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.assertFalse(detailed_result_message_dict["ingested"])
         self.assertFalse(detailed_result_message_dict["onyx_create_status"])
         self.assertFalse(detailed_result_message_dict["cid"])
-        self.assertTrue(detailed_result_message_dict["test_ingest_status"])
+        self.assertTrue(detailed_result_message_dict["test_ingest_result"])
         self.assertFalse(detailed_result_message_dict["ingest_errors"])
 
         published_reads_contents = self.s3_client.list_objects(
