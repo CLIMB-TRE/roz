@@ -296,6 +296,20 @@ example_execution_trace = """task_id	hash	native_id	name	status	exit	submit	dura
 10	44/646e08	nf-44646e080dd2f81a22feacd597bb4f6c	ingest:extract_paired_reads (1)	COMPLETED	0	2023-09-15 04:37:03.713	2m 35s	2m 21s	-	-	-	-	-
 """
 
+example_execution_trace_human = """task_id	hash	native_id	name	status	exit	submit	duration	realtime	%cpu	peak_rss	peak_vmem	rchar	wchar
+2	88/1abc3f	nf-881abc3f59bf578b7e0aa4e6b409e936	ingest:kraken_pipeline:run_kraken_and_bracken:determine_bracken_length	COMPLETED	0	2023-09-15 04:08:18.717	13.3s	3.4s	2.3%	3.2 MB	5.6 MB	85.6 KB	472 B
+1	13/ffbf02	nf-13ffbf024c264c53f1fc73d8127df00c	ingest:fastp_paired (1)	COMPLETED	0	2023-09-15 04:08:27.882	2m 24s	2m 6s	546.7%	2.6 GB	3.1 GB	13.4 GB	13.2 GB
+3	62/dda4b3	nf-62dda4b32420ecddcf2aee1de8e9b423	ingest:paired_concatenate (1)	COMPLETED	0	2023-09-15 04:10:58.524	5m 35s	5m 17s	164.2%	38.3 MB	232.7 MB	12.6 GB	12.5 GB
+4	66/50cebb	nf-6650cebb7a8caf2a21cc57d9ad28a48e	ingest:kraken_pipeline:qc_checks:read_stats (1)	COMPLETED	0	2023-09-15 04:16:38.492	2m 9s	1m 54s	98.5%	6.1 MB	11 MB	3 GB	10.9 GB
+6	51/510a2b	nf-51510a2bafede6b088237c8d1ba4b01e	ingest:kraken_pipeline:qc_checks:combine_stats (1)	COMPLETED	0	2023-09-15 04:19:03.509	35.5s	20.7s	114.4%	199.7 MB	12.9 GB	2.7 GB	1.4 GB
+5	91/c305e2	nf-91c305e22a18d1362fbd90c3a9ecdb3f	ingest:kraken_pipeline:run_kraken_and_bracken:kraken2_client (1)	COMPLETED	0	2023-09-15 04:16:38.746	19m 24s	19m 15s	33.0%	695.2 MB	1.2 GB	3 GB	1.4 GB
+7	8d/8d5d7b	nf-8d8d5d7b4d994f3c81aba6cbcd94200a	ingest:kraken_pipeline:run_kraken_and_bracken:combine_kraken_outputs	COMPLETED	0	2023-09-15 04:36:08.725	38.3s	21.9s	149.7%	58.2 MB	12.7 GB	1.4 GB	1.4 GB
+8	33/b742de	nf-33b742dee3413d67186dfc1ef7187914	ingest:kraken_pipeline:run_kraken_and_bracken:bracken	COMPLETED	0	2023-09-15 04:36:48.809	10.2s	0ms	94.9%	6.1 MB	10.8 MB	4.1 MB	802.3 KB
+9	24/8ce934	nf-248ce9347747953fa4c71ed275e35463	ingest:kraken_pipeline:run_kraken_and_bracken:bracken_to_json	COMPLETED	0	2023-09-15 04:37:03.642	18.4s	3.6s	194.7%	679.7 MB	1.4 GB	394.7 MB	4 MB
+11	a2/f41a10	nf-a2f41a105cdc1416d6d5b49cd98228e7	ingest:kraken_pipeline:generate_report:make_report (1)	COMPLETED	0	2023-09-15 04:37:28.660	22.3s	5.2s	240.2%	3.2 MB	5.6 MB	6.3 MB	755.2 KB
+10	44/646e08	nf-44646e080dd2f81a22feacd597bb4f6c	ingest:extract_paired_reads (1)	FAILED	2	2023-09-15 04:37:03.713	2m 35s	2m 21s	-	-	-	-	-
+"""
+
 example_reads_summary = [
     {
         "human_readable": "Pseudomonas",
@@ -1023,3 +1037,134 @@ class Test_mscape_validator(unittest.TestCase):
             published_binned_reads_contents["Contents"][0]["Key"],
             "test_cid/286.fastq.gz",
         )
+
+    def test_too_much_human(self):
+        self.mock_pipeline.return_value.execute.return_value = (
+            0,
+            False,
+            "test_stdout",
+            "test_stderr",
+        )
+
+        self.mock_pipeline.return_value.cleanup.return_value = (
+            0,
+            False,
+            "test_stdout",
+            "test_stderr",
+        )
+        self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+        self.mock_client.return_value.__enter__.return_value._update.return_value = (
+            MockResponse(status_code=200)
+        )
+
+        self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+            status_code=201, json_data={"data": {"cid": "test_cid"}}
+        )
+
+        result_path = os.path.join(DIR, example_validator_message["uuid"])
+        preprocess_path = os.path.join(result_path, "preprocess")
+        classifications_path = os.path.join(result_path, "classifications")
+        pipeline_info_path = os.path.join(result_path, "pipeline_info")
+        binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+
+        os.makedirs(preprocess_path, exist_ok=True)
+        os.makedirs(classifications_path, exist_ok=True)
+        os.makedirs(pipeline_info_path, exist_ok=True)
+        os.makedirs(binned_reads_path, exist_ok=True)
+
+        open(
+            os.path.join(
+                preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+            ),
+            "w",
+        ).close()
+        open(
+            os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+        ).close()
+        open(
+            os.path.join(
+                result_path, f"{example_validator_message['uuid']}_report.html"
+            ),
+            "w",
+        ).close()
+
+        with open(
+            os.path.join(
+                pipeline_info_path,
+                f"execution_trace_{example_validator_message['uuid']}.txt",
+            ),
+            "w",
+        ) as f:
+            f.write(example_execution_trace_human)
+
+        with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+            json.dump(example_reads_summary, f)
+
+        args = SimpleNamespace(
+            logfile=os.path.join(DIR, "mscape_ingest.log"),
+            log_level="DEBUG",
+            nxf_executable="test",
+            nxf_config="test",
+            k2_host="test",
+            result_dir=DIR,
+            n_workers=2,
+        )
+
+        self.validator_process = mp.Process(
+            target=mscape_ingest_validation.run, args=(args,)
+        )
+
+        self.validator_process.start()
+
+        self.varys_client.send(
+            example_validator_message,
+            exchange="inbound.to_validate.mscapetest",
+            queue_suffix="validator",
+        )
+
+        new_artifact_message = self.varys_client.receive(
+            exchange="inbound.new_artifact.mscape",
+            queue_suffix="ingest",
+            timeout=10,
+        )
+
+        self.assertIsNone(new_artifact_message)
+
+        detailed_result_message = self.varys_client.receive(
+            "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
+        )
+
+        self.assertIsNotNone(detailed_result_message)
+
+        detailed_result_message_dict = json.loads(detailed_result_message.body)
+
+        self.assertIn(
+            "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly",
+            detailed_result_message_dict["ingest_errors"],
+        )
+
+        self.assertFalse(detailed_result_message_dict["created"])
+        self.assertFalse(detailed_result_message_dict["ingested"])
+        self.assertFalse(detailed_result_message_dict["onyx_create_status"])
+        self.assertFalse(detailed_result_message_dict["cid"])
+
+        published_reads_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-reads"
+        )
+        self.assertFalse(published_reads_contents["Contents"])
+
+        published_reports_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-reports"
+        )
+        self.assertFalse(published_reports_contents["Contents"])
+
+        published_taxon_reports_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-taxon-reports"
+        )
+        self.assertFalse(published_taxon_reports_contents["Contents"])
+
+        published_binned_reads_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-binned-reads"
+        )
+        self.assertFalse(published_binned_reads_contents["Contents"])
