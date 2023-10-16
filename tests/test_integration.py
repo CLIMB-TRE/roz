@@ -419,7 +419,7 @@ class Test_S3_matcher(unittest.TestCase):
         channel.queue_delete(queue="inbound.matched")
 
         connection.close()
-        time.sleep(1)
+        time.sleep(0.1)
 
     def test_s3_successful_match(self):
         args = SimpleNamespace(sleep_time=5)
@@ -658,7 +658,7 @@ class Test_ingest(unittest.TestCase):
         channel.queue_delete(queue="inbound.to_validate.mscapetest")
 
         connection.close()
-        time.sleep(1)
+        time.sleep(0.1)
 
     def test_ingest_successful(self):
         with patch("roz_scripts.ingest.OnyxClient") as mock_client:
@@ -918,12 +918,14 @@ class Test_mscape_validator(unittest.TestCase):
 
         os.remove(TEST_CSV_FILENAME)
 
+        self.mock_client.reset_mock()
         self.mock_client.stop()
+        self.mock_pipeline.reset_mock()
         self.mock_pipeline.stop()
         self.server.stop()
         self.varys_client.close()
         self.validator_process.kill()
-        time.sleep(1)
+        time.sleep(0.1)
 
     def test_validator_successful(self):
         self.mock_pipeline.return_value.execute.return_value = (
