@@ -838,12 +838,6 @@ class Test_mscape_validator(unittest.TestCase):
         self.server = ThreadedMotoServer()
         self.server.start()
 
-        self.onyxpatcher = patch("roz_scripts.mscape_ingest_validation.OnyxClient")
-        self.mock_client = self.onyxpatcher.start()
-
-        self.piplinepatcher = patch("roz_scripts.mscape_ingest_validation.pipeline")
-        self.mock_pipeline = self.piplinepatcher.start()
-
         os.environ["AWS_ACCESS_KEY_ID"] = "testing"
         os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
         os.environ["AWS_SECURITY_TOKEN"] = "testing"
@@ -918,565 +912,582 @@ class Test_mscape_validator(unittest.TestCase):
 
         os.remove(TEST_CSV_FILENAME)
 
-        self.mock_client.reset_mock(return_value=True, side_effect=True)
-        self.onyxpatcher.stop()
-        self.mock_pipeline.reset_mock(return_value=True, side_effect=True)
-        self.piplinepatcher.stop()
         self.server.stop()
         self.varys_client.close()
         self.validator_process.kill()
         time.sleep(0.5)
 
     def test_validator_successful(self):
-        self.mock_pipeline.return_value.execute.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
+        with (
+            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
 
-        self.mock_pipeline.return_value.cleanup.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
-        self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-        self.mock_client.return_value.__enter__.return_value._update.return_value = (
-            MockResponse(status_code=200)
-        )
+            mock_client.return_value.__enter__.return_value._update.return_value = MockResponse(
+                status_code=200
+            )
 
-        self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-            status_code=201, json_data={"data": {"cid": "test_cid"}}
-        )
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+                status_code=201, json_data={"data": {"cid": "test_cid"}}
+            )
 
-        result_path = os.path.join(DIR, example_validator_message["uuid"])
-        preprocess_path = os.path.join(result_path, "preprocess")
-        classifications_path = os.path.join(result_path, "classifications")
-        pipeline_info_path = os.path.join(result_path, "pipeline_info")
-        binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
 
-        os.makedirs(preprocess_path, exist_ok=True)
-        os.makedirs(classifications_path, exist_ok=True)
-        os.makedirs(pipeline_info_path, exist_ok=True)
-        os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
 
-        open(
-            os.path.join(
-                preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
-            ),
-            "w",
-        ).close()
-        open(
-            os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-        ).close()
-        open(os.path.join(binned_reads_path, "reads.286.fastq.gz"), "w").close()
-        open(
-            os.path.join(
-                result_path, f"{example_validator_message['uuid']}_report.html"
-            ),
-            "w",
-        ).close()
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(os.path.join(binned_reads_path, "reads.286.fastq.gz"), "w").close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
 
-        with open(
-            os.path.join(
-                pipeline_info_path,
-                f"execution_trace_{example_validator_message['uuid']}.txt",
-            ),
-            "w",
-        ) as f:
-            f.write(example_execution_trace)
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
 
-        with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-            json.dump(example_reads_summary, f)
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
 
-        args = SimpleNamespace(
-            logfile=os.path.join(DIR, "mscape_ingest.log"),
-            log_level="DEBUG",
-            nxf_executable="test",
-            nxf_config="test",
-            k2_host="test",
-            result_dir=DIR,
-            n_workers=2,
-        )
+            args = SimpleNamespace(
+                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
 
-        self.validator_process = mp.Process(
-            target=mscape_ingest_validation.run, args=(args,)
-        )
+            self.validator_process = mp.Process(
+                target=mscape_ingest_validation.run, args=(args,)
+            )
 
-        self.validator_process.start()
+            self.validator_process.start()
 
-        self.varys_client.send(
-            example_validator_message,
-            exchange="inbound.to_validate.mscapetest",
-            queue_suffix="validator",
-        )
+            self.varys_client.send(
+                example_validator_message,
+                exchange="inbound.to_validate.mscapetest",
+                queue_suffix="validator",
+            )
 
-        new_artifact_message = self.varys_client.receive(
-            exchange="inbound.new_artifact.mscape",
-            queue_suffix="ingest",
-            timeout=30,
-        )
+            new_artifact_message = self.varys_client.receive(
+                exchange="inbound.new_artifact.mscape",
+                queue_suffix="ingest",
+                timeout=30,
+            )
 
-        self.assertIsNotNone(new_artifact_message)
-        new_artifact_message_dict = json.loads(new_artifact_message.body)
+            self.assertIsNotNone(new_artifact_message)
+            new_artifact_message_dict = json.loads(new_artifact_message.body)
 
-        self.assertEqual(new_artifact_message_dict["cid"], "test_cid")
-        self.assertEqual(new_artifact_message_dict["platform"], "ont")
-        self.assertEqual(new_artifact_message_dict["site"], "birm")
-        self.assertTrue(uuid.UUID(new_artifact_message_dict["match_uuid"], version=4))
+            self.assertEqual(new_artifact_message_dict["cid"], "test_cid")
+            self.assertEqual(new_artifact_message_dict["platform"], "ont")
+            self.assertEqual(new_artifact_message_dict["site"], "birm")
+            self.assertTrue(
+                uuid.UUID(new_artifact_message_dict["match_uuid"], version=4)
+            )
 
-        detailed_result_message = self.varys_client.receive(
-            "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-        )
-        self.assertIsNotNone(detailed_result_message)
-        detailed_result_message_dict = json.loads(detailed_result_message.body)
+            detailed_result_message = self.varys_client.receive(
+                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
+            )
+            self.assertIsNotNone(detailed_result_message)
+            detailed_result_message_dict = json.loads(detailed_result_message.body)
 
-        self.assertTrue(uuid.UUID(detailed_result_message_dict["uuid"], version=4))
-        self.assertEqual(
-            detailed_result_message_dict["artifact"],
-            "mscapetest.sample-test.run-test",
-        )
-        self.assertEqual(detailed_result_message_dict["project"], "mscapetest")
-        self.assertEqual(detailed_result_message_dict["site"], "birm")
-        self.assertEqual(detailed_result_message_dict["platform"], "ont")
-        self.assertEqual(detailed_result_message_dict["cid"], "test_cid")
-        self.assertEqual(detailed_result_message_dict["created"], True)
-        self.assertEqual(detailed_result_message_dict["ingested"], True)
-        self.assertEqual(detailed_result_message_dict["onyx_test_status_code"], 201)
-        self.assertEqual(detailed_result_message_dict["onyx_test_create_status"], True)
-        self.assertEqual(detailed_result_message_dict["onyx_status_code"], 201)
-        self.assertEqual(detailed_result_message_dict["onyx_create_status"], True)
-        self.assertEqual(detailed_result_message_dict["test_flag"], False)
-        self.assertEqual(detailed_result_message_dict["ingest_errors"], [])
+            self.assertTrue(uuid.UUID(detailed_result_message_dict["uuid"], version=4))
+            self.assertEqual(
+                detailed_result_message_dict["artifact"],
+                "mscapetest.sample-test.run-test",
+            )
+            self.assertEqual(detailed_result_message_dict["project"], "mscapetest")
+            self.assertEqual(detailed_result_message_dict["site"], "birm")
+            self.assertEqual(detailed_result_message_dict["platform"], "ont")
+            self.assertEqual(detailed_result_message_dict["cid"], "test_cid")
+            self.assertEqual(detailed_result_message_dict["created"], True)
+            self.assertEqual(detailed_result_message_dict["ingested"], True)
+            self.assertEqual(detailed_result_message_dict["onyx_test_status_code"], 201)
+            self.assertEqual(
+                detailed_result_message_dict["onyx_test_create_status"], True
+            )
+            self.assertEqual(detailed_result_message_dict["onyx_status_code"], 201)
+            self.assertEqual(detailed_result_message_dict["onyx_create_status"], True)
+            self.assertEqual(detailed_result_message_dict["test_flag"], False)
+            self.assertEqual(detailed_result_message_dict["ingest_errors"], [])
 
-        published_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reads"
-        )
-        self.assertEqual(
-            published_reads_contents["Contents"][0]["Key"], "test_cid.fastq.gz"
-        )
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertEqual(
+                published_reads_contents["Contents"][0]["Key"], "test_cid.fastq.gz"
+            )
 
-        published_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reports"
-        )
-        self.assertEqual(
-            published_reports_contents["Contents"][0]["Key"],
-            "test_cid_scylla_report.html",
-        )
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertEqual(
+                published_reports_contents["Contents"][0]["Key"],
+                "test_cid_scylla_report.html",
+            )
 
-        published_taxon_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-taxon-reports"
-        )
-        self.assertEqual(
-            published_taxon_reports_contents["Contents"][0]["Key"],
-            "test_cid/PlusPF.kraken_report.txt",
-        )
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertEqual(
+                published_taxon_reports_contents["Contents"][0]["Key"],
+                "test_cid/PlusPF.kraken_report.txt",
+            )
 
-        published_binned_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-binned-reads"
-        )
-        self.assertEqual(
-            published_binned_reads_contents["Contents"][0]["Key"],
-            "test_cid/286.fastq.gz",
-        )
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertEqual(
+                published_binned_reads_contents["Contents"][0]["Key"],
+                "test_cid/286.fastq.gz",
+            )
 
     def test_too_much_human(self):
-        self.mock_pipeline.return_value.execute.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
+        with (
+            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+        ):        
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
 
-        self.mock_pipeline.return_value.cleanup.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
-        self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-        self.mock_client.return_value.__enter__.return_value._update.return_value = (
-            MockResponse(status_code=200)
-        )
+            mock_client.return_value.__enter__.return_value._update.return_value = (
+                MockResponse(status_code=200)
+            )
 
-        self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-            status_code=201, json_data={"data": {"cid": "test_cid"}}
-        )
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+                status_code=201, json_data={"data": {"cid": "test_cid"}}
+            )
 
-        result_path = os.path.join(DIR, example_validator_message["uuid"])
-        preprocess_path = os.path.join(result_path, "preprocess")
-        classifications_path = os.path.join(result_path, "classifications")
-        pipeline_info_path = os.path.join(result_path, "pipeline_info")
-        binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
 
-        os.makedirs(preprocess_path, exist_ok=True)
-        os.makedirs(classifications_path, exist_ok=True)
-        os.makedirs(pipeline_info_path, exist_ok=True)
-        os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
 
-        open(
-            os.path.join(
-                preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
-            ),
-            "w",
-        ).close()
-        open(
-            os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-        ).close()
-        open(
-            os.path.join(
-                result_path, f"{example_validator_message['uuid']}_report.html"
-            ),
-            "w",
-        ).close()
+            open(
+                os.path.join(
+                    preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
 
-        with open(
-            os.path.join(
-                pipeline_info_path,
-                f"execution_trace_{example_validator_message['uuid']}.txt",
-            ),
-            "w",
-        ) as f:
-            f.write(example_execution_trace_human)
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace_human)
 
-        with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-            json.dump(example_reads_summary, f)
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
 
-        args = SimpleNamespace(
-            logfile=os.path.join(DIR, "mscape_ingest.log"),
-            log_level="DEBUG",
-            nxf_executable="test",
-            nxf_config="test",
-            k2_host="test",
-            result_dir=DIR,
-            n_workers=2,
-        )
+            args = SimpleNamespace(
+                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
 
-        self.validator_process = mp.Process(
-            target=mscape_ingest_validation.run, args=(args,)
-        )
+            self.validator_process = mp.Process(
+                target=mscape_ingest_validation.run, args=(args,)
+            )
 
-        self.validator_process.start()
+            self.validator_process.start()
 
-        self.varys_client.send(
-            example_validator_message,
-            exchange="inbound.to_validate.mscapetest",
-            queue_suffix="validator",
-        )
+            self.varys_client.send(
+                example_validator_message,
+                exchange="inbound.to_validate.mscapetest",
+                queue_suffix="validator",
+            )
 
-        new_artifact_message = self.varys_client.receive(
-            exchange="inbound.new_artifact.mscape",
-            queue_suffix="ingest",
-            timeout=10,
-        )
+            new_artifact_message = self.varys_client.receive(
+                exchange="inbound.new_artifact.mscape",
+                queue_suffix="ingest",
+                timeout=10,
+            )
 
-        self.assertIsNone(new_artifact_message)
+            self.assertIsNone(new_artifact_message)
 
-        detailed_result_message = self.varys_client.receive(
-            "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-        )
+            detailed_result_message = self.varys_client.receive(
+                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
+            )
 
-        self.assertIsNotNone(detailed_result_message)
+            self.assertIsNotNone(detailed_result_message)
 
-        detailed_result_message_dict = json.loads(detailed_result_message.body)
+            detailed_result_message_dict = json.loads(detailed_result_message.body)
 
-        self.assertIn(
-            "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly",
-            detailed_result_message_dict["ingest_errors"],
-        )
+            self.assertIn(
+                "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly",
+                detailed_result_message_dict["ingest_errors"],
+            )
 
-        self.assertFalse(detailed_result_message_dict["created"])
-        self.assertFalse(detailed_result_message_dict["ingested"])
-        self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-        self.assertFalse(detailed_result_message_dict["cid"])
+            self.assertFalse(detailed_result_message_dict["created"])
+            self.assertFalse(detailed_result_message_dict["ingested"])
+            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
+            self.assertFalse(detailed_result_message_dict["cid"])
 
-        published_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reads"
-        )
-        self.assertNotIn("Contents", published_reads_contents.keys())
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
 
-        published_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reports"
-        )
-        self.assertNotIn("Contents", published_reports_contents.keys())
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertNotIn("Contents", published_reports_contents.keys())
 
-        published_taxon_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-taxon-reports"
-        )
-        self.assertNotIn("Contents", published_taxon_reports_contents.keys())
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
-        published_binned_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-binned-reads"
-        )
-        self.assertNotIn("Contents", published_binned_reads_contents.keys())
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
     def test_successful_test(self):
-        self.mock_pipeline.return_value.execute.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
+        with (
+            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+        ):        
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
 
-        self.mock_pipeline.return_value.cleanup.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
-        self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-        self.mock_client.return_value.__enter__.return_value._update.return_value = (
-            MockResponse(status_code=200)
-        )
+            mock_client.return_value.__enter__.return_value._update.return_value = (
+                MockResponse(status_code=200)
+            )
 
-        self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-            status_code=201, json_data={"data": {"cid": "test_cid"}}
-        )
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+                status_code=201, json_data={"data": {"cid": "test_cid"}}
+            )
 
-        result_path = os.path.join(DIR, example_validator_message["uuid"])
-        preprocess_path = os.path.join(result_path, "preprocess")
-        classifications_path = os.path.join(result_path, "classifications")
-        pipeline_info_path = os.path.join(result_path, "pipeline_info")
-        binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
 
-        os.makedirs(preprocess_path, exist_ok=True)
-        os.makedirs(classifications_path, exist_ok=True)
-        os.makedirs(pipeline_info_path, exist_ok=True)
-        os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
 
-        open(
-            os.path.join(
-                preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
-            ),
-            "w",
-        ).close()
-        open(
-            os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-        ).close()
-        open(
-            os.path.join(
-                result_path, f"{example_validator_message['uuid']}_report.html"
-            ),
-            "w",
-        ).close()
+            open(
+                os.path.join(
+                    preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
 
-        with open(
-            os.path.join(
-                pipeline_info_path,
-                f"execution_trace_{example_validator_message['uuid']}.txt",
-            ),
-            "w",
-        ) as f:
-            f.write(example_execution_trace)
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
 
-        with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-            json.dump(example_reads_summary, f)
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
 
-        args = SimpleNamespace(
-            logfile=os.path.join(DIR, "mscape_ingest.log"),
-            log_level="DEBUG",
-            nxf_executable="test",
-            nxf_config="test",
-            k2_host="test",
-            result_dir=DIR,
-            n_workers=2,
-        )
+            args = SimpleNamespace(
+                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
 
-        self.validator_process = mp.Process(
-            target=mscape_ingest_validation.run, args=(args,)
-        )
+            self.validator_process = mp.Process(
+                target=mscape_ingest_validation.run, args=(args,)
+            )
 
-        self.validator_process.start()
+            self.validator_process.start()
 
-        self.varys_client.send(
-            example_test_validator_message,
-            exchange="inbound.to_validate.mscapetest",
-            queue_suffix="validator",
-        )
+            self.varys_client.send(
+                example_test_validator_message,
+                exchange="inbound.to_validate.mscapetest",
+                queue_suffix="validator",
+            )
 
-        new_artifact_message = self.varys_client.receive(
-            exchange="inbound.new_artifact.mscape",
-            queue_suffix="ingest",
-            timeout=10,
-        )
+            new_artifact_message = self.varys_client.receive(
+                exchange="inbound.new_artifact.mscape",
+                queue_suffix="ingest",
+                timeout=10,
+            )
 
-        self.assertIsNone(new_artifact_message)
+            self.assertIsNone(new_artifact_message)
 
-        detailed_result_message = self.varys_client.receive(
-            "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-        )
+            detailed_result_message = self.varys_client.receive(
+                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
+            )
 
-        self.assertIsNotNone(detailed_result_message)
+            self.assertIsNotNone(detailed_result_message)
 
-        detailed_result_message_dict = json.loads(detailed_result_message.body)
+            detailed_result_message_dict = json.loads(detailed_result_message.body)
 
-        self.assertFalse(detailed_result_message_dict["created"])
-        self.assertFalse(detailed_result_message_dict["ingested"])
-        self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-        self.assertFalse(detailed_result_message_dict["cid"])
-        self.assertTrue(detailed_result_message_dict["test_ingest_result"])
-        self.assertFalse(detailed_result_message_dict["ingest_errors"])
+            self.assertFalse(detailed_result_message_dict["created"])
+            self.assertFalse(detailed_result_message_dict["ingested"])
+            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
+            self.assertFalse(detailed_result_message_dict["cid"])
+            self.assertTrue(detailed_result_message_dict["test_ingest_result"])
+            self.assertFalse(detailed_result_message_dict["ingest_errors"])
 
-        published_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reads"
-        )
-        self.assertNotIn("Contents", published_reads_contents.keys())
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
 
-        published_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reports"
-        )
-        self.assertNotIn("Contents", published_reports_contents.keys())
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertNotIn("Contents", published_reports_contents.keys())
 
-        published_taxon_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-taxon-reports"
-        )
-        self.assertNotIn("Contents", published_taxon_reports_contents.keys())
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
-        published_binned_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-binned-reads"
-        )
-        self.assertNotIn("Contents", published_binned_reads_contents.keys())
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
     def test_onyx_fail(self):
-        self.mock_pipeline.return_value.execute.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
+        with (
+            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+        ):        
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
 
-        self.mock_pipeline.return_value.cleanup.return_value = (
-            0,
-            False,
-            "test_stdout",
-            "test_stderr",
-        )
-        self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                False,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-        self.mock_client.return_value.__enter__.return_value._update.return_value = (
-            MockResponse(status_code=400, ok=False)
-        )
+            mock_client.return_value.__enter__.return_value._update.return_value = (
+                MockResponse(status_code=400, ok=False)
+            )
 
-        self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-            status_code=400,
-            json_data={
-                "data": [],
-                "messages": {"sample_id": "Test sample_id error handling"},
-            },
-            ok=False,
-        )
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+                status_code=400,
+                json_data={
+                    "data": [],
+                    "messages": {"sample_id": "Test sample_id error handling"},
+                },
+                ok=False,
+            )
 
-        result_path = os.path.join(DIR, example_validator_message["uuid"])
-        preprocess_path = os.path.join(result_path, "preprocess")
-        classifications_path = os.path.join(result_path, "classifications")
-        pipeline_info_path = os.path.join(result_path, "pipeline_info")
-        binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
 
-        os.makedirs(preprocess_path, exist_ok=True)
-        os.makedirs(classifications_path, exist_ok=True)
-        os.makedirs(pipeline_info_path, exist_ok=True)
-        os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
 
-        open(
-            os.path.join(
-                preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
-            ),
-            "w",
-        ).close()
-        open(
-            os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-        ).close()
-        open(
-            os.path.join(
-                result_path, f"{example_validator_message['uuid']}_report.html"
-            ),
-            "w",
-        ).close()
+            open(
+                os.path.join(
+                    preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
 
-        with open(
-            os.path.join(
-                pipeline_info_path,
-                f"execution_trace_{example_validator_message['uuid']}.txt",
-            ),
-            "w",
-        ) as f:
-            f.write(example_execution_trace)
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
 
-        with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-            json.dump(example_reads_summary, f)
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
 
-        args = SimpleNamespace(
-            logfile=os.path.join(DIR, "mscape_ingest.log"),
-            log_level="DEBUG",
-            nxf_executable="test",
-            nxf_config="test",
-            k2_host="test",
-            result_dir=DIR,
-            n_workers=2,
-        )
+            args = SimpleNamespace(
+                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
 
-        self.validator_process = mp.Process(
-            target=mscape_ingest_validation.run, args=(args,)
-        )
+            self.validator_process = mp.Process(
+                target=mscape_ingest_validation.run, args=(args,)
+            )
 
-        self.validator_process.start()
+            self.validator_process.start()
 
-        self.varys_client.send(
-            example_test_validator_message,
-            exchange="inbound.to_validate.mscapetest",
-            queue_suffix="validator",
-        )
+            self.varys_client.send(
+                example_test_validator_message,
+                exchange="inbound.to_validate.mscapetest",
+                queue_suffix="validator",
+            )
 
-        new_artifact_message = self.varys_client.receive(
-            exchange="inbound.new_artifact.mscape",
-            queue_suffix="ingest",
-            timeout=10,
-        )
+            new_artifact_message = self.varys_client.receive(
+                exchange="inbound.new_artifact.mscape",
+                queue_suffix="ingest",
+                timeout=10,
+            )
 
-        self.assertIsNone(new_artifact_message)
+            self.assertIsNone(new_artifact_message)
 
-        detailed_result_message = self.varys_client.receive(
-            "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-        )
+            detailed_result_message = self.varys_client.receive(
+                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
+            )
 
-        self.assertIsNotNone(detailed_result_message)
+            self.assertIsNotNone(detailed_result_message)
 
-        detailed_result_message_dict = json.loads(detailed_result_message.body)
+            detailed_result_message_dict = json.loads(detailed_result_message.body)
 
-        self.assertFalse(detailed_result_message_dict["created"])
-        self.assertFalse(detailed_result_message_dict["ingested"])
-        self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-        self.assertFalse(detailed_result_message_dict["cid"])
-        self.assertTrue(detailed_result_message_dict["test_ingest_result"])
-        self.assertFalse(detailed_result_message_dict["ingest_errors"])
+            self.assertFalse(detailed_result_message_dict["created"])
+            self.assertFalse(detailed_result_message_dict["ingested"])
+            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
+            self.assertFalse(detailed_result_message_dict["cid"])
+            self.assertTrue(detailed_result_message_dict["test_ingest_result"])
+            self.assertFalse(detailed_result_message_dict["ingest_errors"])
 
-        self.assertIn(
-            "Test sample_id error handling",
-            detailed_result_message_dict["onyx_errors"]["sample_id"],
-        )
-        self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-        self.assertEqual(detailed_result_message_dict["onyx_test_status_code"], 400)
+            self.assertIn(
+                "Test sample_id error handling",
+                detailed_result_message_dict["onyx_errors"]["sample_id"],
+            )
+            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
+            self.assertEqual(detailed_result_message_dict["onyx_test_status_code"], 400)
 
-        published_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reads"
-        )
-        self.assertNotIn("Contents", published_reads_contents.keys())
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
 
-        published_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-reports"
-        )
-        self.assertNotIn("Contents", published_reports_contents.keys())
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertNotIn("Contents", published_reports_contents.keys())
 
-        published_taxon_reports_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-taxon-reports"
-        )
-        self.assertNotIn("Contents", published_taxon_reports_contents.keys())
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
-        published_binned_reads_contents = self.s3_client.list_objects(
-            Bucket="mscapetest-published-binned-reads"
-        )
-        self.assertNotIn("Contents", published_binned_reads_contents.keys())
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertNotIn("Contents", published_binned_reads_contents.keys())
