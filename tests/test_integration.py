@@ -282,6 +282,43 @@ example_validator_message = {
     "test_ingest_result": False,
 }
 
+example_test_validator_message = {
+    "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
+    "artifact": "mscapetest.sample-test.run-test",
+    "sample_id": "sample-test",
+    "run_name": "run-test",
+    "project": "mscapetest",
+    "uploaders": ["mscape-testuser"],
+    "platform": "ont",
+    "ingest_timestamp": 1694780451766213337,
+    "cid": False,
+    "site": "birm",
+    "created": False,
+    "ingested": False,
+    "files": {
+        ".fastq.gz": {
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.fastq.gz",
+            "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
+            "key": "mscapetest.sample-test.run-test.fastq.gz",
+        },
+        ".csv": {
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "etag": "7022ea6a3adb39323b5039c1d6587d08",
+            "key": "mscapetest.sample-test.run-test.ont.csv",
+        },
+    },
+    "onyx_test_status_code": 201,
+    "onyx_test_create_errors": {},
+    "onyx_test_create_status": True,
+    "validate": True,
+    "onyx_status_code": False,
+    "onyx_errors": {},
+    "onyx_create_status": False,
+    "ingest_errors": [],
+    "test_flag": True,
+    "test_ingest_result": False,
+}
+
 example_execution_trace = """task_id	hash	native_id	name	status	exit	submit	duration	realtime	%cpu	peak_rss	peak_vmem	rchar	wchar
 2	88/1abc3f	nf-881abc3f59bf578b7e0aa4e6b409e936	ingest:kraken_pipeline:run_kraken_and_bracken:determine_bracken_length	COMPLETED	0	2023-09-15 04:08:18.717	13.3s	3.4s	2.3%	3.2 MB	5.6 MB	85.6 KB	472 B
 1	13/ffbf02	nf-13ffbf024c264c53f1fc73d8127df00c	ingest:fastp_paired (1)	COMPLETED	0	2023-09-15 04:08:27.882	2m 24s	2m 6s	546.7%	2.6 GB	3.1 GB	13.4 GB	13.2 GB
@@ -1152,19 +1189,147 @@ class Test_mscape_validator(unittest.TestCase):
         published_reads_contents = self.s3_client.list_objects(
             Bucket="mscapetest-published-reads"
         )
-        self.assertFalse(published_reads_contents["Contents"])
+        self.assertNotIn("Contents", published_reads_contents.keys())
 
         published_reports_contents = self.s3_client.list_objects(
             Bucket="mscapetest-published-reports"
         )
-        self.assertFalse(published_reports_contents["Contents"])
+        self.assertNotIn("Contents", published_reports_contents.keys())
 
         published_taxon_reports_contents = self.s3_client.list_objects(
             Bucket="mscapetest-published-taxon-reports"
         )
-        self.assertFalse(published_taxon_reports_contents["Contents"])
+        self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
         published_binned_reads_contents = self.s3_client.list_objects(
             Bucket="mscapetest-published-binned-reads"
         )
-        self.assertFalse(published_binned_reads_contents["Contents"])
+        self.assertNotIn("Contents", published_binned_reads_contents.keys())
+
+    def test_successful_test(self):
+        self.mock_pipeline.return_value.execute.return_value = (
+            0,
+            False,
+            "test_stdout",
+            "test_stderr",
+        )
+
+        self.mock_pipeline.return_value.cleanup.return_value = (
+            0,
+            False,
+            "test_stdout",
+            "test_stderr",
+        )
+        self.mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+        self.mock_client.return_value.__enter__.return_value._update.return_value = (
+            MockResponse(status_code=200)
+        )
+
+        self.mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+            status_code=201, json_data={"data": {"cid": "test_cid"}}
+        )
+
+        result_path = os.path.join(DIR, example_validator_message["uuid"])
+        preprocess_path = os.path.join(result_path, "preprocess")
+        classifications_path = os.path.join(result_path, "classifications")
+        pipeline_info_path = os.path.join(result_path, "pipeline_info")
+        binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+
+        os.makedirs(preprocess_path, exist_ok=True)
+        os.makedirs(classifications_path, exist_ok=True)
+        os.makedirs(pipeline_info_path, exist_ok=True)
+        os.makedirs(binned_reads_path, exist_ok=True)
+
+        open(
+            os.path.join(
+                preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+            ),
+            "w",
+        ).close()
+        open(
+            os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+        ).close()
+        open(
+            os.path.join(
+                result_path, f"{example_validator_message['uuid']}_report.html"
+            ),
+            "w",
+        ).close()
+
+        with open(
+            os.path.join(
+                pipeline_info_path,
+                f"execution_trace_{example_validator_message['uuid']}.txt",
+            ),
+            "w",
+        ) as f:
+            f.write(example_execution_trace)
+
+        with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+            json.dump(example_reads_summary, f)
+
+        args = SimpleNamespace(
+            logfile=os.path.join(DIR, "mscape_ingest.log"),
+            log_level="DEBUG",
+            nxf_executable="test",
+            nxf_config="test",
+            k2_host="test",
+            result_dir=DIR,
+            n_workers=2,
+        )
+
+        self.validator_process = mp.Process(
+            target=mscape_ingest_validation.run, args=(args,)
+        )
+
+        self.validator_process.start()
+
+        self.varys_client.send(
+            example_test_validator_message,
+            exchange="inbound.to_validate.mscapetest",
+            queue_suffix="validator",
+        )
+
+        new_artifact_message = self.varys_client.receive(
+            exchange="inbound.new_artifact.mscape",
+            queue_suffix="ingest",
+            timeout=10,
+        )
+
+        self.assertIsNone(new_artifact_message)
+
+        detailed_result_message = self.varys_client.receive(
+            "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
+        )
+
+        self.assertIsNotNone(detailed_result_message)
+
+        detailed_result_message_dict = json.loads(detailed_result_message.body)
+
+        self.assertFalse(detailed_result_message_dict["created"])
+        self.assertFalse(detailed_result_message_dict["ingested"])
+        self.assertFalse(detailed_result_message_dict["onyx_create_status"])
+        self.assertFalse(detailed_result_message_dict["cid"])
+        self.assertTrue(detailed_result_message_dict["test_ingest_status"])
+        self.assertFalse(detailed_result_message_dict["ingest_errors"])
+
+        published_reads_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-reads"
+        )
+        self.assertNotIn("Contents", published_reads_contents.keys())
+
+        published_reports_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-reports"
+        )
+        self.assertNotIn("Contents", published_reports_contents.keys())
+
+        published_taxon_reports_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-taxon-reports"
+        )
+        self.assertNotIn("Contents", published_taxon_reports_contents.keys())
+
+        published_binned_reads_contents = self.s3_client.list_objects(
+            Bucket="mscapetest-published-binned-reads"
+        )
+        self.assertNotIn("Contents", published_binned_reads_contents.keys())
