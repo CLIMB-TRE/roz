@@ -8,7 +8,7 @@ import uuid
 import copy
 
 import varys
-from roz_scripts.utils import utils
+from roz_scripts.utils.utils import init_logger, get_credentials
 
 from onyx import OnyxClient
 
@@ -467,7 +467,7 @@ def run(args):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
 
-    log = varys.utils.init_logger(
+    log = init_logger(
         "roz_client", os.getenv("S3_MATCHER_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
@@ -482,7 +482,7 @@ def run(args):
 
     nested_ddict = lambda: defaultdict(nested_ddict)
 
-    s3_credentials = utils.get_credentials()
+    s3_credentials = get_credentials()
 
     # Init S3 client
     s3_client = boto3.client(

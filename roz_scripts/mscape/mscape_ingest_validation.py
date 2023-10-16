@@ -10,11 +10,10 @@ from botocore.exceptions import ClientError
 import time
 import logging
 import argparse
-from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-from roz_scripts.utils.utils import s3_to_fh, pipeline
+from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger, get_credentials
 from varys import varys
-from varys.utils import init_logger
 
 from onyx import OnyxClient
 
@@ -80,7 +79,6 @@ def onyx_update(
 def execute_validation_pipeline(
     payload: dict,
     args: argparse.Namespace,
-    log: logging.getLogger,
     ingest_pipe: pipeline,
 ) -> tuple[int, bool, str, str]:
     """Execute the validation pipeline for a given artifact
@@ -113,8 +111,6 @@ def execute_validation_pipeline(
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
 
-    log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}'")
-
     return ingest_pipe.execute(params=parameters)
 
 
@@ -129,7 +125,7 @@ def onyx_submission(
     Args:
         log (logging.getLogger): The logger object
         payload (dict): The payload dict of the currently ingesting artifact
-        varys_client (varys.varys): A varys client object
+        varys_client (varys): A varys client object
 
     Returns:
         tuple[bool, dict]: A tuple containing a bool indicating the status of the Onyx create request and the payload dict modified to include information about the Onyx create request
@@ -389,7 +385,7 @@ def push_taxon_reports(
             # Add handling for Db in name etc
             s3_client.upload_file(
                 os.path.join(taxon_report_path, report),
-                "mscapetest-taxon-reports",
+                "mscapetest-published-taxon-reports",
                 f"{payload['cid']}/{report}",
             )
 
@@ -406,7 +402,7 @@ def push_taxon_reports(
         update_fail, payload = onyx_update(
             payload=payload,
             fields={
-                "taxon_reports": f"s3://mscapetest-taxon-reports/{payload['cid']}/"
+                "taxon_reports": f"s3://mscapetest-published-taxon-reports/{payload['cid']}/"
             },
             log=log,
         )
@@ -601,8 +597,7 @@ def ret_0_parser(
             if (
                 process.startswith("extract_paired_reads")
                 or process.startswith("extract_reads")
-                and trace["exit"] == "2"
-            ):
+            ) and trace["exit"] == "2":
                 payload["ingest_errors"].append(
                     "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
                 )
@@ -674,9 +669,11 @@ def validate(
     log: logging.getLogger,
     ingest_pipe: pipeline,
     s3_client: boto3.client,
-    varys_client: varys.varys,
+    varys_client: varys,
 ):
     to_validate = json.loads(message.body)
+
+    log.info(f"Started validation func for UUID: {to_validate['uuid']}")
 
     payload = copy.deepcopy(to_validate)
 
@@ -687,7 +684,7 @@ def validate(
         )
         return False
 
-    if not to_validate["onyx_test_create_status"]:
+    if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         varys_client.send(
             message=payload,
             exchange=f"inbound.results.mscape.{to_validate['site']}",
@@ -695,17 +692,18 @@ def validate(
         )
         return False
 
+    log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}'")
+
     rc, timeout, stdout, stderr = execute_validation_pipeline(
-        payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
+        payload=payload, args=args, ingest_pipe=ingest_pipe
     )
+
     if ingest_pipe.cmd:
         log.info(
             f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
         )
 
-    if not timeout:
-        log.info(f"Pipeline execution for message id: {payload['uuid']}, complete.")
-    else:
+    if timeout:
         log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
         payload["ingest_errors"].append("Validation pipeline timeout")
         log.info(f"Sending validation result for UUID: {payload['uuid']}")
@@ -715,6 +713,8 @@ def validate(
             queue_suffix="validator",
         )
         return False
+
+    args.result_dir = Path(args.result_dir)
 
     result_path = os.path.join(args.result_dir.resolve(), payload["uuid"])
 
@@ -840,6 +840,7 @@ def validate(
         "ingest_timestamp": time.time_ns(),
         "cid": payload["cid"],
         "site": payload["site"],
+        "platform": payload["platform"],
         "match_uuid": payload["uuid"],
     }
 
@@ -874,7 +875,6 @@ def validate(
 
 
 def run(args):
-    # Setup producer / consumer
     log = init_logger("mscape.ingest", args.logfile, args.log_level)
 
     varys_client = varys(
@@ -910,39 +910,64 @@ def run(args):
         nxf_executable=args.nxf_executable,
     )
 
+    s3_credentials = get_credentials()
+
     s3_client = boto3.client(
         "s3",
-        endpoint_url="https://s3.climb.ac.uk",
-        aws_access_key_id=os.getenv("ROZ_AWS_ACCESS"),
-        aws_secret_access_key=os.getenv("ROZ_AWS_SECRET"),
+        endpoint_url=s3_credentials.endpoint,
+        aws_access_key_id=s3_credentials.access_key,
+        aws_secret_access_key=s3_credentials.secret_key,
     )
+    while True:
+        message = varys_client.receive(
+            exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
+        )
+        log.info(
+            f"Submitting job to thread pool for UUID: {json.loads(message.body)['uuid']}"
+        )
 
-    max_concurrent = args.n_workers  # how many futures to use at most
-    pending = set()  # currently running futures
+        validate(
+            message=message,
+            args=args,
+            log=log,
+            ingest_pipe=ingest_pipe,
+            s3_client=s3_client,
+            varys_client=varys_client,
+        )
 
-    with ProcessPoolExecutor(max_workers=args.n_workers) as executor:
-        while True:
-            # Don't continue until there is a free worker
-            while len(pending) >= max_concurrent:
-                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+    # max_concurrent = args.n_workers  # how many futures to use at most
+    # pending = set()  # currently running futures
 
-            message = varys_client.receive(
-                exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
-            )
+    # with ThreadPoolExecutor(max_workers=args.n_workers) as executor:
+    #     try:
+    #         while True:
+    #             # Don't continue until there is a free worker
+    #             while len(pending) >= max_concurrent:
+    #                 done, pending = wait(pending, return_when=FIRST_COMPLETED)
 
-            pending.add(
-                executor.submit(
-                    validate,
-                    kwargs={
-                        "message": message,
-                        "args": args,
-                        "log": log,
-                        "ingest_pipe": ingest_pipe,
-                        "s3_client": s3_client,
-                        "varys_client": varys_client,
-                    },
-                )
-            )
+    #             message = varys_client.receive(
+    #                 exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
+    #             )
+    #             log.info(
+    #                 f"Submitting job to thread pool for UUID: {json.loads(message.body)['uuid']}"
+    #             )
+
+    #             pending.add(
+    #                 executor.submit(
+    #                     validate,
+    #                     kwargs={
+    #                         "message": message,
+    #                         "args": args,
+    #                         "log": log,
+    #                         "ingest_pipe": ingest_pipe,
+    #                         "s3_client": s3_client,
+    #                         "varys_client": varys_client,
+    #                     },
+    #                 )
+    #             )
+
+    #     except Exception as e:
+    #         log.error(f"Fatal error in ingest validator: {e}")
 
 
 def main():
@@ -952,7 +977,6 @@ def main():
     parser.add_argument("--logfile", type=Path)
     parser.add_argument("--log_level", type=str, default="DEBUG")
     parser.add_argument("--nxf_config")
-    parser.add_argument("--work_bucket")
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
