@@ -1465,7 +1465,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(detailed_result_message_dict["ingested"])
             self.assertFalse(detailed_result_message_dict["onyx_create_status"])
             self.assertFalse(detailed_result_message_dict["cid"])
-            self.assertTrue(detailed_result_message_dict["test_ingest_result"])
+            self.assertFalse(detailed_result_message_dict["test_ingest_result"])
 
             self.assertIn(
                 "Test sample_id error handling",
