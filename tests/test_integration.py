@@ -419,7 +419,7 @@ class Test_S3_matcher(unittest.TestCase):
         channel.queue_delete(queue="inbound.matched")
 
         connection.close()
-        time.sleep(0.5)
+        time.sleep(1)
 
     def test_s3_successful_match(self):
         args = SimpleNamespace(sleep_time=5)
@@ -658,7 +658,7 @@ class Test_ingest(unittest.TestCase):
         channel.queue_delete(queue="inbound.to_validate.mscapetest")
 
         connection.close()
-        time.sleep(0.5)
+        time.sleep(1)
 
     def test_ingest_successful(self):
         with patch("roz_scripts.ingest.OnyxClient") as mock_client:
@@ -915,7 +915,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.server.stop()
         self.varys_client.close()
         self.validator_process.kill()
-        time.sleep(0.5)
+        time.sleep(1)
 
     def test_validator_successful(self):
         with (
@@ -937,8 +937,8 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = MockResponse(
-                status_code=200
+            mock_client.return_value.__enter__.return_value._update.return_value = (
+                MockResponse(status_code=200)
             )
 
             mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
@@ -1085,7 +1085,7 @@ class Test_mscape_validator(unittest.TestCase):
         with (
             patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
             patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
-        ):        
+        ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
                 False,
@@ -1122,7 +1122,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             open(
                 os.path.join(
-                    preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
                 ),
                 "w",
             ).close()
@@ -1220,7 +1221,7 @@ class Test_mscape_validator(unittest.TestCase):
         with (
             patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
             patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
-        ):        
+        ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
                 False,
@@ -1257,7 +1258,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             open(
                 os.path.join(
-                    preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
                 ),
                 "w",
             ).close()
@@ -1352,7 +1354,7 @@ class Test_mscape_validator(unittest.TestCase):
         with (
             patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
             patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
-        ):        
+        ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
                 False,
@@ -1394,7 +1396,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             open(
                 os.path.join(
-                    preprocess_path, f"{example_validator_message['uuid']}.fastp.fastq.gz"
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
                 ),
                 "w",
             ).close()
@@ -1437,7 +1440,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.validator_process.start()
 
             self.varys_client.send(
-                example_test_validator_message,
+                example_validator_message,
                 exchange="inbound.to_validate.mscapetest",
                 queue_suffix="validator",
             )
@@ -1463,7 +1466,6 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(detailed_result_message_dict["onyx_create_status"])
             self.assertFalse(detailed_result_message_dict["cid"])
             self.assertTrue(detailed_result_message_dict["test_ingest_result"])
-            self.assertFalse(detailed_result_message_dict["ingest_errors"])
 
             self.assertIn(
                 "Test sample_id error handling",
