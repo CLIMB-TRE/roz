@@ -1453,7 +1453,7 @@ class Test_mscape_validator(unittest.TestCase):
 
         self.assertIn(
             "Test sample_id error handling",
-            detailed_result_message_dict["onyx_create_errors"]["sample_id"],
+            detailed_result_message_dict["onyx_errors"]["sample_id"],
         )
         self.assertFalse(detailed_result_message_dict["onyx_create_status"])
         self.assertEqual(detailed_result_message_dict["onyx_test_status_code"], 400)
