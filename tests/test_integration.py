@@ -919,9 +919,9 @@ class Test_mscape_validator(unittest.TestCase):
         os.remove(TEST_CSV_FILENAME)
 
         self.mock_client.reset_mock(return_value=True, side_effect=True)
-        self.mock_client.stop()
+        self.onyxpatcher.stop()
         self.mock_pipeline.reset_mock(return_value=True, side_effect=True)
-        self.mock_pipeline.stop()
+        self.piplinepatcher.stop()
         self.server.stop()
         self.varys_client.close()
         self.validator_process.kill()
