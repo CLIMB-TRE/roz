@@ -914,7 +914,6 @@ class Test_mscape_validator(unittest.TestCase):
 
         self.server.stop()
         self.varys_client.close()
-        self.validator_process.kill()
         time.sleep(1)
 
     def test_validator_successful(self):
