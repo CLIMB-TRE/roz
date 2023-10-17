@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, mock_open, patch, MagicMock, call
 
-from roz_scripts import s3_matcher, ingest, mscape_ingest_validation
+from roz_scripts import s3_matcher, ingest, mscape_ingest_validation, utils
 
 from types import SimpleNamespace
 import multiprocessing as mp
@@ -18,6 +18,7 @@ import pika
 DIR = os.path.dirname(__file__)
 S3_MATCHER_LOG_FILENAME = os.path.join(DIR, "s3_matcher.log")
 ROZ_INGEST_LOG_FILENAME = os.path.join(DIR, "ingest.log")
+MSCAPE_VALIDATION_LOG_FILENAME = os.path.join(DIR, "mscape_validation.log")
 TEST_MESSAGE_LOG_FILENAME = os.path.join(DIR, "test_messages.log")
 
 TEST_CSV_FILENAME = os.path.join(DIR, "test.csv")
@@ -868,6 +869,8 @@ class Test_mscape_validator(unittest.TestCase):
             Key="mscapetest.sample-test.run-test.ont.csv",
         )
 
+        self.log = utils.init_logger("mscape.ingest", ROZ_INGEST_LOG_FILENAME, "DEBUG")
+
         csv_etag = resp["ETag"].replace('"', "")
 
         example_validator_message["files"][".csv"]["etag"] = csv_etag
@@ -1283,7 +1286,7 @@ class Test_mscape_validator(unittest.TestCase):
             Success, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
             )
-            self.assertTrue(Success)
+            self.assertFalse(Success)
 
             self.assertFalse(payload["created"])
             self.assertFalse(payload["ingested"])
