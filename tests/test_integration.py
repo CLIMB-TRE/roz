@@ -869,7 +869,9 @@ class Test_mscape_validator(unittest.TestCase):
             Key="mscapetest.sample-test.run-test.ont.csv",
         )
 
-        self.log = utils.init_logger("mscape.ingest", ROZ_INGEST_LOG_FILENAME, "DEBUG")
+        self.log = utils.init_logger(
+            "mscape.ingest", MSCAPE_VALIDATION_LOG_FILENAME, "DEBUG"
+        )
 
         csv_etag = resp["ETag"].replace('"', "")
 
