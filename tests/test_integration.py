@@ -996,59 +996,41 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            self.validator_process = mp.Process(
-                target=mscape_ingest_validation.run, args=(args,)
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
             )
 
-            self.validator_process.start()
+            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
 
-            self.varys_client.send(
-                example_validator_message,
-                exchange="inbound.to_validate.mscapetest",
-                queue_suffix="validator",
+            Success, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
             )
 
-            new_artifact_message = self.varys_client.receive(
-                exchange="inbound.new_artifact.mscape",
-                queue_suffix="ingest",
-                timeout=30,
-            )
+            self.assertTrue(Success)
 
-            self.assertIsNotNone(new_artifact_message)
-            new_artifact_message_dict = json.loads(new_artifact_message.body)
-
-            self.assertEqual(new_artifact_message_dict["cid"], "test_cid")
-            self.assertEqual(new_artifact_message_dict["platform"], "ont")
-            self.assertEqual(new_artifact_message_dict["site"], "birm")
-            self.assertTrue(
-                uuid.UUID(new_artifact_message_dict["match_uuid"], version=4)
-            )
-
-            detailed_result_message = self.varys_client.receive(
-                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-            )
-            self.assertIsNotNone(detailed_result_message)
-            detailed_result_message_dict = json.loads(detailed_result_message.body)
-
-            self.assertTrue(uuid.UUID(detailed_result_message_dict["uuid"], version=4))
+            self.assertTrue(uuid.UUID(payload["uuid"], version=4))
             self.assertEqual(
-                detailed_result_message_dict["artifact"],
+                payload["artifact"],
                 "mscapetest.sample-test.run-test",
             )
-            self.assertEqual(detailed_result_message_dict["project"], "mscapetest")
-            self.assertEqual(detailed_result_message_dict["site"], "birm")
-            self.assertEqual(detailed_result_message_dict["platform"], "ont")
-            self.assertEqual(detailed_result_message_dict["cid"], "test_cid")
-            self.assertEqual(detailed_result_message_dict["created"], True)
-            self.assertEqual(detailed_result_message_dict["ingested"], True)
-            self.assertEqual(detailed_result_message_dict["onyx_test_status_code"], 201)
-            self.assertEqual(
-                detailed_result_message_dict["onyx_test_create_status"], True
-            )
-            self.assertEqual(detailed_result_message_dict["onyx_status_code"], 201)
-            self.assertEqual(detailed_result_message_dict["onyx_create_status"], True)
-            self.assertEqual(detailed_result_message_dict["test_flag"], False)
-            self.assertEqual(detailed_result_message_dict["ingest_errors"], [])
+            self.assertEqual(payload["project"], "mscapetest")
+            self.assertEqual(payload["site"], "birm")
+            self.assertEqual(payload["platform"], "ont")
+            self.assertEqual(payload["cid"], "test_cid")
+            self.assertEqual(payload["created"], True)
+            self.assertEqual(payload["ingested"], True)
+            self.assertEqual(payload["onyx_test_status_code"], 201)
+            self.assertEqual(payload["onyx_test_create_status"], True)
+            self.assertEqual(payload["onyx_status_code"], 201)
+            self.assertEqual(payload["onyx_create_status"], True)
+            self.assertEqual(payload["test_flag"], False)
+            self.assertEqual(payload["ingest_errors"], [])
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscapetest-published-reads"
@@ -1159,43 +1141,33 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            self.validator_process = mp.Process(
-                target=mscape_ingest_validation.run, args=(args,)
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
             )
 
-            self.validator_process.start()
+            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
 
-            self.varys_client.send(
-                example_validator_message,
-                exchange="inbound.to_validate.mscapetest",
-                queue_suffix="validator",
+            Success, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
             )
 
-            new_artifact_message = self.varys_client.receive(
-                exchange="inbound.new_artifact.mscape",
-                queue_suffix="ingest",
-                timeout=10,
-            )
-
-            self.assertIsNone(new_artifact_message)
-
-            detailed_result_message = self.varys_client.receive(
-                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-            )
-
-            self.assertIsNotNone(detailed_result_message)
-
-            detailed_result_message_dict = json.loads(detailed_result_message.body)
+            self.assertFalse(Success)
 
             self.assertIn(
                 "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly",
-                detailed_result_message_dict["ingest_errors"],
+                payload["ingest_errors"],
             )
 
-            self.assertFalse(detailed_result_message_dict["created"])
-            self.assertFalse(detailed_result_message_dict["ingested"])
-            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-            self.assertFalse(detailed_result_message_dict["cid"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["cid"])
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscapetest-published-reads"
@@ -1259,7 +1231,7 @@ class Test_mscape_validator(unittest.TestCase):
             open(
                 os.path.join(
                     preprocess_path,
-                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                    f"{example_test_validator_message['uuid']}.fastp.fastq.gz",
                 ),
                 "w",
             ).close()
@@ -1268,7 +1240,7 @@ class Test_mscape_validator(unittest.TestCase):
             ).close()
             open(
                 os.path.join(
-                    result_path, f"{example_validator_message['uuid']}_report.html"
+                    result_path, f"{example_test_validator_message['uuid']}_report.html"
                 ),
                 "w",
             ).close()
@@ -1276,7 +1248,7 @@ class Test_mscape_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
-                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                    f"execution_trace_{example_test_validator_message['uuid']}.txt",
                 ),
                 "w",
             ) as f:
@@ -1295,40 +1267,31 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            self.validator_process = mp.Process(
-                target=mscape_ingest_validation.run, args=(args,)
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
             )
 
-            self.validator_process.start()
-
-            self.varys_client.send(
-                example_test_validator_message,
-                exchange="inbound.to_validate.mscapetest",
-                queue_suffix="validator",
+            in_message = SimpleNamespace(
+                body=json.dumps(example_test_validator_message)
             )
 
-            new_artifact_message = self.varys_client.receive(
-                exchange="inbound.new_artifact.mscape",
-                queue_suffix="ingest",
-                timeout=10,
+            Success, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
             )
+            self.assertTrue(Success)
 
-            self.assertIsNone(new_artifact_message)
-
-            detailed_result_message = self.varys_client.receive(
-                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-            )
-
-            self.assertIsNotNone(detailed_result_message)
-
-            detailed_result_message_dict = json.loads(detailed_result_message.body)
-
-            self.assertFalse(detailed_result_message_dict["created"])
-            self.assertFalse(detailed_result_message_dict["ingested"])
-            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-            self.assertFalse(detailed_result_message_dict["cid"])
-            self.assertTrue(detailed_result_message_dict["test_ingest_result"])
-            self.assertFalse(detailed_result_message_dict["ingest_errors"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["cid"])
+            self.assertTrue(payload["test_ingest_result"])
+            self.assertFalse(payload["ingest_errors"])
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscapetest-published-reads"
@@ -1433,46 +1396,36 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            self.validator_process = mp.Process(
-                target=mscape_ingest_validation.run, args=(args,)
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
             )
 
-            self.validator_process.start()
+            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
 
-            self.varys_client.send(
-                example_validator_message,
-                exchange="inbound.to_validate.mscapetest",
-                queue_suffix="validator",
+            Success, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
             )
 
-            new_artifact_message = self.varys_client.receive(
-                exchange="inbound.new_artifact.mscape",
-                queue_suffix="ingest",
-                timeout=10,
-            )
+            self.assertFalse(Success)
 
-            self.assertIsNone(new_artifact_message)
-
-            detailed_result_message = self.varys_client.receive(
-                "inbound.results.mscape.birm", queue_suffix="validator", timeout=30
-            )
-
-            self.assertIsNotNone(detailed_result_message)
-
-            detailed_result_message_dict = json.loads(detailed_result_message.body)
-
-            self.assertFalse(detailed_result_message_dict["created"])
-            self.assertFalse(detailed_result_message_dict["ingested"])
-            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-            self.assertFalse(detailed_result_message_dict["cid"])
-            self.assertFalse(detailed_result_message_dict["test_ingest_result"])
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["test_ingest_result"])
 
             self.assertIn(
                 "Test sample_id error handling",
-                detailed_result_message_dict["onyx_errors"]["sample_id"],
+                payload["onyx_errors"]["sample_id"],
             )
-            self.assertFalse(detailed_result_message_dict["onyx_create_status"])
-            self.assertEqual(detailed_result_message_dict["onyx_status_code"], 400)
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertEqual(payload["onyx_status_code"], 400)
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscapetest-published-reads"

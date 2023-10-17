@@ -11,6 +11,8 @@ import time
 import logging
 import argparse
 import multiprocessing as mp
+from multiprocessing.pool import ThreadPool
+from collections import namedtuple
 
 from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger, get_credentials
 from varys import varys
@@ -21,7 +23,7 @@ from onyx import OnyxClient
 class worker_pool_handler:
     def __init__(self, workers, logger, varys_client):
         self._log = logger
-        self.worker_pool = mp.Pool(processes=workers)
+        self.worker_pool = ThreadPool(processes=workers)
         self._varys_client = varys_client
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
@@ -39,11 +41,14 @@ class worker_pool_handler:
         )
 
     def callback(self, validate_result):
-        success, payload = validate_result
+        success, payload, message = validate_result
         if success:
             self._log.info(
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
             )
+
+            self._varys_client.acknowledge_message(message)
+
             new_artifact_payload = {
                 "ingest_timestamp": time.time_ns(),
                 "cid": payload["cid"],
@@ -68,6 +73,7 @@ class worker_pool_handler:
             self._log.info(
                 f"Validation failed for match UUID: {payload['uuid']}, sending result"
             )
+            self._varys_client.acknowledge_message(message)
             self._varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{payload['site']}",
@@ -178,8 +184,7 @@ def onyx_submission(
     log: logging.getLogger,
     payload: dict,
 ) -> tuple[bool, dict]:
-    """_Description:_
-    This function is responsible for submitting a record to Onyx, it is called from the main ingest function
+    """This function is responsible for submitting a record to Onyx, it is called from the main ingest function
     when a match is received for a given artifact.
 
     Args:
@@ -724,7 +729,7 @@ def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
 
 
 def validate(
-    message,
+    message: namedtuple,
     args: argparse.Namespace,
     ingest_pipe: pipeline,
 ):
@@ -750,10 +755,10 @@ def validate(
         log.info(
             f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
         )
-        return (False, payload)
+        return (False, payload, message)
 
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
-        return (False, payload)
+        return (False, payload, message)
 
     log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}'")
 
@@ -770,7 +775,7 @@ def validate(
         log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
         payload["ingest_errors"].append("Validation pipeline timeout")
         log.info(f"Sending validation result for UUID: {payload['uuid']}")
-        return (False, payload)
+        return (False, payload, message)
 
     args.result_dir = Path(args.result_dir)
 
@@ -793,7 +798,7 @@ def validate(
             f"Validation pipeline exited with non-0 exit code: {rc}"
         )
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload)
+        return (False, payload, message)
 
     ingest_fail, payload = ret_0_parser(
         log=log,
@@ -803,7 +808,7 @@ def validate(
 
     if ingest_fail:
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload)
+        return (False, payload, message)
 
     if payload["test_flag"]:
         log.info(
@@ -811,7 +816,7 @@ def validate(
         )
         payload["test_ingest_result"] = True
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload)
+        return (False, payload, message)
 
     ingest_fail, payload = onyx_submission(
         log=log,
@@ -821,7 +826,7 @@ def validate(
     if ingest_fail:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload)
+        return (False, payload, message)
 
     log.info(
         f"Uploading files to long-term storage buckets for CID: {payload['cid']} after sucessful Onyx submission"
@@ -851,13 +856,13 @@ def validate(
             f"Failed to upload at least one file to long-term storage for CID: {payload['cid']}"
         )
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload)
+        return (False, payload, message)
 
     unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
 
     if unsuppress_fail:
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload)
+        return (False, payload, message)
 
     payload["ingested"] = True
     log.info(
@@ -879,16 +884,14 @@ def validate(
             f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
         )
 
-    return (True, payload)
+    return (True, payload, message)
 
 
 def run(args):
     log = init_logger("mscape.ingest", args.logfile, args.log_level)
 
     varys_client = varys(
-        profile="roz",
-        logfile=args.logfile,
-        log_level=args.log_level,
+        profile="roz", logfile=args.logfile, log_level=args.log_level, auto_ack=False
     )
 
     validation_payload_template = {
