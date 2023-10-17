@@ -61,7 +61,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: mscape-validation-logfile-${{ matrix.python-version }}
-        path: tests/mscape_ingest.log
+        path: tests/mscape_validation.log
         retention-days: 5
         if-no-files-found: error
       if: ${{ always() }}       
