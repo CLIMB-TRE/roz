@@ -739,7 +739,7 @@ def validate(
         "s3",
         aws_access_key_id=s3_credentials.access_key,
         aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=args.s3_endpoint,
+        endpoint_url=s3_credentials.endpoint,
     )
 
     log = logging.getLogger("mscape.ingest")
