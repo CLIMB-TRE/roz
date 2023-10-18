@@ -1458,7 +1458,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
     def test_thread_pool(self):
-        with patch("roz_scripts.mscape_ingest_validation.validation") as mock_validator:
+        with patch("roz_scripts.mscape_ingest_validation.validate") as mock_validator:
             mock_validator.return_value = mock_validation
 
             args = SimpleNamespace(
