@@ -924,15 +924,6 @@ def run(args):
         nxf_executable=args.nxf_executable,
     )
 
-    s3_credentials = get_credentials()
-
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
-
     worker_pool = worker_pool_handler(
         workers=args.n_workers, logger=log, varys_client=varys_client
     )
