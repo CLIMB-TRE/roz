@@ -1492,4 +1492,4 @@ class Test_mscape_validator(unittest.TestCase):
 
             self.assertEqual(len(messages), 10)
 
-            validator_process.kill()
+            validator_process.terminate()
