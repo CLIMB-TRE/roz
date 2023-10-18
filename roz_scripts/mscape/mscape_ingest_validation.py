@@ -891,7 +891,10 @@ def run(args):
     log = init_logger("mscape.ingest", args.logfile, args.log_level)
 
     varys_client = varys(
-        profile="roz", logfile=args.logfile, log_level=args.log_level, auto_ack=False
+        profile="roz",
+        logfile=args.logfile,
+        log_level=args.log_level,
+        auto_acknowledge=False,
     )
 
     validation_payload_template = {
