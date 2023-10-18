@@ -83,6 +83,10 @@ class worker_pool_handler:
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception {exception}")
 
+    def close(self):
+        self.worker_pool.close()
+        self.worker_pool.join()
+
 
 def onyx_update(
     payload: dict, fields: dict, log: logging.getLogger
@@ -927,13 +931,16 @@ def run(args):
     worker_pool = worker_pool_handler(
         workers=args.n_workers, logger=log, varys_client=varys_client
     )
+    try:
+        while True:
+            message = varys_client.receive(
+                exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
+            )
 
-    while True:
-        message = varys_client.receive(
-            exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
-        )
-
-        worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
+            worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
+    except:
+        log.info("Shutting down worker pool")
+        worker_pool.close()
 
 
 def main():
