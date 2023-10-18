@@ -363,6 +363,12 @@ example_reads_summary = [
 ]
 
 
+def mock_validation(message, args, ingest_pipe):
+    payload = json.loads(message.body)
+    time.sleep(2)
+    return (True, payload, message)
+
+
 class MockResponse:
     def __init__(self, status_code, json_data=None, ok=True):
         self.status_code = status_code
@@ -991,7 +997,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(example_reads_summary, f)
 
             args = SimpleNamespace(
-                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 nxf_config="test",
@@ -1136,7 +1142,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(example_reads_summary, f)
 
             args = SimpleNamespace(
-                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 nxf_config="test",
@@ -1262,7 +1268,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(example_reads_summary, f)
 
             args = SimpleNamespace(
-                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 nxf_config="test",
@@ -1391,7 +1397,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(example_reads_summary, f)
 
             args = SimpleNamespace(
-                logfile=os.path.join(DIR, "mscape_ingest.log"),
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 nxf_config="test",
@@ -1450,3 +1456,38 @@ class Test_mscape_validator(unittest.TestCase):
                 Bucket="mscapetest-published-binned-reads"
             )
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
+
+    def test_thread_pool(self):
+        with patch("roz_scripts.mscape_ingest_validation.validation") as mock_validator:
+            mock_validator.return_value = mock_validation
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=5,
+            )
+
+            validator_process = mp.Process(
+                target=mscape_ingest_validation.run, args=(args,)
+            )
+
+            validator_process.start()
+
+            for i in range(10):
+                self.varys_client.send(
+                    example_validator_message,
+                    "inbound.to_validate.mscapetest",
+                    queue_suffix="validator",
+                )
+
+            time.sleep(10)
+
+            messages = self.varys_client.receive_batch(
+                "inbound.new_artifact.mscape", queue_suffix="test"
+            )
+
+            self.assertEqual(len(messages), 10)

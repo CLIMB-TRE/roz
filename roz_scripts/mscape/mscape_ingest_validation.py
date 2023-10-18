@@ -941,40 +941,6 @@ def run(args):
 
         worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
 
-    # max_concurrent = args.n_workers  # how many futures to use at most
-    # pending = set()  # currently running futures
-
-    # with ThreadPoolExecutor(max_workers=args.n_workers) as executor:
-    #     try:
-    #         while True:
-    #             # Don't continue until there is a free worker
-    #             while len(pending) >= max_concurrent:
-    #                 done, pending = wait(pending, return_when=FIRST_COMPLETED)
-
-    #             message = varys_client.receive(
-    #                 exchange="inbound.to_validate.mscapetest", queue_suffix="validator"
-    #             )
-    #             log.info(
-    #                 f"Submitting job to thread pool for UUID: {json.loads(message.body)['uuid']}"
-    #             )
-
-    #             pending.add(
-    #                 executor.submit(
-    #                     validate,
-    #                     kwargs={
-    #                         "message": message,
-    #                         "args": args,
-    #                         "log": log,
-    #                         "ingest_pipe": ingest_pipe,
-    #                         "s3_client": s3_client,
-    #                         "varys_client": varys_client,
-    #                     },
-    #                 )
-    #             )
-
-    #     except Exception as e:
-    #         log.error(f"Fatal error in ingest validator: {e}")
-
 
 def main():
     import argparse
