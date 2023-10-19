@@ -1639,6 +1639,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
             patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.OnyxClient") as mock_util_client,
+            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1653,6 +1654,11 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "test_stdout",
                 "test_stderr",
             )
+
+            mock_requests.return_value.post.return_value = MockResponse(
+                status_code=201, json_data={"id": "test_pwid"}
+            )
+
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
 
             mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
@@ -1756,6 +1762,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
             patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.OnyxClient") as mock_util_client,
+            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1770,6 +1777,11 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "test_stdout",
                 "test_stderr",
             )
+
+            mock_requests.return_value.post.return_value = MockResponse(
+                status_code=201, json_data={"id": "test_pwid"}
+            )
+
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
 
             mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
@@ -1858,6 +1870,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
             patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.OnyxClient") as mock_util_client,
+            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1871,6 +1884,10 @@ class Test_pathsafe_validator(unittest.TestCase):
                 False,
                 "test_stdout",
                 "test_stderr",
+            )
+
+            mock_requests.return_value.post.return_value = MockResponse(
+                status_code=201, json_data={"id": "test_pwid"}
             )
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
 
