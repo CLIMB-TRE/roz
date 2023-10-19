@@ -1624,7 +1624,7 @@ class Test_pathsafe_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
 
-            Success, payload, message = mscape_ingest_validation.validate(
+            Success, payload, message = pathsafe_validation.validate(
                 in_message, args, pipeline
             )
 
@@ -1736,7 +1736,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 body=json.dumps(example_test_validator_message)
             )
 
-            Success, payload, message = mscape_ingest_validation.validate(
+            Success, payload, message = pathsafe_validation.validate(
                 in_message, args, pipeline
             )
 
@@ -1829,7 +1829,7 @@ class Test_pathsafe_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
 
-            Success, payload, message = mscape_ingest_validation.validate(
+            Success, payload, message = pathsafe_validation.validate(
                 in_message, args, pipeline
             )
 
