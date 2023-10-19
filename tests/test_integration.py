@@ -291,6 +291,80 @@ example_validator_message = {
     "test_ingest_result": False,
 }
 
+example_pathsafe_validator_message = {
+    "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
+    "artifact": "mscapetest.sample-test.run-test",
+    "sample_id": "sample-test",
+    "run_name": "run-test",
+    "project": "pathsafetest",
+    "uploaders": ["mscape-testuser"],
+    "platform": "ont",
+    "ingest_timestamp": 1694780451766213337,
+    "cid": False,
+    "site": "birm",
+    "created": False,
+    "ingested": False,
+    "files": {
+        ".fastq.gz": {
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.fastq.gz",
+            "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
+            "key": "mscapetest.sample-test.run-test.fastq.gz",
+        },
+        ".csv": {
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "etag": "7022ea6a3adb39323b5039c1d6587d08",
+            "key": "mscapetest.sample-test.run-test.ont.csv",
+        },
+    },
+    "onyx_test_status_code": 201,
+    "onyx_test_create_errors": {},
+    "onyx_test_create_status": True,
+    "validate": True,
+    "onyx_status_code": False,
+    "onyx_errors": {},
+    "onyx_create_status": False,
+    "ingest_errors": [],
+    "test_flag": False,
+    "test_ingest_result": False,
+}
+
+example_pathsafe_test_validator_message = {
+    "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
+    "artifact": "mscapetest.sample-test.run-test",
+    "sample_id": "sample-test",
+    "run_name": "run-test",
+    "project": "pathsafetest",
+    "uploaders": ["mscape-testuser"],
+    "platform": "ont",
+    "ingest_timestamp": 1694780451766213337,
+    "cid": False,
+    "site": "birm",
+    "created": False,
+    "ingested": False,
+    "files": {
+        ".fastq.gz": {
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.fastq.gz",
+            "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
+            "key": "mscapetest.sample-test.run-test.fastq.gz",
+        },
+        ".csv": {
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "etag": "7022ea6a3adb39323b5039c1d6587d08",
+            "key": "mscapetest.sample-test.run-test.ont.csv",
+        },
+    },
+    "onyx_test_status_code": 201,
+    "onyx_test_create_errors": {},
+    "onyx_test_create_status": True,
+    "validate": True,
+    "onyx_status_code": False,
+    "onyx_errors": {},
+    "onyx_create_status": False,
+    "ingest_errors": [],
+    "test_flag": False,
+    "test_ingest_result": False,
+}
+
 example_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
     "artifact": "mscapetest.sample-test.run-test",
@@ -1504,7 +1578,7 @@ class Test_pathsafe_validator(unittest.TestCase):
 
         csv_etag = resp["ETag"].replace('"', "")
 
-        example_validator_message["files"][".csv"]["etag"] = csv_etag
+        example_pathsafe_validator_message["files"][".csv"]["etag"] = csv_etag
 
         config = {
             "version": "0.1",
@@ -1588,7 +1662,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             open(
                 os.path.join(
                     assembly_path,
-                    f"{example_validator_message['uuid']}.result.fasta",
+                    f"{example_pathsafe_validator_message['uuid']}.result.fasta",
                 ),
                 "w",
             ).close()
@@ -1596,7 +1670,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
-                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                    f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
                 ),
                 "w",
             ) as f:
@@ -1622,7 +1696,9 @@ class Test_pathsafe_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+            in_message = SimpleNamespace(
+                body=json.dumps(example_pathsafe_validator_message)
+            )
 
             Success, payload, message = pathsafe_validation.validate(
                 in_message, args, pipeline
@@ -1688,7 +1764,9 @@ class Test_pathsafe_validator(unittest.TestCase):
                 status_code=201, json_data={"data": {"cid": "test_cid"}}
             )
 
-            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            result_path = os.path.join(
+                DIR, example_pathsafe_test_validator_message["uuid"]
+            )
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             assembly_path = os.path.join(result_path, "assembly")
 
@@ -1698,7 +1776,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             open(
                 os.path.join(
                     assembly_path,
-                    f"{example_validator_message['uuid']}.result.fasta",
+                    f"{example_pathsafe_test_validator_message['uuid']}.result.fasta",
                 ),
                 "w",
             ).close()
@@ -1706,7 +1784,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
-                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                    f"execution_trace_{example_pathsafe_test_validator_message['uuid']}.txt",
                 ),
                 "w",
             ) as f:
@@ -1733,7 +1811,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
 
             in_message = SimpleNamespace(
-                body=json.dumps(example_test_validator_message)
+                body=json.dumps(example_pathsafe_test_validator_message)
             )
 
             Success, payload, message = pathsafe_validation.validate(
@@ -1790,7 +1868,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 )
             ]
 
-            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             assembly_path = os.path.join(result_path, "assembly")
 
@@ -1800,7 +1878,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             open(
                 os.path.join(
                     assembly_path,
-                    f"{example_validator_message['uuid']}.result.fasta",
+                    f"{example_pathsafe_validator_message['uuid']}.result.fasta",
                 ),
                 "w",
             ).close()
@@ -1808,7 +1886,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
-                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                    f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
                 ),
                 "w",
             ) as f:
@@ -1834,7 +1912,9 @@ class Test_pathsafe_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+            in_message = SimpleNamespace(
+                body=json.dumps(example_pathsafe_validator_message)
+            )
 
             Success, payload, message = pathsafe_validation.validate(
                 in_message, args, pipeline
