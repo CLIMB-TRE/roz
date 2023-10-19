@@ -1588,7 +1588,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             open(
                 os.path.join(
                     assembly_path,
-                    f"{payload['uuid']}.result.fasta",
+                    f"{example_validator_message['uuid']}.result.fasta",
                 ),
                 "w",
             ).close()
@@ -1698,7 +1698,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             open(
                 os.path.join(
                     assembly_path,
-                    f"{payload['uuid']}.result.fasta",
+                    f"{example_validator_message['uuid']}.result.fasta",
                 ),
                 "w",
             ).close()
@@ -1793,7 +1793,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             open(
                 os.path.join(
                     assembly_path,
-                    f"{payload['uuid']}.result.fasta",
+                    f"{example_validator_message['uuid']}.result.fasta",
                 ),
                 "w",
             ).close()
