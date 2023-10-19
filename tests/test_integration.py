@@ -1637,7 +1637,8 @@ class Test_pathsafe_validator(unittest.TestCase):
     def test_validator_successful(self):
         with (
             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1654,13 +1655,17 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=200)
+            mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
+                status_code=200
             )
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+            mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=201, json_data={"data": {"cid": "test_cid"}}
             )
+
+            mock_local_client.return_value.__enter__.return_value.get.return_value = {
+                "hello": "goodbye"
+            }
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
@@ -1846,7 +1851,8 @@ class Test_pathsafe_validator(unittest.TestCase):
     def test_onyx_fail(self):
         with (
             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1863,11 +1869,11 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=400)
+            mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
+                status_code=400
             )
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = [
+            mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = [
                 MockResponse(
                     status_code=400,
                     json_data={
