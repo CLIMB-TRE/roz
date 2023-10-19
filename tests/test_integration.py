@@ -293,7 +293,7 @@ example_validator_message = {
 
 example_pathsafe_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "mscapetest.sample-test.run-test",
+    "artifact": "pathsafetest.sample-test.run-test",
     "sample_id": "sample-test",
     "run_name": "run-test",
     "project": "pathsafetest",
@@ -335,7 +335,7 @@ example_pathsafe_validator_message = {
 
 example_pathsafe_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "mscapetest.sample-test.run-test",
+    "artifact": "pathsafetest.sample-test.run-test",
     "sample_id": "sample-test",
     "run_name": "run-test",
     "project": "pathsafetest",
