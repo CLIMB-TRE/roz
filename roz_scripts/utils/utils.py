@@ -134,8 +134,7 @@ def onyx_submission(
     log: logging.getLogger,
     payload: dict,
 ) -> tuple[bool, dict]:
-    """_Description:_
-    This function is responsible for submitting a record to Onyx, it is called from the main ingest function
+    """This function is responsible for submitting a record to Onyx, it is called from the main ingest function
     when a match is received for a given artifact.
 
     Args:
