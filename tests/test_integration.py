@@ -306,17 +306,17 @@ example_pathsafe_validator_message = {
     "ingested": False,
     "files": {
         ".1.fastq.gz": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/mscapetest.sample-test.run-test.1.fastq.gz",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.1.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "pathsafetest.sample-test.run-test.1.fastq.gz",
         },
         ".2.fastq.gz": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/mscapetest.sample-test.run-test.2.fastq.gz",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.2.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "pathsafetest.sample-test.run-test.2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/mscapetest.sample-test.run-test.ont.csv",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.ont.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
             "key": "pathsafetest.sample-test.run-test.ont.csv",
         },
@@ -348,17 +348,17 @@ example_pathsafe_test_validator_message = {
     "ingested": False,
     "files": {
         ".1.fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.1.fastq.gz",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.1.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "pathsafetest.sample-test.run-test.1.fastq.gz",
         },
         ".2.fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.2.fastq.gz",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.2.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "pathsafetest.sample-test.run-test.2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.ont.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
             "key": "pathsafetest.sample-test.run-test.ont.csv",
         },
