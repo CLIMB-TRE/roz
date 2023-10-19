@@ -1902,16 +1902,14 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "hello": "goodbye"
             }
 
-            mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = [
-                MockResponse(
-                    status_code=400,
-                    json_data={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
-                    ok=False,
-                )
-            ]
+            mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+                status_code=400,
+                json_data={
+                    "data": [],
+                    "messages": {"sample_id": "Test sample_id error handling"},
+                },
+                ok=False,
+            )
 
             result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
