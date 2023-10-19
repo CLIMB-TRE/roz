@@ -1499,7 +1499,7 @@ class Test_pathsafe_validator(unittest.TestCase):
         )
 
         self.log = utils.init_logger(
-            "pathsafe.ingest", PATHSAFE_VALIDATION_LOG_FILENAME, "DEBUG"
+            "pathsafe.validate", PATHSAFE_VALIDATION_LOG_FILENAME, "DEBUG"
         )
 
         csv_etag = resp["ETag"].replace('"', "")

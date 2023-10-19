@@ -438,34 +438,8 @@ def validate(
     return (True, payload, message)
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--logfile", type=Path, required=True, help="Path to logfile")
-    parser.add_argument(
-        "--log_level",
-        type=str,
-        help="Log level for logger object",
-        choices=["NOTSET", "INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL"],
-        default="DEBUG",
-    )
-    parser.add_argument(
-        "--result_dir", type=Path, required=True, help="Path to store results"
-    )
-    parser.add_argument(
-        "--nxf_config", type=Path, required=False, help="Path to nxf config file"
-    )
-    parser.add_argument(
-        "--nxf_executable", type=Path, required=False, default="nextflow"
-    )
-    parser.add_argument(
-        "--n_workers",
-        type=int,
-        default=5,
-        help="Number of workers to use for concurrent validation",
-    )
-    args = parser.parse_args()
-
-    log = init_logger("pathsafe.ingest", args.logfile, args.log_level)
+def run(args):
+    log = init_logger("pathsafe.validate", args.logfile, args.log_level)
 
     varys_client = varys(
         profile="roz",
@@ -514,6 +488,36 @@ def main():
     except:
         log.info("Shutting down worker pool")
         worker_pool.close()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--logfile", type=Path, required=True, help="Path to logfile")
+    parser.add_argument(
+        "--log_level",
+        type=str,
+        help="Log level for logger object",
+        choices=["NOTSET", "INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL"],
+        default="DEBUG",
+    )
+    parser.add_argument(
+        "--result_dir", type=Path, required=True, help="Path to store results"
+    )
+    parser.add_argument(
+        "--nxf_config", type=Path, required=False, help="Path to nxf config file"
+    )
+    parser.add_argument(
+        "--nxf_executable", type=Path, required=False, default="nextflow"
+    )
+    parser.add_argument(
+        "--n_workers",
+        type=int,
+        default=5,
+        help="Number of workers to use for concurrent validation",
+    )
+    args = parser.parse_args()
+
+    run(args)
 
 
 if __name__ == "__main__":
