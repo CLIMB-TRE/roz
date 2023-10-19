@@ -371,7 +371,7 @@ example_pathsafe_test_validator_message = {
     "onyx_errors": {},
     "onyx_create_status": False,
     "ingest_errors": [],
-    "test_flag": False,
+    "test_flag": True,
     "test_ingest_result": False,
 }
 
