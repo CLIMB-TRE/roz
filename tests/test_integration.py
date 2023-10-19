@@ -306,17 +306,17 @@ example_pathsafe_validator_message = {
     "ingested": False,
     "files": {
         ".1.fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.1.fastq.gz",
+            "uri": "s3://pathsafetest-birm-ont-prod/mscapetest.sample-test.run-test.1.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "pathsafetest.sample-test.run-test.1.fastq.gz",
         },
         ".2.fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.2.fastq.gz",
+            "uri": "s3://pathsafetest-birm-ont-prod/mscapetest.sample-test.run-test.2.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "pathsafetest.sample-test.run-test.2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "uri": "s3://pathsafetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
             "key": "pathsafetest.sample-test.run-test.ont.csv",
         },
@@ -1667,7 +1667,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "hello": "goodbye"
             }
 
-            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             assembly_path = os.path.join(result_path, "assembly")
 
@@ -1772,13 +1772,17 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=200)
+            mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
+                status_code=200
             )
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
+            mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
                 status_code=201, json_data={"data": {"cid": "test_cid"}}
             )
+
+            mock_local_client.return_value.__enter__.return_value.get.return_value = {
+                "hello": "goodbye"
+            }
 
             result_path = os.path.join(
                 DIR, example_pathsafe_test_validator_message["uuid"]
