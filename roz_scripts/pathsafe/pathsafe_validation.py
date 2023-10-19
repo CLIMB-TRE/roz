@@ -332,6 +332,8 @@ def validate(
         log.info(f"Sending validation result for UUID: {payload['uuid']}")
         return (False, payload, message)
 
+    args.result_dir = Path(args.result_dir)
+
     result_path = os.path.join(args.result_dir.resolve(), payload["uuid"])
 
     if not os.path.exists(result_path):
