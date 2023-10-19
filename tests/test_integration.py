@@ -1589,6 +1589,7 @@ class Test_pathsafe_validator(unittest.TestCase):
         csv_etag = resp["ETag"].replace('"', "")
 
         example_pathsafe_validator_message["files"][".csv"]["etag"] = csv_etag
+        example_pathsafe_test_validator_message["files"][".csv"]["etag"] = csv_etag
 
         config = {
             "version": "0.1",
@@ -1896,6 +1897,10 @@ class Test_pathsafe_validator(unittest.TestCase):
             mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
                 status_code=400
             )
+
+            mock_local_client.return_value.__enter__.return_value.get.return_value = {
+                "hello": "goodbye"
+            }
 
             mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = [
                 MockResponse(
