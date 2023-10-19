@@ -1776,12 +1776,19 @@ class Test_pathsafe_validator(unittest.TestCase):
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
 
             mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=200)
+                MockResponse(status_code=400)
             )
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-                status_code=201, json_data={"data": {"cid": "test_cid"}}
-            )
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = [
+                MockResponse(
+                    status_code=400,
+                    json_data={
+                        "data": [],
+                        "messages": {"sample_id": "Test sample_id error handling"},
+                    },
+                    ok=False,
+                )
+            ]
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             pipeline_info_path = os.path.join(result_path, "pipeline_info")

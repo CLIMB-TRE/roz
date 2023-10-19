@@ -363,6 +363,14 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
+    if payload["test_flag"]:
+        log.info(
+            f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
+        )
+        payload["test_ingest_result"] = True
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, payload, message)
+
     submission_fail, payload = onyx_submission(log=log, payload=payload)
 
     if submission_fail:

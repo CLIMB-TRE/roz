@@ -64,4 +64,12 @@ jobs:
         path: tests/mscape_validation.log
         retention-days: 5
         if-no-files-found: error
-      if: ${{ always() }}       
+      if: ${{ always() }}
+    - name: 'Upload Pathsafe Validation Logfile'
+      uses: actions/upload-artifact@v3
+      with:
+        name: pathsafe-validation-logfile-${{ matrix.python-version }}
+        path: tests/pathsafe_validation.log
+        retention-days: 5
+        if-no-files-found: error
+      if: ${{ always() }}              
