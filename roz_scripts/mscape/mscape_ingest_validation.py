@@ -11,7 +11,6 @@ import time
 import logging
 import argparse
 import multiprocessing as mp
-from multiprocessing.pool import ThreadPool
 from collections import namedtuple
 
 from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger, get_credentials
@@ -23,7 +22,7 @@ from onyx import OnyxClient
 class worker_pool_handler:
     def __init__(self, workers, logger, varys_client):
         self._log = logger
-        self.worker_pool = ThreadPool(processes=workers)
+        self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
@@ -170,7 +169,7 @@ def execute_validation_pipeline(
         "max_human_reads_before_rejection": "10000",
         "k2_host": args.k2_host,  # Parameterise this and deal with DNS stuff
         "k2_port": "8080",
-        "db": "/shared/public/k2_dbs/pluspf",
+        "db": "/shared/public/db/kraken2/k2_pluspf",
     }
 
     if payload["platform"] == "ont":
