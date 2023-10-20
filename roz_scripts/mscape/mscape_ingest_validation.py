@@ -170,7 +170,7 @@ def execute_validation_pipeline(
         "max_human_reads_before_rejection": "10000",
         "k2_host": args.k2_host,  # Parameterise this and deal with DNS stuff
         "k2_port": "8080",
-        "db": "/shared/public/db/kraken2/k2_pluspf/",
+        "db": "/shared/public/k2_dbs/pluspf",
     }
 
     if payload["platform"] == "ont":
