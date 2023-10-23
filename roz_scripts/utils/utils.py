@@ -7,7 +7,7 @@ from io import StringIO
 import logging
 import subprocess
 from pathlib import Path
-from collections import SimpleNamespace
+from types import SimpleNamespace
 
 from onyx import OnyxClient
 
