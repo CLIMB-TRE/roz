@@ -7,6 +7,7 @@ from io import StringIO
 import logging
 import subprocess
 from pathlib import Path
+from collections import SimpleNamespace
 
 from onyx import OnyxClient
 
@@ -23,7 +24,6 @@ class pipeline:
         config: Path,
         nxf_executable: Path,
         profile=None,
-        timeout_seconds=7200,
     ):
         """
         Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
@@ -34,7 +34,6 @@ class pipeline:
             config (str): Path to a nextflow config file
             nxf_executable (str): Path to the nextflow executable
             profile (str): The nextflow profile to use
-            timeout_seconds (int): The number of seconds to wait before timing out the pipeline
 
         """
 
@@ -42,7 +41,6 @@ class pipeline:
         self.config = Path(config) if config else None
         self.nxf_executable = nxf_executable
         self.profile = profile
-        self.timeout_seconds = timeout_seconds
         self.cmd = None
 
     def execute(self, params: dict) -> tuple[int, bool, str, str]:
@@ -77,11 +75,11 @@ class pipeline:
                 capture_output=True,
                 universal_newlines=True,
                 text=True,
-                timeout=self.timeout_seconds,
             )
 
-        except subprocess.TimeoutExpired:
+        except Exception as e:
             timeout = True
+            proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
 
         return (proc.returncode, timeout, proc.stdout, proc.stderr)
 
@@ -111,10 +109,13 @@ class pipeline:
                 text=True,
                 timeout=60,
             )
+            ret_tuple = (proc.returncode, timeout, proc.stdout, proc.stderr)
         except subprocess.TimeoutExpired:
             timeout = True
+            proc = staticmethod
+            ret_tuple
 
-        return (proc.returncode, timeout, proc.stdout, proc.stderr)
+        return
 
 
 def init_logger(name, log_path, log_level):
