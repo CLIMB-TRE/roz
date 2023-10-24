@@ -312,7 +312,7 @@ def onyx_submission(
                                 payload["onyx_errors"][field] = messages
 
                 else:
-                    if len(filter_response.json()["data"]) != 1:
+                    if len(filter_response.json()["data"]) > 1:
                         submission_fail = True
                         log.error(
                             f"Onyx _filter to check if UUID: {payload['uuid']} is suppressed returned more than one record -> This should NEVER happen"
@@ -322,6 +322,11 @@ def onyx_submission(
                         payload["cid"] = filter_response.json()["data"][0]["cid"]
                         payload["onyx_create_status"] = True
                         payload["created"] = True
+                    else:
+                        submission_fail = True
+                        log.error(
+                            f"UUID: {payload['uuid']} is not suppressed in Onyx but create failed"
+                        )
 
             elif response.status_code == 200:
                 log.error(
@@ -810,7 +815,7 @@ def validate(
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         return (False, payload, message)
 
-    log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}'")
+    log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}")
 
     rc, worker_exception, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, ingest_pipe=ingest_pipe
