@@ -765,7 +765,7 @@ def validate(
 
     log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}'")
 
-    rc, timeout, stdout, stderr = execute_validation_pipeline(
+    rc, worker_exception, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, ingest_pipe=ingest_pipe
     )
 
@@ -774,9 +774,11 @@ def validate(
             f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
         )
 
-    if timeout:
-        log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
-        payload["ingest_errors"].append("Validation pipeline timeout")
+    if worker_exception:
+        log.error(f"Pipeline execution suffered an exception: {worker_exception}")
+        payload["ingest_errors"].append(
+            f"Validation pipeline execution exception: {worker_exception}"
+        )
         log.info(f"Sending validation result for UUID: {payload['uuid']}")
         return (False, payload, message)
 

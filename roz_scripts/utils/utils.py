@@ -54,7 +54,7 @@ class pipeline:
             tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
         """
 
-        timeout = False
+        e = False
 
         cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
 
@@ -78,10 +78,9 @@ class pipeline:
             )
 
         except Exception as e:
-            timeout = True
             proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
 
-        return (proc.returncode, timeout, proc.stdout, proc.stderr)
+        return (proc.returncode, e, proc.stdout, proc.stderr)
 
     def cleanup(self, stdout: str) -> tuple[int, bool, str, str]:
         """Cleanup the pipeline intermediate files
@@ -109,13 +108,10 @@ class pipeline:
                 text=True,
                 timeout=60,
             )
-            ret_tuple = (proc.returncode, timeout, proc.stdout, proc.stderr)
-        except subprocess.TimeoutExpired:
-            timeout = True
-            proc = staticmethod
-            ret_tuple
+        except Exception as e:
+            proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
 
-        return
+        return (proc.returncode, proc.stdout, proc.stderr)
 
 
 def init_logger(name, log_path, log_level):
