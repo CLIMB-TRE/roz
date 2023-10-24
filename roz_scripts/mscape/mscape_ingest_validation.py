@@ -72,12 +72,30 @@ class worker_pool_handler:
             self._log.info(
                 f"Validation failed for match UUID: {payload['uuid']}, sending result"
             )
-            self._varys_client.acknowledge_message(message)
-            self._varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.mscape.{payload['site']}",
-                queue_suffix="validator",
-            )
+
+            if payload["rerun"]:
+                if message.basic_deliver.redelivered == True:
+                    self._log.error(
+                        f"Message for UUID: {payload['uuid']} has been redelivered already, sending to dead letter queue"
+                    )
+                    self._varys_client.nack_message(message, requeue=False)
+                else:
+                    self._log.info(
+                        f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
+                    )
+                    self._varys_client.nack_message(message)
+
+            else:
+                self._varys_client.acknowledge_message(message)
+                payload["ingest_errors"].append(
+                    f"Validation failed for unknown reason, please contact the MScape team"
+                )
+
+                self._varys_client.send(
+                    message=payload,
+                    exchange=f"inbound.results.mscape.{payload['site']}",
+                    queue_suffix="validator",
+                )
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception {exception}")
@@ -780,6 +798,8 @@ def validate(
 
     payload = copy.deepcopy(to_validate)
 
+    payload["rerun"] = False
+
     # This client is purely for Mscape, ignore all other messages
     if to_validate["project"] != "mscapetest":
         log.info(
@@ -829,6 +849,7 @@ def validate(
         payload["ingest_errors"].append(
             f"Validation pipeline exited with non-0 exit code: {rc}"
         )
+        payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
