@@ -92,7 +92,7 @@ class pipeline:
             tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
         """
 
-        timeout = False
+        e = False
 
         pipeline_id = (
             stdout.split("\n")[3].split(" ")[2].replace("[", "").replace("]", "")
@@ -111,7 +111,7 @@ class pipeline:
         except Exception as e:
             proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
 
-        return (proc.returncode, proc.stdout, proc.stderr)
+        return (proc.returncode, e, proc.stdout, proc.stderr)
 
 
 def init_logger(name, log_path, log_level):

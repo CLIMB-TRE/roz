@@ -106,7 +106,7 @@ def onyx_update(
     with OnyxClient(env_password=True) as client:
         try:
             response = client._update(
-                project="mscapetest",
+                project=payload["project"],
                 cid=payload["cid"],
                 fields=fields,
             )
@@ -269,16 +269,41 @@ def onyx_submission(
                 ]
 
             elif response.status_code == 400:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed due to a bad request"
+                log.error(f"Onyx create for UUID: {payload['uuid']} failed")
+                # If the create fails due to a validation error we need to check if the record exists but is suppressed
+                # meaning it has been created successfully but failed at some later stage of ingestion e.g. s3 upload
+                # Therefore re-run the rest of validation
+                filter_response = next(
+                    client._filter(
+                        payload["project"],
+                        fields={
+                            "sample_id": payload["sample_id"],
+                            "run_name": payload["run_name"],
+                        },
+                        scope=["admin"],
+                    )
                 )
-                submission_fail = True
-                if response.json().get("messages"):
-                    for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field):
-                            payload["onyx_errors"][field].extend(messages)
-                        else:
-                            payload["onyx_errors"][field] = messages
+
+                if not filter_response.ok:
+                    submission_fail = True
+                    if response.json().get("messages"):
+                        for field, messages in response.json()["messages"].items():
+                            if payload["onyx_errors"].get(field):
+                                payload["onyx_errors"][field].extend(messages)
+                            else:
+                                payload["onyx_errors"][field] = messages
+
+                else:
+                    if len(filter_response.json()["data"]) != 1:
+                        submission_fail = True
+                        log.error(
+                            f"Onyx _filter to check if UUID: {payload['uuid']} is suppressed returned more than one record -> This should NEVER happen"
+                        )
+
+                    elif filter_response.json()["data"][0]["suppressed"]:
+                        payload["cid"] = filter_response.json()["data"][0]["cid"]
+                        payload["onyx_create_status"] = True
+                        payload["created"] = True
 
             elif response.status_code == 200:
                 log.error(
@@ -694,7 +719,9 @@ def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
     try:
         with OnyxClient(env_password=True) as client:
             response = client._update(
-                project="mscapetest", cid=payload["cid"], fields={"suppressed": False}
+                project=payload["project"],
+                cid=payload["cid"],
+                fields={"suppressed": False},
             )
 
         if response.status_code == 200:
@@ -823,12 +850,12 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    ingest_fail, payload = onyx_submission(
+    submission_fail, payload = onyx_submission(
         log=log,
         payload=payload,
     )
 
-    if ingest_fail:
+    if submission_fail:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
@@ -876,12 +903,12 @@ def validate(
 
     (
         cleanup_status,
-        cleanup_timeout,
+        cleanup_exception,
         cleanup_stdout,
         cleanup_stderr,
     ) = ingest_pipe.cleanup(stdout=stdout)
 
-    if cleanup_timeout:
+    if cleanup_exception:
         log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
 
     if cleanup_status != 0:

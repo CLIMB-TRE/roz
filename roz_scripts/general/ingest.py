@@ -12,19 +12,6 @@ import varys
 from roz_scripts.utils.utils import init_logger, s3_to_fh
 
 
-def handle_status_code(status_code):
-    if status_code == 422:
-        return (False, "validation_failure")
-    elif status_code == 403:
-        return (False, "perm_failure")
-    elif status_code == 400:
-        return (False, "bad_request")
-    elif status_code == 201:
-        return (True, "success")
-    else:
-        return (False, "unknown")
-
-
 def parse_match_message(matched_message, payload):
     payload["artifact"] = matched_message["artifact"]
     payload["sample_id"] = matched_message["sample_id"]
