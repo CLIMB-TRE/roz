@@ -137,14 +137,23 @@ def onyx_update(
                 log.error(
                     f"Failed to update Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
                 )
+                # There has to be a better way to do this, TODO
                 if response.json().get("messages"):
                     if not payload.get("onyx_errors"):
                         payload["onyx_errors"] = {}
                     for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field):
+                        if payload["onyx_errors"].get(field) and isinstance(
+                            payload["onyx_errors"]["field"], list
+                        ):
                             payload["onyx_errors"][field].extend(messages)
                         else:
-                            payload["onyx_errors"][field] = messages
+                            if isinstance(messages, list):
+                                payload["onyx_errors"][field] = messages
+                            else:
+                                payload["onyx_errors"][field] = [
+                                    payload["onyx_errors"][field],
+                                    messages,
+                                ]
 
         except Exception as e:
             log.error(
@@ -748,12 +757,12 @@ def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
             )
 
         if response.status_code == 200:
-            log.info(f"Successfully unsupressed Onyx record for CID: {payload['cid']}")
+            log.info(f"Successfully unsuppressed Onyx record for CID: {payload['cid']}")
 
         else:
             unsuppress_fail = True
             log.error(
-                f"Failed to unsupress Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
+                f"Failed to unsuppress Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
             )
             if response.json().get("messages"):
                 if not payload.get("onyx_errors"):
@@ -766,7 +775,7 @@ def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
 
     except Exception as e:
         log.error(
-            f"Failed to unsupress Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
+            f"Failed to unsuppress Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
         )
         if payload.get("onyx_client_errors"):
             payload["onyx_errors"]["onyx_client_errors"].extend(
