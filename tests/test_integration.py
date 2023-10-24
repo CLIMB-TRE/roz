@@ -1448,6 +1448,10 @@ class Test_mscape_validator(unittest.TestCase):
                 ok=False,
             )
 
+            mock_client.return_value.__enter__.return_value._filter.return_value.__next__.return_value = MockResponse(
+                status_code=404, ok=False
+            )
+
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
             classifications_path = os.path.join(result_path, "classifications")
