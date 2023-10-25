@@ -20,7 +20,7 @@ while True:
     out_text = f"""*New MScape Artifact Published*
                    Message:
                    ```
-                   {in_message.body}
+                   {json.loads(in_message.body)}
                    ```
                    """
 
