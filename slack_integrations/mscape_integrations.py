@@ -12,8 +12,16 @@ varys_client = varys(
 )
 
 new_artifact_url = os.getenv("NEW_ARTIFACT_WEBHOOK")
+public_result_url = os.getenv("PUBLIC_RESULT_WEBHOOK")
 
-message_template = """*New MScape Artifact Published*
+new_artifact_message_template = """*New MScape Artifact Published*
+```
+{}
+```
+"""
+
+public_result_message_template = """*New MScape Public Dataset Result*
+Outcome - *{}*
 ```
 {}
 ```
@@ -21,20 +29,43 @@ message_template = """*New MScape Artifact Published*
 
 
 while True:
-    in_message = varys_client.receive(
-        "inbound.new_artifact.mscape", queue_suffix="slack_integration"
+    new_artifact_message = varys_client.receive(
+        "inbound.new_artifact.mscape", queue_suffix="slack_integration", timeout=1
+    )
+    if new_artifact_message:
+        in_dict = json.loads(new_artifact_message.body)
+
+        out_text = new_artifact_message_template.format(json.dumps(in_dict, indent=2))
+
+        out_message = {"text": out_text}
+
+        r = requests.post(new_artifact_url, json=out_message)
+
+        if not r.ok:
+            print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
+            sys.exit(1)
+
+        varys_client.acknowledge_message(new_artifact_message)
+
+    public_result_message = varys_client.receive(
+        "inbound.results.mscape.public", queue_suffix="slack_integration", timeout=1
     )
 
-    in_dict = json.loads(in_message.body)
+    if public_result_message:
+        in_dict = json.loads(public_result_message.body)
 
-    out_text = message_template.format(json.dumps(in_dict, indent=2))
+        outcome = "Success" if in_dict["ingested"] else "Failure"
 
-    out_message = {"text": out_text}
+        out_text = public_result_message_template.format(
+            outcome, json.dumps(in_dict, indent=2)
+        )
 
-    r = requests.post(new_artifact_url, json=out_message)
+        out_message = {"text": out_text}
 
-    if not r.ok:
-        print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
-        sys.exit(1)
+        r = requests.post(public_result_url, json=out_message)
 
-    varys_client.acknowledge_message(in_message)
+        if not r.ok:
+            print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
+            sys.exit(1)
+
+        varys_client.acknowledge_message(public_result_message)

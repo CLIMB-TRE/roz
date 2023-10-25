@@ -49,7 +49,7 @@ class worker_pool_handler:
             self._varys_client.acknowledge_message(message)
 
             new_artifact_payload = {
-                "ingest_timestamp": time.time_ns(),
+                "publish_timestamp": time.time_ns(),
                 "cid": payload["cid"],
                 "site": payload["site"],
                 "platform": payload["platform"],
