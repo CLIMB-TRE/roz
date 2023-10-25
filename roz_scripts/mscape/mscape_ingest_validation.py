@@ -87,9 +87,9 @@ class worker_pool_handler:
 
             else:
                 self._varys_client.acknowledge_message(message)
-                payload["ingest_errors"].append(
-                    f"Validation failed for unknown reason, please contact the MScape team"
-                )
+                # payload["ingest_errors"].append(
+                #     f"Validation failed for unknown reason, please contact the MScape team"
+                # )
 
                 self._varys_client.send(
                     message=payload,
