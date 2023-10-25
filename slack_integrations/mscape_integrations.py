@@ -1,6 +1,7 @@
 from varys import varys
 import os
 import requests
+import json
 
 varys_client = varys(
     profile="roz",
@@ -12,11 +13,20 @@ varys_client = varys(
 new_artifact_url = os.getenv("NEW_ARTIFACT_WEBHOOK")
 
 while True:
-    message = varys_client.receive(
+    in_message = varys_client.receive(
         "inbound.new_artifact.mscape", queue_suffix="slack_integration"
     )
 
-    r = requests.post(new_artifact_url, json=message.body)
+    out_text = f"""*New MScape Artifact Published*
+                   Message:
+                   ```
+                   {in_message.body}
+                   ```
+                   """
+
+    out_message = {"text": out_text}
+
+    r = requests.post(new_artifact_url, json=out_message)
 
     if not r.ok:
         print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
