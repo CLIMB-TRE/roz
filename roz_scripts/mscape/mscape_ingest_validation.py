@@ -727,6 +727,11 @@ def ret_0_parser(
                     "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
                 )
                 ingest_fail = True
+            elif (
+                process.startswith("extract_paired_reads")
+                or process.startswith("extract_reads")
+            ) and trace["exit"] == "3":
+                continue
             else:
                 payload["ingest_errors"].append(
                     f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
