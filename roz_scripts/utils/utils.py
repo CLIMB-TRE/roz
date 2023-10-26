@@ -94,13 +94,13 @@ class pipeline:
 
         e = False
 
-        pipeline_id = (
-            stdout.split("\n")[3].split(" ")[2].replace("[", "").replace("]", "")
-        )
-
-        cmd = [self.nxf_executable, "clean", "-f", pipeline_id]
-
         try:
+            pipeline_id = (
+                stdout.split("\n")[3].split(" ")[2].replace("[", "").replace("]", "")
+            )
+
+            cmd = [self.nxf_executable, "clean", "-f", pipeline_id]
+
             proc = subprocess.run(
                 args=cmd,
                 capture_output=True,

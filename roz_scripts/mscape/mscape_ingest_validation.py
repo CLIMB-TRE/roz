@@ -78,6 +78,16 @@ class worker_pool_handler:
                     self._log.error(
                         f"Message for UUID: {payload['uuid']} has been redelivered already, sending to dead letter queue"
                     )
+                    payload["ingest_errors"].append(
+                        f"Validation failed for UUID: {payload['uuid']} unrecoverably"
+                    )
+
+                    self._varys_client.send(
+                        message=payload,
+                        exchange=f"inbound.results.mscape.{payload['site']}",
+                        queue_suffix="validator",
+                    )
+
                     self._varys_client.nack_message(message, requeue=False)
                 else:
                     self._log.info(
@@ -87,9 +97,6 @@ class worker_pool_handler:
 
             else:
                 self._varys_client.acknowledge_message(message)
-                # payload["ingest_errors"].append(
-                #     f"Validation failed for unknown reason, please contact the MScape team"
-                # )
 
                 self._varys_client.send(
                     message=payload,
