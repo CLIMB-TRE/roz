@@ -77,7 +77,7 @@ class pipeline:
                 text=True,
             )
 
-        except Exception as e:
+        except BaseException as e:
             proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
 
         return (proc.returncode, e, proc.stdout, proc.stderr)
@@ -108,7 +108,8 @@ class pipeline:
                 text=True,
                 timeout=60,
             )
-        except Exception as e:
+
+        except BaseException as e:
             proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
 
         return (proc.returncode, e, proc.stdout, proc.stderr)
