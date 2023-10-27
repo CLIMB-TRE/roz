@@ -74,7 +74,7 @@ class worker_pool_handler:
             )
 
             if payload["rerun"]:
-                if message.basic_deliver.redelivered == True:
+                if message.basic_deliver.redelivered:
                     self._log.error(
                         f"Message for UUID: {payload['uuid']} has been redelivered already, sending to dead letter queue"
                     )
