@@ -24,6 +24,7 @@ class pipeline:
         config: Path,
         nxf_executable: Path,
         profile=None,
+        timeout=3600,
     ):
         """
         Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
@@ -40,6 +41,7 @@ class pipeline:
         self.pipe = pipe
         self.config = Path(config) if config else None
         self.nxf_executable = nxf_executable
+        self.timeout = timeout
         self.profile = profile
         self.cmd = None
 
@@ -75,6 +77,7 @@ class pipeline:
                 capture_output=True,
                 universal_newlines=True,
                 text=True,
+                timeout=self.timeout,
             )
 
         except BaseException as e:
