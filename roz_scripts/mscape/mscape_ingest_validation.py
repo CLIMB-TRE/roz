@@ -165,7 +165,7 @@ def execute_validation_pipeline(
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
 
-    log_path = os.path.join(args.result_dir, payload["uuid"])
+    log_path = Path(args.result_dir, payload["uuid"])
 
     return ingest_pipe.execute(params=parameters, logdir=log_path)
 

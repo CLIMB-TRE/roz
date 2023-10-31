@@ -118,7 +118,7 @@ class worker_pool_handler:
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
         self._varys_client.send(
-            message=f"MScape ingest worker failed with unhandled exception: {exception}",
+            message=f"Pathsafe ingest worker failed with unhandled exception: {exception}",
             exchange="pathsafe.restricted.announce",
             queue_suffix="dead_worker",
         )
@@ -271,7 +271,7 @@ def execute_assembly_pipeline(
 
     log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}'")
 
-    log_path = os.path.join(args.result_dir, payload["uuid"])
+    log_path = Path(args.result_dir, payload["uuid"])
 
     return ingest_pipe.execute(params=parameters, logdir=log_path)
 
