@@ -91,6 +91,12 @@ class worker_pool_handler:
 
                     self._varys_client.send(
                         message=payload,
+                        exchange="mscape.restricted.announce",
+                        queue_suffix="dead_letter",
+                    )
+
+                    self._varys_client.send(
+                        message=payload,
                         exchange=f"inbound.results.mscape.{payload['site']}",
                         queue_suffix="validator",
                     )
@@ -113,6 +119,11 @@ class worker_pool_handler:
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
+        self._varys_client.send(
+            message=f"MScape ingest worker failed with unhandled exception: {exception}",
+            exchange="mscape.restricted.announce",
+            queue_suffix="dead_worker",
+        )
 
     def close(self):
         self.worker_pool.close()
@@ -154,7 +165,9 @@ def execute_validation_pipeline(
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
 
-    return ingest_pipe.execute(params=parameters)
+    log_path = os.path.join(args.result_dir, payload["uuid"])
+
+    return ingest_pipe.execute(params=parameters, logdir=log_path)
 
 
 def add_taxon_records(

@@ -45,7 +45,7 @@ class pipeline:
         self.profile = profile
         self.cmd = None
 
-    def execute(self, params: dict) -> tuple[int, bool, str, str]:
+    def execute(self, params: dict, logdir: Path) -> tuple[int, bool, str, str]:
         """
         Execute the pipeline with the given parameters
 
@@ -56,7 +56,18 @@ class pipeline:
             tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
         """
 
-        cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
+        cmd = [self.nxf_executable]
+
+        if logdir:
+            logfile_path = os.path.join(logdir.resolve(), "nextflow.log")
+            cmd.extend(
+                [
+                    "-log",
+                    logfile_path,
+                ]
+            )
+
+        cmd.extend(["run", "-r", "main", "-latest", self.pipe])
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])
