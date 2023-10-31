@@ -89,7 +89,7 @@ while True:
 
         out_message = {"text": out_text}
 
-        r = requests.post(public_result_url, json=out_message)
+        r = requests.post(alert_url, json=out_message)
 
         if not r.ok:
             print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
