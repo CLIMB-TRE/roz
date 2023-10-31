@@ -559,7 +559,7 @@ def validate(
 
     log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}")
 
-    rc, execution_exception, stdout, stderr = execute_validation_pipeline(
+    rc, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, ingest_pipe=ingest_pipe
     )
 
@@ -567,14 +567,6 @@ def validate(
         log.info(
             f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
         )
-
-    if execution_exception:
-        log.error(f"Pipeline execution suffered an exception: {execution_exception}")
-        payload["ingest_errors"].append(
-            f"Validation pipeline execution exception: {execution_exception}"
-        )
-        log.info(f"Sending validation result for UUID: {payload['uuid']}")
-        return (False, payload, message)
 
     args.result_dir = Path(args.result_dir)
 
@@ -670,18 +662,14 @@ def validate(
     )
 
     (
-        cleanup_status,
-        cleanup_exception,
+        cleanup_rc,
         cleanup_stdout,
         cleanup_stderr,
     ) = ingest_pipe.cleanup(stdout=stdout)
 
-    if cleanup_exception:
-        log.error(f"Cleanup of pipeline for UUID: {payload['uuid']} timed out.")
-
-    if cleanup_status != 0:
+    if cleanup_rc != 0:
         log.error(
-            f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
+            f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_rc}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
         )
 
     return (True, payload, message)
