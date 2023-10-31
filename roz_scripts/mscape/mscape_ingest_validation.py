@@ -598,9 +598,6 @@ def validate(
         log.error(
             f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
         )
-        payload["ingest_errors"].append(
-            f"Validation pipeline exited with non-0 exit code: {rc}"
-        )
         payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
@@ -669,7 +666,7 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    payload["ingested"] = True
+    payload["published"] = True
     log.info(
         f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['cid']}"
     )

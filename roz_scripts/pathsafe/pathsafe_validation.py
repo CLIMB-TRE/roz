@@ -9,7 +9,7 @@ import logging
 import csv
 import requests
 import time
-from multiprocessing.pool import ThreadPool
+import multiprocessing as mp
 
 
 from roz_scripts.utils.utils import (
@@ -27,7 +27,7 @@ from onyx import OnyxClient
 class worker_pool_handler:
     def __init__(self, workers, logger, varys_client):
         self._log = logger
-        self.worker_pool = ThreadPool(processes=workers)
+        self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
@@ -54,7 +54,7 @@ class worker_pool_handler:
             self._varys_client.acknowledge_message(message)
 
             new_artifact_payload = {
-                "ingest_timestamp": time.time_ns(),
+                "publish_timestamp": time.time_ns(),
                 "cid": payload["cid"],
                 "site": payload["site"],
                 "platform": payload["platform"],
@@ -77,15 +77,51 @@ class worker_pool_handler:
             self._log.info(
                 f"Validation failed for match UUID: {payload['uuid']}, sending result"
             )
-            self._varys_client.acknowledge_message(message)
-            self._varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.pathsafe.{payload['site']}",
-                queue_suffix="validator",
-            )
+
+            if payload["rerun"]:
+                if message.basic_deliver.redelivered:
+                    self._log.error(
+                        f"Message for UUID: {payload['uuid']} has been redelivered already, sending to dead letter queue"
+                    )
+                    payload["ingest_errors"].append(
+                        f"Validation failed for UUID: {payload['uuid']} unrecoverably"
+                    )
+
+                    self._varys_client.send(
+                        message=payload,
+                        exchange="pathsafe.restricted.announce",
+                        queue_suffix="dead_letter",
+                    )
+
+                    self._varys_client.send(
+                        message=payload,
+                        exchange=f"inbound.results.pathsafe.{payload['site']}",
+                        queue_suffix="validator",
+                    )
+
+                    self._varys_client.nack_message(message, requeue=False)
+                else:
+                    self._log.info(
+                        f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
+                    )
+                    self._varys_client.nack_message(message)
+
+            else:
+                self._varys_client.acknowledge_message(message)
+
+                self._varys_client.send(
+                    message=payload,
+                    exchange=f"inbound.results.pathsafe.{payload['site']}",
+                    queue_suffix="validator",
+                )
 
     def error_callback(self, exception):
-        self._log.error(f"Worker failed with unhandled exception {exception}")
+        self._log.error(f"Worker failed with unhandled exception: {exception}")
+        self._varys_client.send(
+            message=f"MScape ingest worker failed with unhandled exception: {exception}",
+            exchange="pathsafe.restricted.announce",
+            queue_suffix="dead_worker",
+        )
 
     def close(self):
         self.worker_pool.close()
@@ -235,7 +271,9 @@ def execute_assembly_pipeline(
 
     log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}'")
 
-    return ingest_pipe.execute(params=parameters)
+    log_path = os.path.join(args.result_dir, payload["uuid"])
+
+    return ingest_pipe.execute(params=parameters, logdir=log_path)
 
 
 def ret_0_parser(
@@ -307,6 +345,8 @@ def validate(
 
     payload = copy.deepcopy(to_validate)
 
+    payload["rerun"] = False
+
     # This client is purely for pathsafe, ignore all other messages
     if to_validate["project"] != "pathsafetest":
         log.info(
@@ -317,20 +357,14 @@ def validate(
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         return (False, payload, message)
 
-    rc, timeout, stdout, stderr = execute_assembly_pipeline(
+    rc, stdout, stderr = execute_assembly_pipeline(
         payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
     )
 
-    if not timeout and ingest_pipe.cmd:
+    if ingest_pipe.cmd:
         log.info(
             f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
         )
-
-    if timeout:
-        log.error(f"Pipeline execution timed out for message id: {payload['uuid']}")
-        payload["ingest_errors"].append("Assembly pipeline timeout")
-        log.info(f"Sending validation result for UUID: {payload['uuid']}")
-        return (False, payload, message)
 
     args.result_dir = Path(args.result_dir)
 
@@ -349,9 +383,7 @@ def validate(
         log.error(
             f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
         )
-        payload["ingest_errors"].append(
-            f"Validation pipeline exited with non-0 exit code: {rc}"
-        )
+        payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
@@ -418,19 +450,13 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    payload["ingested"] = True
+    payload["published"] = True
 
     (
         cleanup_status,
-        cleanup_timeout,
         cleanup_stdout,
         cleanup_stderr,
     ) = ingest_pipe.cleanup(stdout=stdout)
-
-    if cleanup_timeout:
-        log.error(
-            f"Cleanup of pipeline for UUID: {payload['uuid']} timed out. Stdout: {cleanup_stdout}, Stderr: {cleanup_stderr}"
-        )
 
     if cleanup_status != 0:
         log.error(
@@ -458,7 +484,7 @@ def run(args):
         "cid": False,
         "site": "",
         "created": False,
-        "ingested": False,
+        "published": False,
         "onyx_test_status_code": False,
         "onyx_test_create_errors": {},  # Dict
         "onyx_test_create_status": False,

@@ -60,7 +60,7 @@ def main():
         "validate": True,
         "site": "",
         "created": False,
-        "ingested": False,
+        "published": False,
         "files": {},  # Dict
         "onyx_test_status_code": False,
         "onyx_test_create_errors": {},  # Dict
