@@ -56,7 +56,7 @@ class pipeline:
             tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
         """
 
-        e = False
+        subprocess_exception = False
 
         cmd = [self.nxf_executable, "run", "-r", "main", "-latest", self.pipe]
 
@@ -80,10 +80,12 @@ class pipeline:
                 timeout=self.timeout,
             )
 
-        except BaseException as e:
-            proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
+        except BaseException as subprocess_exception:
+            proc = SimpleNamespace(
+                returncode=1, stdout=str(subprocess_exception), stderr=""
+            )
 
-        return (proc.returncode, e, proc.stdout, proc.stderr)
+        return (proc.returncode, subprocess_exception, proc.stdout, proc.stderr)
 
     def cleanup(self, stdout: str) -> tuple[int, bool, str, str]:
         """Cleanup the pipeline intermediate files
@@ -95,7 +97,7 @@ class pipeline:
             tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
         """
 
-        e = False
+        cleanup_exception = False
 
         try:
             pipeline_id = (
@@ -112,10 +114,12 @@ class pipeline:
                 timeout=60,
             )
 
-        except BaseException as e:
-            proc = SimpleNamespace(returncode=1, stdout=str(e), stderr="")
+        except BaseException as cleanup_exception:
+            proc = SimpleNamespace(
+                returncode=1, stdout=str(cleanup_exception), stderr=""
+            )
 
-        return (proc.returncode, e, proc.stdout, proc.stderr)
+        return (proc.returncode, cleanup_exception, proc.stdout, proc.stderr)
 
 
 def init_logger(name, log_path, log_level):
@@ -254,12 +258,12 @@ def onyx_submission(
                     f"Unhandled response status code {response.status_code} from Onyx create"
                 ]
 
-        except Exception as e:
+        except Exception as onyx_create_exception:
             log.error(
-                f"Onyx CSV create failed for UUID: {payload['uuid']} due to client error: {e}"
+                f"Onyx CSV create failed for UUID: {payload['uuid']} due to client error: {onyx_create_exception}"
             )
             payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error {e}"
+                f"Unhandled client error {onyx_create_exception}"
             ]
             submission_fail = True
 
@@ -361,17 +365,17 @@ def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
                     else:
                         payload["onyx_errors"][field] = messages
 
-    except Exception as e:
+    except Exception as onyx_unsuppress_exception:
         log.error(
-            f"Failed to unsupress Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
+            f"Failed to unsupress Onyx record for CID: {payload['cid']} with unhandled onyx client error: {onyx_unsuppress_exception}"
         )
         if payload.get("onyx_client_errors"):
             payload["onyx_errors"]["onyx_client_errors"].extend(
-                f"Unhandled client error {e}"
+                f"Unhandled client error: {onyx_unsuppress_exception}"
             )
         else:
             payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error {e}"
+                f"Unhandled client error: {onyx_unsuppress_exception}"
             ]
         unsuppress_fail = True
 

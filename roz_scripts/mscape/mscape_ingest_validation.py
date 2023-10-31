@@ -13,7 +13,14 @@ import argparse
 import multiprocessing as mp
 from collections import namedtuple
 
-from roz_scripts.utils.utils import s3_to_fh, pipeline, init_logger, get_credentials
+from roz_scripts.utils.utils import (
+    pipeline,
+    init_logger,
+    get_credentials,
+    onyx_unsuppress,
+    onyx_submission,
+    onyx_update,
+)
 from varys import varys
 
 from onyx import OnyxClient
@@ -105,78 +112,11 @@ class worker_pool_handler:
                 )
 
     def error_callback(self, exception):
-        self._log.error(f"Worker failed with unhandled exception {exception}")
+        self._log.error(f"Worker failed with unhandled exception: {exception}")
 
     def close(self):
         self.worker_pool.close()
         self.worker_pool.join()
-
-
-def onyx_update(
-    payload: dict, fields: dict, log: logging.getLogger
-) -> tuple[bool, dict]:
-    """
-    Update an existing Onyx record with the given fields
-
-    Args:
-        payload (dict): Payload dict for the current artifact
-        fields (dict): Fields to update in the format {'field_name': 'field_value'}
-        log (logging.getLogger): Logger object
-
-    Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the update failed and the updated payload dict
-    """
-    update_fail = False
-
-    with OnyxClient(env_password=True) as client:
-        try:
-            response = client._update(
-                project=payload["project"],
-                cid=payload["cid"],
-                fields=fields,
-            )
-
-            if response.status_code == 200:
-                log.info(f"Successfully updated Onyx record for CID: {payload['cid']}")
-
-            else:
-                update_fail = True
-                log.error(
-                    f"Failed to update Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
-                )
-                # There has to be a better way to do this, TODO
-                if response.json().get("messages"):
-                    if not payload.get("onyx_errors"):
-                        payload["onyx_errors"] = {}
-                    for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field) and isinstance(
-                            payload["onyx_errors"]["field"], list
-                        ):
-                            payload["onyx_errors"][field].extend(messages)
-                        else:
-                            if isinstance(messages, list):
-                                payload["onyx_errors"][field] = messages
-                            else:
-                                payload["onyx_errors"][field] = [
-                                    payload["onyx_errors"][field],
-                                    messages,
-                                ]
-
-        except Exception as e:
-            log.error(
-                f"Failed to update Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
-            )
-            if payload.get("onyx_client_errors"):
-                payload["onyx_errors"]["onyx_client_errors"].extend(
-                    f"Unhandled client error {e}"
-                )
-            else:
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    f"Unhandled client error {e}"
-                ]
-            update_fail = True
-
-    return (update_fail, payload)
 
 
 def execute_validation_pipeline(
@@ -215,171 +155,6 @@ def execute_validation_pipeline(
         parameters["paired"] = ""
 
     return ingest_pipe.execute(params=parameters)
-
-
-def onyx_submission(
-    log: logging.getLogger,
-    payload: dict,
-) -> tuple[bool, dict]:
-    """This function is responsible for submitting a record to Onyx, it is called from the main ingest function
-    when a match is received for a given artifact.
-
-    Args:
-        log (logging.getLogger): The logger object
-        payload (dict): The payload dict of the currently ingesting artifact
-        varys_client (varys): A varys client object
-
-    Returns:
-        tuple[bool, dict]: A tuple containing a bool indicating the status of the Onyx create request and the payload dict modified to include information about the Onyx create request
-    """
-
-    submission_fail = False
-
-    if not payload.get("onyx_errors"):
-        payload["onyx_errors"] = {}
-
-    if not payload.get("onyx_create_status"):
-        payload["onyx_create_status"] = False
-
-    if not payload.get("created"):
-        payload["created"] = False
-
-    if not payload.get("cid"):
-        payload["cid"] = ""
-
-    with OnyxClient(env_password=True) as client:
-        log.info(
-            f"Received match for artifact: {payload['artifact']}, now attempting to create record in Onyx"
-        )
-
-        try:
-            response_generator = client._csv_create(
-                payload["project"],
-                csv_file=s3_to_fh(
-                    payload["files"][".csv"]["uri"],
-                    payload["files"][".csv"]["etag"],
-                ),
-                fields={"suppressed": True, "site": payload["site"]},
-            )
-
-            response = next(response_generator)
-
-            payload["onyx_status_code"] = response.status_code
-
-            if response.status_code == 500:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} lead to onyx internal server error"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Onyx internal server error"
-                ]
-
-            elif response.status_code == 404:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed because project: {payload['project']} does not exist"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    f"Project {payload['project']} does not exist"
-                ]
-
-            elif response.status_code == 403:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed due to a permission error"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Permission error on Onyx create"
-                ]
-
-            elif response.status_code == 401:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed due to incorrect credentials"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Incorrect Onyx credentials"
-                ]
-
-            elif response.status_code == 400:
-                log.error(f"Onyx create for UUID: {payload['uuid']} failed")
-                # If the create fails due to a validation error we need to check if the record exists but is suppressed
-                # meaning it has been created successfully but failed at some later stage of ingestion e.g. s3 upload
-                # Therefore re-run the rest of validation
-                filter_response = next(
-                    client._filter(
-                        payload["project"],
-                        fields={
-                            "sample_id": payload["sample_id"],
-                            "run_name": payload["run_name"],
-                        },
-                        scope=["admin"],
-                    )
-                )
-
-                if not filter_response.ok:
-                    submission_fail = True
-                    if response.json().get("messages"):
-                        for field, messages in response.json()["messages"].items():
-                            if payload["onyx_errors"].get(field):
-                                payload["onyx_errors"][field].extend(messages)
-                            else:
-                                payload["onyx_errors"][field] = messages
-
-                else:
-                    if len(filter_response.json()["data"]) > 1:
-                        submission_fail = True
-                        log.error(
-                            f"Onyx _filter to check if UUID: {payload['uuid']} is suppressed returned more than one record -> This should NEVER happen"
-                        )
-
-                    elif filter_response.json()["data"][0]["suppressed"]:
-                        payload["cid"] = filter_response.json()["data"][0]["cid"]
-                        payload["onyx_create_status"] = True
-                        payload["created"] = True
-                    else:
-                        submission_fail = True
-                        log.error(
-                            f"UUID: {payload['uuid']} is not suppressed in Onyx but create failed"
-                        )
-
-            elif response.status_code == 200:
-                log.error(
-                    f"Onyx responded with 200 on a create request for UUID: {payload['uuid']} (this should be 201)"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "200 response status on onyx create (should be 201)"
-                ]
-
-            elif response.status_code == 201:
-                log.info(
-                    f"Successful create for UUID: {payload['uuid']} which has been assigned CID: {response.json()['data']['cid']}"
-                )
-                payload["onyx_create_status"] = True
-                payload["created"] = True
-                payload["cid"] = response.json()["data"]["cid"]
-
-            else:
-                log.error(
-                    f"Unhandled Onyx response status code {response.status_code} from Onyx create for UUID: {payload['uuid']}"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    f"Unhandled response status code {response.status_code} from Onyx create"
-                ]
-
-        except Exception as e:
-            log.error(
-                f"Onyx CSV create failed for UUID: {payload['uuid']} due to client error: {e}"
-            )
-            payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error {e}"
-            ]
-            submission_fail = True
-
-    return (submission_fail, payload)
 
 
 def add_taxon_records(
@@ -435,9 +210,9 @@ def add_taxon_records(
                             f"fastq_{i}"
                         ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}_{i}.fastq.gz"
 
-                    except Exception as e:
+                    except Exception as add_taxon_record_exception:
                         log.error(
-                            f"Failed to upload binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+                            f"Failed to upload binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_taxon_record_exception}"
                         )
                         payload["ingest_errors"].append(
                             f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
@@ -461,9 +236,9 @@ def add_taxon_records(
                         f"fastq_1"
                     ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}.fastq.gz"
 
-                except Exception as e:
+                except Exception as add_taxon_record_exception:
                     log.error(
-                        f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+                        f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_taxon_record_exception}"
                     )
                     payload["ingest_errors"].append(
                         f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
@@ -521,9 +296,9 @@ def push_taxon_reports(
                 f"{payload['cid']}/{report}",
             )
 
-    except ClientError as e:
+    except Exception as push_taxon_report_exception:
         log.error(
-            f"Failed to upload taxon classification to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+            f"Failed to upload taxon classification to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {push_taxon_report_exception}"
         )
         payload["ingest_errors"].append(
             f"Failed to upload taxon classification to storage bucket"
@@ -570,9 +345,9 @@ def push_report_file(
             "mscapetest-published-reports",
             f"{payload['cid']}_scylla_report.html",
         )
-    except ClientError as e:
+    except ClientError as push_report_file_exception:
         log.error(
-            f"Failed to upload scylla report to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+            f"Failed to upload scylla report to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {push_report_file_exception}"
         )
         payload["ingest_errors"].append(
             f"Failed to upload scylla report to storage bucket"
@@ -627,9 +402,9 @@ def add_reads_record(
                     f"{payload['cid']}_{i}.fastq.gz",
                 )
 
-            except ClientError as e:
+            except ClientError as add_reads_record_exception:
                 log.error(
-                    f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+                    f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_reads_record_exception}"
                 )
                 payload["ingest_errors"].append(
                     f"Failed to upload reads to storage bucket"
@@ -662,9 +437,9 @@ def add_reads_record(
                 f"{payload['cid']}.fastq.gz",
             )
 
-        except ClientError as e:
+        except ClientError as add_reads_record_exception:
             log.error(
-                f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+                f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_reads_record_exception}"
             )
             payload["ingest_errors"].append(f"Failed to upload reads to storage bucket")
 
@@ -717,9 +492,9 @@ def ret_0_parser(
             for process in reader:
                 trace_dict[process["name"].split(":")[-1]] = process
 
-    except Exception as e:
+    except Exception as pipeline_trace_exception:
         log.error(
-            f"Could not open pipeline trace for UUID: {payload['uuid']} despite NXF exit code 0 due to error: {e}"
+            f"Could not open pipeline trace for UUID: {payload['uuid']} despite NXF exit code 0 due to error: {pipeline_trace_exception}"
         )
         payload["ingest_errors"].append("couldn't open nxf ingest pipeline trace")
         ingest_fail = True
@@ -746,60 +521,6 @@ def ret_0_parser(
                 ingest_fail = True
 
     return (ingest_fail, payload)
-
-
-def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
-    """Function to unsuppress an existing Onyx record
-
-    Args:
-        payload (dict): Payload dict for the current artifact
-        log (logging.getLogger): Logger object
-
-    Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the unsuppress failed and the updated payload dict
-    """
-    unsuppress_fail = False
-
-    try:
-        with OnyxClient(env_password=True) as client:
-            response = client._update(
-                project=payload["project"],
-                cid=payload["cid"],
-                fields={"suppressed": False},
-            )
-
-        if response.status_code == 200:
-            log.info(f"Successfully unsuppressed Onyx record for CID: {payload['cid']}")
-
-        else:
-            unsuppress_fail = True
-            log.error(
-                f"Failed to unsuppress Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
-            )
-            if response.json().get("messages"):
-                if not payload.get("onyx_errors"):
-                    payload["onyx_errors"] = {}
-                for field, messages in response.json()["messages"].items():
-                    if payload["onyx_errors"].get(field):
-                        payload["onyx_errors"][field].extend(messages)
-                    else:
-                        payload["onyx_errors"][field] = messages
-
-    except Exception as e:
-        log.error(
-            f"Failed to unsuppress Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
-        )
-        if payload.get("onyx_client_errors"):
-            payload["onyx_errors"]["onyx_client_errors"].extend(
-                f"Unhandled client error {e}"
-            )
-        else:
-            payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error {e}"
-            ]
-        unsuppress_fail = True
-
-    return (unsuppress_fail, payload)
 
 
 def validate(
@@ -838,7 +559,7 @@ def validate(
 
     log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}")
 
-    rc, worker_exception, stdout, stderr = execute_validation_pipeline(
+    rc, execution_exception, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, ingest_pipe=ingest_pipe
     )
 
@@ -847,10 +568,10 @@ def validate(
             f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
         )
 
-    if worker_exception:
-        log.error(f"Pipeline execution suffered an exception: {worker_exception}")
+    if execution_exception:
+        log.error(f"Pipeline execution suffered an exception: {execution_exception}")
         payload["ingest_errors"].append(
-            f"Validation pipeline execution exception: {worker_exception}"
+            f"Validation pipeline execution exception: {execution_exception}"
         )
         log.info(f"Sending validation result for UUID: {payload['uuid']}")
         return (False, payload, message)
