@@ -1026,14 +1026,12 @@ class Test_mscape_validator(unittest.TestCase):
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
 
             mock_pipeline.return_value.cleanup.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
@@ -1172,14 +1170,12 @@ class Test_mscape_validator(unittest.TestCase):
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
 
             mock_pipeline.return_value.cleanup.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
@@ -1298,14 +1294,12 @@ class Test_mscape_validator(unittest.TestCase):
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
 
             mock_pipeline.return_value.cleanup.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
@@ -1422,14 +1416,12 @@ class Test_mscape_validator(unittest.TestCase):
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
 
             mock_pipeline.return_value.cleanup.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
@@ -1648,14 +1640,12 @@ class Test_pathsafe_validator(unittest.TestCase):
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
 
             mock_pipeline.return_value.cleanup.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
@@ -1771,14 +1761,12 @@ class Test_pathsafe_validator(unittest.TestCase):
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
 
             mock_pipeline.return_value.cleanup.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
@@ -1881,14 +1869,12 @@ class Test_pathsafe_validator(unittest.TestCase):
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
 
             mock_pipeline.return_value.cleanup.return_value = (
                 0,
-                False,
                 "test_stdout",
                 "test_stderr",
             )
