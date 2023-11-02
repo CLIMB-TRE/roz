@@ -13,8 +13,7 @@ import multiprocessing as mp
 
 
 from roz_scripts.utils.utils import (
-    onyx_submission,
-    onyx_unsuppress,
+    csv_create,
     onyx_update,
     pipeline,
     init_logger,
@@ -405,7 +404,9 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    submission_fail, payload = onyx_submission(log=log, payload=payload)
+    submission_fail, payload = csv_create(
+        log=log, payload=payload, test_submission=False
+    )
 
     if submission_fail:
         log.error(
@@ -440,7 +441,9 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
+    unsuppress_fail, payload = onyx_update(
+        payload=payload, log=log, fields={"suppressed": False}
+    )
 
     if unsuppress_fail:
         log.error(
