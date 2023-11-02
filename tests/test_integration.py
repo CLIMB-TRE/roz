@@ -9,6 +9,14 @@ from roz_scripts import (
     pathsafe_validation,
 )
 
+from onyx.exceptions import (
+    OnyxRequestError,
+    OnyxConnectionError,
+    OnyxServerError,
+    OnyxConfigError,
+    OnyxClientError,
+)
+
 from types import SimpleNamespace
 import multiprocessing as mp
 import time
@@ -455,12 +463,6 @@ example_reads_summary = [
 ]
 
 
-def mock_validation(message, args, ingest_pipe):
-    payload = json.loads(message.body)
-    time.sleep(2)
-    return (True, payload, message)
-
-
 class MockResponse:
     def __init__(self, status_code, json_data=None, ok=True):
         self.status_code = status_code
@@ -580,101 +582,89 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertIsNone(message)
 
     def test_s3_updated_csv(self):
-        with patch("roz_scripts.s3_matcher.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value._filter.return_value.__next__.return_value = MockResponse(
-                status_code=200, json_data={"data": []}
-            )
+        args = SimpleNamespace(sleep_time=5)
 
-            args = SimpleNamespace(sleep_time=5)
+        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+        self.s3_matcher_process.start()
 
-            self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-            self.s3_matcher_process.start()
+        self.varys_client.send(
+            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
+        self.varys_client.send(
+            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
 
-            self.varys_client.send(
-                example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-            )
-            self.varys_client.send(
-                example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-            )
+        message = self.varys_client.receive(
+            exchange="inbound.matched",
+            queue_suffix="s3_matcher",
+            timeout=30,
+        )
 
-            message = self.varys_client.receive(
-                exchange="inbound.matched",
-                queue_suffix="s3_matcher",
-                timeout=30,
-            )
+        self.assertIsNotNone(message)
 
-            self.assertIsNotNone(message)
+        self.varys_client.send(
+            example_csv_msg_2, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
 
-            self.varys_client.send(
-                example_csv_msg_2, exchange="inbound.s3", queue_suffix="s3_matcher"
-            )
+        message_2 = self.varys_client.receive(
+            exchange="inbound.matched",
+            queue_suffix="s3_matcher",
+            timeout=30,
+        )
 
-            message_2 = self.varys_client.receive(
-                exchange="inbound.matched",
-                queue_suffix="s3_matcher",
-                timeout=30,
-            )
+        self.assertIsNotNone(message_2)
 
-            self.assertIsNotNone(message_2)
+        message_dict = json.loads(message_2.body)
 
-            message_dict = json.loads(message_2.body)
-
-            self.assertEqual(message_dict["sample_id"], "sample-test")
-            self.assertEqual(
-                message_dict["artifact"], "mscapetest.sample-test.run-test"
-            )
-            self.assertEqual(message_dict["run_name"], "run-test")
-            self.assertEqual(message_dict["project"], "mscapetest")
-            self.assertEqual(message_dict["platform"], "ont")
-            self.assertEqual(message_dict["site"], "birm")
-            self.assertEqual(message_dict["uploaders"], ["testuser"])
-            self.assertEqual(
-                message_dict["files"][".csv"]["key"],
-                "mscapetest.sample-test.run-test.ont.csv",
-            )
-            self.assertEqual(
-                message_dict["files"][".fastq.gz"]["key"],
-                "mscapetest.sample-test.run-test.fastq.gz",
-            )
-            self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
+        self.assertEqual(message_dict["sample_id"], "sample-test")
+        self.assertEqual(message_dict["artifact"], "mscapetest.sample-test.run-test")
+        self.assertEqual(message_dict["run_name"], "run-test")
+        self.assertEqual(message_dict["project"], "mscapetest")
+        self.assertEqual(message_dict["platform"], "ont")
+        self.assertEqual(message_dict["site"], "birm")
+        self.assertEqual(message_dict["uploaders"], ["testuser"])
+        self.assertEqual(
+            message_dict["files"][".csv"]["key"],
+            "mscapetest.sample-test.run-test.ont.csv",
+        )
+        self.assertEqual(
+            message_dict["files"][".fastq.gz"]["key"],
+            "mscapetest.sample-test.run-test.fastq.gz",
+        )
+        self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
     def test_s3_identical_csv(self):
-        with patch("roz_scripts.s3_matcher.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value._filter.return_value.__next__.return_value = MockResponse(
-                status_code=200, json_data={"data": []}
-            )
+        args = SimpleNamespace(sleep_time=5)
 
-            args = SimpleNamespace(sleep_time=5)
+        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
+        self.s3_matcher_process.start()
 
-            self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-            self.s3_matcher_process.start()
+        self.varys_client.send(
+            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
+        self.varys_client.send(
+            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
 
-            self.varys_client.send(
-                example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-            )
-            self.varys_client.send(
-                example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-            )
+        message = self.varys_client.receive(
+            exchange="inbound.matched",
+            queue_suffix="s3_matcher",
+            timeout=30,
+        )
 
-            message = self.varys_client.receive(
-                exchange="inbound.matched",
-                queue_suffix="s3_matcher",
-                timeout=30,
-            )
+        self.assertIsNotNone(message)
 
-            self.assertIsNotNone(message)
+        self.varys_client.send(
+            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+        )
 
-            self.varys_client.send(
-                example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-            )
+        message_2 = self.varys_client.receive(
+            exchange="inbound.matched",
+            queue_suffix="s3_matcher",
+            timeout=30,
+        )
 
-            message_2 = self.varys_client.receive(
-                exchange="inbound.matched",
-                queue_suffix="s3_matcher",
-                timeout=30,
-            )
-
-            self.assertIsNone(message_2)
+        self.assertIsNone(message_2)
 
 
 class Test_ingest(unittest.TestCase):
@@ -760,10 +750,8 @@ class Test_ingest(unittest.TestCase):
         time.sleep(1)
 
     def test_ingest_successful(self):
-        with patch("roz_scripts.ingest.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__iter__.return_value = [
-                MockResponse(status_code=201, json_data={"data": []}, ok=True)
-            ]
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
 
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()
@@ -806,10 +794,8 @@ class Test_ingest(unittest.TestCase):
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
     def test_name_mismatches(self):
-        with patch("roz_scripts.ingest.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__iter__.return_value = [
-                MockResponse(status_code=201, json_data={"data": []}, ok=True)
-            ]
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
 
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()
@@ -859,11 +845,14 @@ class Test_ingest(unittest.TestCase):
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
     def test_multiline_csv(self):
-        with patch("roz_scripts.ingest.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__iter__.return_value = [
-                MockResponse(status_code=201, json_data={"data": []}, ok=True),
-                MockResponse(status_code=201, json_data={"data": []}, ok=True),
-            ]
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = (
+                Mock(
+                    side_effect=OnyxClientError(
+                        "Multiline metadata CSVs are not permitted"
+                    )
+                )
+            )
 
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()
@@ -886,23 +875,17 @@ class Test_ingest(unittest.TestCase):
 
             self.assertIn(
                 "Multiline metadata CSVs are not permitted",
-                message_dict["onyx_test_create_errors"]["metadata_csv"],
+                message_dict["onyx_test_create_errors"]["onyx_errors"],
             )
             self.assertFalse(message_dict["onyx_test_create_status"])
             self.assertFalse(message_dict["validate"])
 
     def test_onyx_create_error_handling(self):
-        with patch("roz_scripts.ingest.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__iter__.return_value = [
-                MockResponse(
-                    status_code=400,
-                    json_data={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
-                    ok=False,
-                )
-            ]
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "data": [],
+                "messages": {"sample_id": "Test sample_id error handling"},
+            }
 
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()
@@ -1021,8 +1004,8 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_validator_successful(self):
         with (
-            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1037,13 +1020,11 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=200)
-            )
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-                status_code=201, json_data={"data": {"cid": "test_cid"}}
-            )
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "data": {"cid": "test_cid"}
+            }
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
@@ -1108,11 +1089,12 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
 
-            Success, payload, message = mscape_ingest_validation.validate(
+            Success, alert, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
             )
 
             self.assertTrue(Success)
+            self.assertFalse(alert)
 
             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
             self.assertEqual(
@@ -1165,8 +1147,8 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_too_much_human(self):
         with (
-            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1181,12 +1163,10 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=200)
-            )
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-                status_code=201, json_data={"data": {"cid": "test_cid"}}
+            mock_client.return_value.__enter__.return_value._csv_create.return_value = (
+                {}
             )
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
@@ -1251,11 +1231,12 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
 
-            Success, payload, message = mscape_ingest_validation.validate(
+            Success, alert, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
             )
 
             self.assertFalse(Success)
+            self.assertFalse(alert)
 
             self.assertIn(
                 "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly",
@@ -1289,8 +1270,8 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_successful_test(self):
         with (
-            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1305,13 +1286,11 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=200)
-            )
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-                status_code=201, json_data={"data": {"cid": "test_cid"}}
-            )
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "data": {"cid": "test_cid"}
+            }
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
@@ -1377,10 +1356,11 @@ class Test_mscape_validator(unittest.TestCase):
                 body=json.dumps(example_test_validator_message)
             )
 
-            Success, payload, message = mscape_ingest_validation.validate(
+            Success, alert, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
             )
             self.assertFalse(Success)
+            self.assertFalse(alert)
 
             self.assertFalse(payload["created"])
             self.assertFalse(payload["ingested"])
@@ -1411,8 +1391,8 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_onyx_fail(self):
         with (
-            patch("roz_scripts.mscape_ingest_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client,
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
                 0,
@@ -1427,21 +1407,23 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value._update.return_value = (
-                MockResponse(status_code=400, ok=False)
+            mock_client.return_value.__enter__.return_value.update.return_value = Mock(
+                side_effect=OnyxRequestError("Test error")
             )
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-                status_code=400,
-                json_data={
-                    "data": [],
-                    "messages": {"sample_id": "Test sample_id error handling"},
-                },
-                ok=False,
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.side_effect = OnyxRequestError(
+                response=MockResponse(
+                    status_code=400,
+                    json_data={
+                        "data": [],
+                        "messages": {"sample_id": "Test sample_id error handling"},
+                    },
+                    ok=False,
+                )
             )
 
-            mock_client.return_value.__enter__.return_value._filter.return_value.__next__.return_value = MockResponse(
-                status_code=404, ok=False
+            mock_client.return_value.__enter__.return_value.filter.return_value.__next__.return_value = Mock(
+                side_effect=OnyxRequestError("Test error")
             )
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])

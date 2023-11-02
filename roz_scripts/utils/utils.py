@@ -8,8 +8,21 @@ import logging
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+import time
+import csv
 
-from onyx import OnyxClient
+from onyx import (
+    OnyxClient,
+    OnyxConfig,
+)
+
+from onyx.exceptions import (
+    OnyxRequestError,
+    OnyxConnectionError,
+    OnyxServerError,
+    OnyxConfigError,
+    OnyxClientError,
+)
 
 __s3_creds = namedtuple(
     "s3_credentials",
@@ -45,7 +58,7 @@ class pipeline:
         self.profile = profile
         self.cmd = None
 
-    def execute(self, params: dict, logdir: Path) -> tuple[int, bool, str, str]:
+    def execute(self, params: dict, logdir: Path) -> tuple[int, str, str]:
         """
         Execute the pipeline with the given parameters
 
@@ -53,7 +66,7 @@ class pipeline:
             params (dict): A dictionary of parameters to pass to the pipeline in the format {'param_name': 'param_value'} (no --)
 
         Returns:
-            tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
+            tuple[int, str, str]: A tuple containing the return code, stdout and stderr
         """
 
         cmd = [self.nxf_executable]
@@ -96,14 +109,14 @@ class pipeline:
 
         return (proc.returncode, proc.stdout, proc.stderr)
 
-    def cleanup(self, stdout: str) -> tuple[int, bool, str, str]:
+    def cleanup(self, stdout: str) -> tuple[int, str, str]:
         """Cleanup the pipeline intermediate files
 
         Args:
             stdout (str): The stdout from the pipeline execution
 
         Returns:
-            tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
+            tuple[int, str, str]: A tuple containing the return code, stdout and stderr
         """
 
         try:
@@ -142,144 +155,198 @@ def init_logger(name, log_path, log_level):
     return log
 
 
-def onyx_submission(
-    log: logging.getLogger,
+def csv_create(
     payload: dict,
-) -> tuple[bool, dict]:
-    """This function is responsible for submitting a record to Onyx, it is called from the main ingest function
-    when a match is received for a given artifact.
+    log: logging.getLogger,
+    test_submission: bool = False,
+) -> tuple[bool, bool, dict]:
+    """Function to create a new record in onyx from a metadata CSV file, can be used for testing or for real submissions
 
     Args:
-        log (logging.getLogger): The logger object
-        payload (dict): The payload dict of the currently ingesting artifact
-        varys_client (varys.varys): A varys client object
+        payload (dict): Payload dict for the current artifact
+        log (logging.getLogger): Logger object
+        test_submission (bool, optional): Bool to indicate if submission is a test or not. Defaults to False.
 
     Returns:
-        tuple[bool, dict]: A tuple containing a bool indicating the status of the Onyx create request and the payload dict modified to include information about the Onyx create request
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the create failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
+    """
+    # Not sure how to fully generalise this, the idea is to have a csv as the only file that will always exist, so I guess this is okay?
+    # CSV file must always be called '.csv' though
+
+    onyx_config = get_onyx_credentials()
+
+    with OnyxClient(config=onyx_config) as client:
+        log.info(
+            f"Received match for artifact: {payload['artifact']}, UUID: {payload['uuid']} now attempting to test_create record in Onyx"
+        )
+        reconnect_count = 0
+        while reconnect_count <= 3:
+            try:
+                # Test create from the metadata CSV
+                response = client.csv_create(
+                    payload["project"],
+                    csv_file=s3_to_fh(
+                        payload["files"][".csv"]["uri"],
+                        payload["files"][".csv"]["etag"],
+                    ),  # I don't like having a hardcoded metadata file name like this but hypothetically we should always have a metadata CSV
+                    test=test_submission,
+                    fields={"site": payload["site"]},
+                    multiline=False,
+                )
+
+            except OnyxConnectionError as e:
+                if reconnect_count < 3:
+                    reconnect_count += 1
+                    log.error(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 5 seconds"
+                    )
+                    time.sleep(5)
+                    continue
+
+                else:
+                    log.error(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
+                    )
+                    if test_submission:
+                        payload.setdefault("onyx_test_create_errors", {})
+                        payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                        payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                    else:
+                        payload.setdefault("onyx_create_errors", {})
+                        payload["onyx_create_errors"].setdefault("onyx_errors", [])
+                        payload["onyx_create_errors"]["onyx_errors"].append(e)
+
+                    return (False, True, payload)
+
+            except (OnyxServerError, OnyxConfigError) as e:
+                log.error(f"Unhandled Onyx error: {e}")
+                if test_submission:
+                    payload.setdefault("onyx_test_create_errors", {})
+                    payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                else:
+                    payload.setdefault("onyx_create_errors", {})
+                    payload["onyx_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_create_errors"]["onyx_errors"].append(e)
+
+                return (False, True, payload)
+
+            except OnyxClientError as e:
+                log.info(
+                    f"Onyx csv create failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
+                )
+
+                if test_submission:
+                    payload.setdefault("onyx_test_create_errors", {})
+                    payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                else:
+                    payload.setdefault("onyx_create_errors", {})
+                    payload["onyx_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_create_errors"]["onyx_errors"].append(e)
+
+                return (False, False, payload)
+
+            except OnyxRequestError as e:
+                log.info(
+                    f"Onyx test csv create failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
+                )
+
+                if test_submission:
+                    # Handle the case where the record already exists but isn't published when field is added to onyx
+                    payload.setdefault("onyx_test_create_errors", {})
+                    for field, messages in e.response.json()["messages"].items():
+                        payload["onyx_test_create_errors"].setdefault(field, [])
+                        payload["onyx_errors"][field].extend(messages)
+                else:
+                    payload.setdefault("onyx_create_errors", {})
+                    for field, messages in e.response.json()["messages"].items():
+                        payload["onyx_create_errors"].setdefault(field, [])
+                        payload["onyx_errors"][field].extend(messages)
+
+                return (False, False, payload)
+
+            except Exception as e:
+                if test_submission:
+                    log.error(f"Unhandled error: {e}")
+
+                    payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                else:
+                    log.error(f"Unhandled error: {e}")
+                    payload["onyx_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_create_errors"]["onyx_errors"].append(e)
+
+                return (False, False, payload)
+
+            if not test_submission:
+                payload["cid"] = response["cid"]
+
+            return (True, False, payload)
+
+        # This should never be reached
+        if test_submission:
+            payload.setdefault("onyx_test_create_errors", {})
+            payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+            payload["onyx_test_create_errors"]["onyx_errors"].append(
+                "End of csv_create func reached, this should never happen!"
+            )
+        else:
+            payload.setdefault("onyx_create_errors", {})
+            payload["onyx_create_errors"].setdefault("onyx_errors", [])
+            payload["onyx_create_errors"]["onyx_errors"].append(
+                "End of csv_create func reached, this should never happen!"
+            )
+
+        return (False, True, payload)
+
+
+def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
+    """Function to check that the required fields are present in the metadata CSV and that they match the filename
+
+    Args:
+        payload (dict): Payload dict for the current artifact
+
+    Returns:
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the field checks failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
 
-    submission_fail = False
+    try:
+        with s3_to_fh(
+            payload["files"][".csv"]["uri"],
+            payload["files"][".csv"]["etag"],
+        ) as csv_fh:
+            reader = csv.DictReader(csv_fh, delimiter=",")
 
-    if not payload.get("onyx_errors"):
-        payload["onyx_errors"] = {}
+            metadata = next(reader)
 
-    if not payload.get("onyx_create_status"):
-        payload["onyx_create_status"] = False
+            name_matches = {
+                x: metadata[x] == payload[x] for x in ("sample_id", "run_name")
+            }
 
-    if not payload.get("created"):
-        payload["created"] = False
+            for k, v in name_matches.items():
+                if not v:
+                    payload.setdefault("onyx_test_create_errors", {})
+                    payload["onyx_test_create_errors"].setdefault(k, [])
+                    payload["onyx_test_create_errors"][k].append(
+                        "Field does not match filename"
+                    )
 
-    if not payload.get("cid"):
-        payload["cid"] = ""
-
-    with OnyxClient(env_password=True) as client:
-        log.info(
-            f"Received match for artifact: {payload['artifact']}, now attempting to create record in Onyx"
-        )
-
-        try:
-            response_generator = client._csv_create(
-                payload["project"],
-                csv_file=s3_to_fh(
-                    payload["files"][".csv"]["uri"],
-                    payload["files"][".csv"]["etag"],
-                ),
-                fields={"suppressed": True, "site": payload["site"]},
-            )
-
-            response = next(response_generator)
-
-            payload["onyx_status_code"] = response.status_code
-
-            if response.status_code == 500:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} lead to onyx internal server error"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Onyx internal server error"
-                ]
-
-            elif response.status_code == 404:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed because project: {payload['project']} does not exist"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    f"Project {payload['project']} does not exist"
-                ]
-
-            elif response.status_code == 403:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed due to a permission error"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Permission error on Onyx create"
-                ]
-
-            elif response.status_code == 401:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed due to incorrect credentials"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "Incorrect Onyx credentials"
-                ]
-
-            elif response.status_code == 400:
-                log.error(
-                    f"Onyx create for UUID: {payload['uuid']} failed due to a bad request"
-                )
-                submission_fail = True
-                if response.json().get("messages"):
-                    for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field):
-                            payload["onyx_errors"][field].extend(messages)
-                        else:
-                            payload["onyx_errors"][field] = messages
-
-            elif response.status_code == 200:
-                log.error(
-                    f"Onyx responded with 200 on a create request for UUID: {payload['uuid']} (this should be 201)"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    "200 response status on onyx create (should be 201)"
-                ]
-
-            elif response.status_code == 201:
-                log.info(
-                    f"Successful create for UUID: {payload['uuid']} which has been assigned CID: {response.json()['data']['cid']}"
-                )
-                payload["onyx_create_status"] = True
-                payload["created"] = True
-                payload["cid"] = response.json()["data"]["cid"]
-
+            if not all(name_matches.values()):
+                return (False, False, payload)
             else:
-                log.error(
-                    f"Unhandled Onyx response status code {response.status_code} from Onyx create for UUID: {payload['uuid']}"
-                )
-                submission_fail = True
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    f"Unhandled response status code {response.status_code} from Onyx create"
-                ]
+                return (True, False, payload)
 
-        except Exception as onyx_create_exception:
-            log.error(
-                f"Onyx CSV create failed for UUID: {payload['uuid']} due to client error: {onyx_create_exception}"
-            )
-            payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error {onyx_create_exception}"
-            ]
-            submission_fail = True
-
-    return (submission_fail, payload)
+    except Exception as e:
+        payload.setdefault("onyx_test_create_errors", {})
+        payload["onyx_test_create_errors"].setdefault("roz_errors", [])
+        payload["onyx_test_create_errors"]["roz_errors"].append(e)
+        return (False, True, payload)
 
 
 def onyx_update(
     payload: dict, fields: dict, log: logging.getLogger
-) -> tuple[bool, dict]:
+) -> tuple[bool, bool, dict]:
     """
     Update an existing Onyx record with the given fields
 
@@ -289,107 +356,99 @@ def onyx_update(
         log (logging.getLogger): Logger object
 
     Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the update failed and the updated payload dict
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the update failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
-    update_fail = False
 
-    with OnyxClient(env_password=True) as client:
-        try:
-            response = client._update(
-                project=payload["project"],
-                cid=payload["cid"],
-                fields=fields,
-            )
+    onyx_config = get_onyx_credentials()
 
-            if response.status_code == 200:
-                log.info(f"Successfully updated Onyx record for CID: {payload['cid']}")
+    with OnyxClient(config=onyx_config) as client:
+        reconnect_count = 0
+        while reconnect_count <= 3:
+            try:
+                client.update(
+                    project=payload["project"],
+                    cid=payload["cid"],
+                    fields=fields,
+                )
 
-            else:
-                update_fail = True
+            except OnyxConnectionError as e:
+                if reconnect_count < 3:
+                    reconnect_count += 1
+                    log.error(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 5 seconds"
+                    )
+                    time.sleep(5)
+                    continue
+
+                else:
+                    log.error(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
+                    )
+
+                    payload.setdefault("onyx_errors", {})
+                    payload["onyx_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_errors"]["onyx_errors"].append(e)
+
+                    return (False, True, payload)
+
+            except (OnyxServerError, OnyxConfigError) as e:
+                log.error(f"Unhandled Onyx error: {e}")
+                payload.setdefault("onyx_update_errors", {})
+                payload["onyx_update_errors"].setdefault("onyx_errors", [])
+                payload["onyx_update_errors"]["onyx_errors"].append(e)
+
+                return (False, True, payload)
+
+            except OnyxClientError as e:
                 log.error(
-                    f"Failed to update Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
+                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
                 )
-                if response.json().get("messages"):
-                    if not payload.get("onyx_errors"):
-                        payload["onyx_errors"] = {}
-                    for field, messages in response.json()["messages"].items():
-                        if payload["onyx_errors"].get(field):
-                            payload["onyx_errors"][field].extend(messages)
-                        else:
-                            payload["onyx_errors"][field] = messages
+                payload.setdefault("onyx_update_errors", {})
+                payload["onyx_update_errors"].setdefault("onyx_errors", [])
+                payload["onyx_update_errors"]["onyx_errors"].append(e)
 
-        except Exception as e:
-            log.error(
-                f"Failed to update Onyx record for CID: {payload['cid']} with unhandled onyx client error: {e}"
-            )
-            if payload.get("onyx_client_errors"):
-                payload["onyx_errors"]["onyx_client_errors"].extend(
-                    f"Unhandled client error {e}"
+                return (False, False, payload)
+
+            except OnyxRequestError as e:
+                log.error(
+                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
                 )
-            else:
-                payload["onyx_errors"]["onyx_client_errors"] = [
-                    f"Unhandled client error {e}"
-                ]
-            update_fail = True
 
-    return (update_fail, payload)
+                payload.setdefault("onyx_update_errors", {})
+                for field, messages in e.response.json()["messages"].items():
+                    payload["onyx_update_errors"].setdefault(field, [])
+                    payload["onyx_errors"][field].extend(messages)
 
+                return (False, False, payload)
 
-def onyx_unsuppress(payload: dict, log: logging.getLogger) -> tuple[bool, dict]:
-    """Function to unsuppress an existing Onyx record
+            except Exception as e:
+                log.error(f"Unhandled error: {e}")
+                payload["onyx_update_errors"].setdefault("onyx_errors", [])
+                payload["onyx_update_errors"]["onyx_errors"].append(e)
 
-    Args:
-        payload (dict): Payload dict for the current artifact
-        log (logging.getLogger): Logger object
+                return (False, True, payload)
 
-    Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the unsuppress failed and the updated payload dict
-    """
-    unsuppress_fail = False
+            return (True, False, payload)
 
-    try:
-        with OnyxClient(env_password=True) as client:
-            response = client._update(
-                project=payload["project"],
-                cid=payload["cid"],
-                fields={"suppressed": False},
-            )
-
-        if response.status_code == 200:
-            log.info(f"Successfully unsupressed Onyx record for CID: {payload['cid']}")
-
-        else:
-            unsuppress_fail = True
-            log.error(
-                f"Failed to unsupress Onyx record for CID: {payload['cid']} with status code: {response.status_code}"
-            )
-            if response.json().get("messages"):
-                if not payload.get("onyx_errors"):
-                    payload["onyx_errors"] = {}
-                for field, messages in response.json()["messages"].items():
-                    if payload["onyx_errors"].get(field):
-                        payload["onyx_errors"][field].extend(messages)
-                    else:
-                        payload["onyx_errors"][field] = messages
-
-    except Exception as onyx_unsuppress_exception:
-        log.error(
-            f"Failed to unsupress Onyx record for CID: {payload['cid']} with unhandled onyx client error: {onyx_unsuppress_exception}"
-        )
-        if payload.get("onyx_client_errors"):
-            payload["onyx_errors"]["onyx_client_errors"].extend(
-                f"Unhandled client error: {onyx_unsuppress_exception}"
-            )
-        else:
-            payload["onyx_errors"]["onyx_client_errors"] = [
-                f"Unhandled client error: {onyx_unsuppress_exception}"
-            ]
-        unsuppress_fail = True
-
-    return (unsuppress_fail, payload)
+    # This should never be reached
+    payload.setdefault("onyx_update_errors", {})
+    payload["onyx_update_errors"].setdefault("onyx_errors", [])
+    payload["onyx_update_errors"]["onyx_errors"].append(
+        "End of onyx_update func reached, this should never happen!"
+    )
+    return (False, True, payload)
 
 
-def get_credentials(
+def get_onyx_credentials():
+    config = OnyxConfig(
+        domain=os.environ["ONYX_DOMAIN"],
+        username=os.environ["ONYX_USERNAME"],
+        password=os.environ["ONYX_PASSWORD"],
+    )
+    return config
+
+
+def get_s3_credentials(
     args=None,
 ) -> __s3_creds:
     """
@@ -472,7 +531,7 @@ def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
         StringIO: File handle-like object of the downloaded file
     """
 
-    s3_credentials = get_credentials()
+    s3_credentials = get_s3_credentials()
 
     bucket = s3_uri.replace("s3://", "").split("/")[0]
 

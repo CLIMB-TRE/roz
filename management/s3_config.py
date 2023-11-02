@@ -7,7 +7,7 @@ import os
 import pathlib
 
 
-def get_credentials(args):
+def get_s3_credentials(args):
     __s3_creds = namedtuple(
         "s3_credentials",
         ["access_key", "secret_key", "endpoint", "region", "profile_name"],
@@ -206,7 +206,7 @@ def main():
 
     args = parser.parse_args()
 
-    s3_credentials = get_credentials(args)
+    s3_credentials = get_s3_credentials(args)
 
     if args.command == "create_bucket":
         create_bucket(s3_credentials, args.bucket_name, args.bucket_acl)

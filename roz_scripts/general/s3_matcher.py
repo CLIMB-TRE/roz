@@ -8,36 +8,35 @@ import uuid
 import copy
 
 import varys
-from roz_scripts.utils.utils import init_logger, get_credentials
-
-from onyx import OnyxClient
-
-# from sqlmodel import Field, Session, SQLModel, create_engine, select
-# from snoop_db import db
-# from snoop_db.models import inbound_matched_table
+from roz_scripts.utils.utils import init_logger, get_s3_credentials
 
 
 def generate_file_uri(record):
     return f"s3://{record['s3']['bucket']['name']}/{record['s3']['object']['key']}"
 
 
-def get_already_matched_submissions():
-    nested_ddict = lambda: defaultdict(nested_ddict)
+# def get_existing_s3_objects():
+#     nested_ddict = lambda: defaultdict(nested_ddict)
 
-    engine = db.make_engine()
+#     s3_credentials = get_s3_credentials()
 
-    with Session(engine) as session:
-        statement = select(inbound_matched_table)
-        matched_submissions = session.exec(statement).all()
+#     s3_client = boto3.client(
+#         "s3",
+#         endpoint_url=s3_credentials.endpoint,
+#         aws_access_key_id=s3_credentials.access_key,
+#         region_name=s3_credentials.region,
+#         aws_secret_access_key=s3_credentials.secret_key,
+#     )
 
-        out_dict = nested_ddict()
+#     for
 
-        for submission in matched_submissions:
-            out_dict[submission.project][submission.site_code][submission.platform][
-                submission.test_code
-            ][submission.artifact] = json.loads(submission.payload)
+#     paginator = s3_client.get_paginator("list_objects_v2")
 
-        return out_dict
+#     page_iterator = paginator.paginate()
+
+#     out_dict = nested_ddict()
+
+#     for page in page_iterator:
 
 
 def handle_artifact_messages(
@@ -317,78 +316,6 @@ def handle_update_messages(
     return results
 
 
-def query_onyx(
-    project,
-    artifact,
-    parsed_fname,
-    log,
-    fname,
-):
-    try:
-        with OnyxClient(env_password=True) as client:
-            response = next(
-                client._filter(
-                    project,
-                    fields={
-                        "sample_id": parsed_fname["sample_id"],
-                        "run_name": parsed_fname["run_name"],
-                    },
-                    scope=["admin"],
-                )
-            )
-
-            if response.status_code == 500:
-                log.error(
-                    f"Onyx query for artifact: {artifact} lead to onyx internal server error"
-                )
-                return False
-
-            elif response.status_code == 404:
-                log.error(
-                    f"Onyx query for artifact: {artifact} failed because project: {project} does not exist"
-                )
-                return False
-
-            elif response.status_code == 403:
-                log.error(
-                    f"Onyx query for artifact: {artifact} failed due to a permission error"
-                )
-                return False
-
-            elif response.status_code == 400:
-                log.error(
-                    f"Onyx query for artifact: {artifact} failed due to a bad request"
-                )
-                return False
-
-            elif response.status_code == 200:
-                if len(response.json()["data"]) == 1:
-                    log.info(
-                        f"Artifact: {artifact} has been sucessfully ingested previously with CID: {response.json()['data'][0]['cid']} and as such cannot be modified by re-submission"
-                    )
-                    return False
-
-                elif len(response.json()["data"]) > 1:
-                    log.error(
-                        f"onyx query returned more than one response for artifact: {artifact}"
-                    )
-
-                    return False
-
-                else:
-                    return True
-
-            else:
-                log.error(
-                    f"Onyx query for artifact: {artifact} failed due to unhandled error code: {response.status_code}"
-                )
-                return False
-
-    except Exception as e:
-        log.error(f"Submitted file: {fname} lead to onyx-client exception: {e}")
-        return False
-
-
 def generate_payload(
     artifact,
     parsed_fname,
@@ -482,7 +409,7 @@ def run(args):
 
     nested_ddict = lambda: defaultdict(nested_ddict)
 
-    s3_credentials = get_credentials()
+    s3_credentials = get_s3_credentials()
 
     # Init S3 client
     s3_client = boto3.client(
@@ -602,41 +529,6 @@ def run(args):
                             f"Previously ingested file: {fname} has been previously matched and appears identical to previously matched version, ignoring"
                         )
                         continue
-
-                    else:
-                        onyx_resp = query_onyx(
-                            project=project,
-                            artifact=artifact,
-                            parsed_fname=parsed_fname,
-                            log=log,
-                            fname=fname,
-                        )
-
-                        if onyx_resp:
-                            log.info(
-                                f"Resubmitting previously rejected submission with for artifact: {artifact} due to update of submission {ftype}"
-                            )
-                            if update_messages[project][site_code][platform][test].get(
-                                artifact
-                            ):
-                                update_messages[project][site_code][platform][test][
-                                    artifact
-                                ][ftype] = record
-                            else:
-                                previous_matched_copy = copy.deepcopy(
-                                    previously_matched[project][site_code][platform][
-                                        test
-                                    ][artifact]
-                                )
-                                update_messages[project][site_code][platform][test][
-                                    artifact
-                                ] = previous_matched_copy
-
-                                update_messages[project][site_code][platform][test][
-                                    artifact
-                                ][ftype] = record
-                        else:
-                            continue
 
                 else:
                     artifact_messages[project][site_code][platform][test][artifact][

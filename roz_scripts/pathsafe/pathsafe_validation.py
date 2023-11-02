@@ -18,7 +18,7 @@ from roz_scripts.utils.utils import (
     onyx_update,
     pipeline,
     init_logger,
-    get_credentials,
+    get_s3_credentials,
 )
 from varys import varys
 from onyx import OnyxClient
@@ -330,7 +330,7 @@ def validate(
     args: argparse.Namespace,
     ingest_pipe: pipeline,
 ):
-    s3_credentials = get_credentials()
+    s3_credentials = get_s3_credentials()
 
     s3_client = boto3.client(
         "s3",
