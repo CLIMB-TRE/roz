@@ -677,6 +677,9 @@ class Test_ingest(unittest.TestCase):
         os.environ["AWS_SECURITY_TOKEN"] = "testing"
         os.environ["AWS_SESSION_TOKEN"] = "testing"
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+        os.environ["ONYX_DOMAIN"] = "testing"
+        os.environ["ONYX_USERNAME"] = "testing"
+        os.environ["ONYX_PASSWORD"] = "testing"
 
         os.environ["UNIT_TESTING"] = "True"
 
@@ -925,6 +928,9 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["AWS_SECURITY_TOKEN"] = "testing"
         os.environ["AWS_SESSION_TOKEN"] = "testing"
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+        os.environ["ONYX_DOMAIN"] = "testing"
+        os.environ["ONYX_USERNAME"] = "testing"
+        os.environ["ONYX_PASSWORD"] = "testing"
 
         os.environ["UNIT_TESTING"] = "True"
 
@@ -977,7 +983,8 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
-        os.environ["ONYX_ROZ_PASSWORD"] = "password"
+        os.environ["ONYX_DOMAIN"] = "domain"
+
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
         self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
