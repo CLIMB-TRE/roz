@@ -519,21 +519,22 @@ def run(args):
                     validation_config["configs"][project]["artifact_layout"],
                 )
 
-                if previously_matched[project][site_code][platform][test].get(artifact):
-                    previous_etag = previously_matched[project][site_code][platform][
-                        test
-                    ][artifact][ftype]["s3"]["object"]["eTag"]
+                # if previously_matched[project][site_code][platform][test].get(artifact):
+                #     previous_etag = previously_matched[project][site_code][platform][
+                #         test
+                #     ][artifact][ftype]["s3"]["object"]["eTag"]
 
-                    if previous_etag == record["s3"]["object"]["eTag"]:
-                        log.info(
-                            f"Previously ingested file: {fname} has been previously matched and appears identical to previously matched version, ignoring"
-                        )
-                        continue
+                #     if previous_etag == record["s3"]["object"]["eTag"]:
+                #         log.info(
+                #             f"Previously ingested file: {fname} has been previously matched and appears identical to previously matched version, ignoring"
+                #         )
+                #         continue
 
-                else:
-                    artifact_messages[project][site_code][platform][test][artifact][
-                        ftype
-                    ] = record
+                # else:
+
+                artifact_messages[project][site_code][platform][test][artifact][
+                    ftype
+                ] = record
 
         artifact_results = handle_artifact_messages(
             artifact_messages=artifact_messages,

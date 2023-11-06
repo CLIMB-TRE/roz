@@ -76,8 +76,8 @@
                         "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
                     ".csv": {
-                        "sections": 5,
-                        "layout": "project.sample_id.run_name.platform.ftype"
+                        "sections": 4,
+                        "layout": "project.sample_id.run_name.ftype"
                     },
                     "match_size": 3,
                     "files": [
@@ -92,8 +92,8 @@
                         "layout": "project.sample_id.run_name.ftype.gzip"
                     },
                     ".csv": {
-                        "sections": 5,
-                        "layout": "project.sample_id.run_name.platform.ftype"
+                        "sections": 4,
+                        "layout": "project.sample_id.run_name.ftype"
                     },
                     "match_size": 2,
                     "files": [
@@ -125,8 +125,8 @@
                         "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
                     ".csv": {
-                        "sections": 5,
-                        "layout": "project.sample_id.run_name.platform.ftype"
+                        "sections": 4,
+                        "layout": "project.sample_id.run_name.ftype"
                     },
                     "match_size": 3,
                     "files": [

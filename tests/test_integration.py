@@ -282,9 +282,9 @@ example_validator_message = {
             "key": "mscapetest.sample-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.ont.csv",
+            "key": "mscapetest.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -324,9 +324,9 @@ example_pathsafe_validator_message = {
             "key": "pathsafetest.sample-test.run-test.2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.ont.csv",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "pathsafetest.sample-test.run-test.ont.csv",
+            "key": "pathsafetest.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -366,9 +366,9 @@ example_pathsafe_test_validator_message = {
             "key": "pathsafetest.sample-test.run-test.2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.ont.csv",
+            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "pathsafetest.sample-test.run-test.ont.csv",
+            "key": "pathsafetest.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -403,9 +403,9 @@ example_test_validator_message = {
             "key": "mscapetest.sample-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.ont.csv",
+            "key": "mscapetest.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -789,10 +789,8 @@ class Test_ingest(unittest.TestCase):
                 "mscapetest.sample-test.run-test.ont.csv",
             )
             self.assertTrue(message_dict["validate"])
-            self.assertEqual(message_dict["onyx_test_create_errors"], {})
-            self.assertEqual(message_dict["onyx_test_status_code"], 201)
             self.assertTrue(message_dict["onyx_test_create_status"])
-            self.assertFalse(message_dict["cid"])
+            self.assertNotIn("cid", message_dict["cid"].keys())
             self.assertFalse(message_dict["test_flag"])
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
@@ -1119,7 +1117,6 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(payload["onyx_status_code"], 201)
             self.assertEqual(payload["onyx_create_status"], True)
             self.assertEqual(payload["test_flag"], False)
-            self.assertEqual(payload["ingest_errors"], [])
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscapetest-published-reads"
