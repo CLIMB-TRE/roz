@@ -695,31 +695,12 @@ def run(args):
         auto_acknowledge=False,
     )
 
-    validation_payload_template = {
-        "uuid": "",
-        "artifact": "",
-        "project": "",
-        "ingest_timestamp": "",
-        "cid": False,
-        "site": "",
-        "created": False,
-        "ingested": False,
-        "onyx_test_status_code": False,
-        "onyx_test_create_errors": {},  # Dict
-        "onyx_test_create_status": False,
-        "onyx_status_code": False,
-        "onyx_errors": {},  # Dict
-        "onyx_create_status": False,
-        "ingest_errors": [],  # List,
-        "test_flag": True,  # Add this throughout
-        "test_ingest_result": False,
-    }
-
     ingest_pipe = pipeline(
         pipe="snowy-leopard/scylla",
         profile="docker",
         config=args.nxf_config,
         nxf_executable=args.nxf_executable,
+        timeout=args.pipeline_timeout,
     )
 
     worker_pool = worker_pool_handler(
@@ -748,6 +729,7 @@ def main():
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)
+    parser.add_argument("--pipeline_timeout", type=int, default=10800)
     args = parser.parse_args()
 
     run(args)
