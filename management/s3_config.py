@@ -194,7 +194,7 @@ def main():
     setup_messaging_parser.add_argument("--rmq-topic", required=True)
     setup_messaging_parser.add_argument("--rmq-exchange", required=True)
     setup_messaging_parser.add_argument("--bucket-topic", required=True)
-    setup_messaging_parser.add_argument("--amqps", action="store_true", default=True)
+    setup_messaging_parser.add_argument("--amqps", action="store_true", default=False)
     setup_messaging_parser.add_argument("--rmq-user")
     setup_messaging_parser.add_argument("--rmq-pass")
 

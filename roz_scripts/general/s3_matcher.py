@@ -1,417 +1,316 @@
-import sys
+from roz_scripts.utils.utils import get_s3_credentials, init_logger
+from roz_scripts.general.s3_controller import create_config_map
+from varys import varys
+
+import boto3
+from botocore.exceptions import ClientError
+
+import uuid
+import time
 import json
 import os
-import boto3
-import time
-from collections import defaultdict, namedtuple
-import uuid
-import copy
-
-import varys
-from roz_scripts.utils.utils import init_logger, get_s3_credentials
 
 
-def generate_file_uri(record):
-    return f"s3://{record['s3']['bucket']['name']}/{record['s3']['object']['key']}"
+def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:
+    """Fetches existing object keys from S3.
 
+    Args:
+        s3_client (boto3.client): s3 client
+        to_check (list): list of bucket names to check
 
-# def get_existing_s3_objects():
-#     nested_ddict = lambda: defaultdict(nested_ddict)
-
-#     s3_credentials = get_s3_credentials()
-
-#     s3_client = boto3.client(
-#         "s3",
-#         endpoint_url=s3_credentials.endpoint,
-#         aws_access_key_id=s3_credentials.access_key,
-#         region_name=s3_credentials.region,
-#         aws_secret_access_key=s3_credentials.secret_key,
-#     )
-
-#     for
-
-#     paginator = s3_client.get_paginator("list_objects_v2")
-
-#     page_iterator = paginator.paginate()
-
-#     out_dict = nested_ddict()
-
-#     for page in page_iterator:
-
-
-def handle_artifact_messages(
-    artifact_messages,
-    validation_config,
-    log,
-    varys_client,
-):
+    Returns:
+        dict: dictionary of bucket names and existing keys within them
     """
-    Iterate through the artifact messages and do basic validation of whether the files provided match the specification
-    artifact_messages should be structured as follows:
-        {project_code:
-            {site_code :
-                {platform:
-                    {artifact:
-                        {file_type:
-                            s3 on create RabbitMQ message JSON}}}}}
+    existing_objects = {}
 
-    It will return a list of named tuples with the following attributes:
-        success: True if the artifact matched the specification and was sent to the validator
-        previously_matched: Records to add to the previously matched dict
-        project: Project code
-        site_code: Site code
-        platform: Platform
-        artifact: Artifact name
+    for bucket_name in to_check:
+        existing_objects[bucket_name] = []
 
+        paginator = s3_client.get_paginator("list_objects_v2")
+
+        try:
+            response_iterator = paginator.paginate(Bucket=bucket_name, FetchOwner=True)
+        except ClientError as e:
+            raise e
+
+        for response in response_iterator:
+            if "Contents" in response:
+                for obj in response["Contents"]:
+                    existing_objects[bucket_name].append(obj)
+
+    return existing_objects
+
+
+def parse_object_key(
+    object_key: str, config_dict: dict, project: str, platform: str
+) -> tuple:
+    """Parses an object key into a dict containing the fields specified in the config file.
+
+    Args:
+        object_key (str): Key of the S3 object to be parsed
+        config_dict (dict): Dictionary containing the config file
+        project (str): Project name as it appears in the config file
+        platform (str): Platform name as it appears in the config file
+
+    Returns:
+        tuple: Tuple containing the extension of the object key and the parsed object key or False if the object key can't be parsed or doesn't match the spec
     """
+    spec = False
+    for extension in config_dict["configs"][project]["file_specs"][platform].keys():
+        if object_key.endswith(extension):
+            spec = config_dict["configs"][project]["file_specs"][platform][extension]
+            break
 
-    _result = namedtuple(
-        "result",
-        [
-            "success",
-            "records",
-            "project",
-            "site_code",
-            "platform",
-            "test_flag",
-            "artifact",
-        ],
+    if not spec:
+        return (False, False)
+
+    key_split = object_key.split(".")
+
+    spec_split = spec["layout"].split(".")
+
+    if len(key_split) != len(spec_split):
+        return (False, False)
+
+    return (
+        extension,
+        {field: content for field, content in zip(spec_split, key_split)},
     )
 
-    results = []
 
-    for project, sites in artifact_messages.items():
-        for site_code, platforms in sites.items():
-            for platform, test_flags in platforms.items():
-                for test_flag, artifacts in test_flags.items():
-                    for artifact, records in artifacts.items():
-                        if test_flag == "test":
-                            test_bool = True
-                        elif test_flag == "prod":
-                            test_bool = False
+def generate_artifact(parsed_object_key: dict, artifact_layout: str) -> str | bool:
+    """Generates an artifact name from a parsed object key.
 
-                        parsed_fname = False
-                        if len(records) != len(
-                            validation_config["configs"][project]["file_specs"][
-                                platform
-                            ]["files"]
-                        ):
-                            # log.info(
-                            #     f"Skipping artifact: {artifact} for this loop since files provided do not appear to match the specification for this project and platform"
-                            # )
-                            results.append(
-                                _result(
-                                    success=False,
-                                    records=False,
-                                    project=project,
-                                    site_code=site_code,
-                                    platform=platform,
-                                    test_flag=test_flag,
-                                    artifact=artifact,
-                                )
-                            )
-                            continue
+    Args:
+        parsed_object_key (dict): Object key parsed into a dict with func parse_object_key
+        artifact_layout (str): Layout of the artifact name from config json
 
-                        ftype_matches = {
-                            x: False
-                            for x in validation_config["configs"][project][
-                                "file_specs"
-                            ][platform]["files"]
-                        }
-
-                        for ftype in validation_config["configs"][project][
-                            "file_specs"
-                        ][platform]["files"]:
-                            if records.get(ftype):
-                                ftype_matches[ftype] = True
-
-                        if all(ftype_matches.values()):
-                            # Slightly gross but it means that we can keep it project/platform general by parsing the filename of the last file iterated over
-                            parsed_fname = parse_fname(
-                                fname=records[ftype]["s3"]["object"]["key"],
-                                fname_layout=validation_config["configs"][project][
-                                    "file_specs"
-                                ][platform][ftype]["layout"],
-                            )
-
-                            log.info(
-                                f"Submission matched for artifact: {artifact}, attempting to send submission payload"
-                            )
-                            try:
-                                to_send = generate_payload(
-                                    artifact=artifact,
-                                    parsed_fname=parsed_fname,
-                                    file_submission=records,
-                                    project=project,
-                                    site_code=site_code,
-                                    upload_config=validation_config,
-                                    platform=platform,
-                                    test_bool=test_bool,
-                                )
-
-                                varys_client.send(
-                                    message=to_send,
-                                    exchange="inbound.matched",
-                                    queue_suffix="s3_matcher",
-                                )
-
-                                results.append(
-                                    _result(
-                                        success=True,
-                                        records=records,
-                                        project=project,
-                                        site_code=site_code,
-                                        platform=platform,
-                                        test_flag=test_flag,
-                                        artifact=artifact,
-                                    )
-                                )
-                            except Exception as e:
-                                log.error(
-                                    f"Failed to send payload for artifact: {artifact} with error: {e}"
-                                )
-                                results.append(
-                                    _result(
-                                        success=False,
-                                        records=False,
-                                        project=project,
-                                        site_code=site_code,
-                                        platform=platform,
-                                        test_flag=test_flag,
-                                        artifact=artifact,
-                                    )
-                                )
-
-                        else:
-                            log.info(
-                                f"Provided files for artifact: {artifact} do not currently match the specification for this project and platform"
-                            )
-                            results.append(
-                                _result(
-                                    success=False,
-                                    records=False,
-                                    project=project,
-                                    site_code=site_code,
-                                    platform=platform,
-                                    test_flag=test_flag,
-                                    artifact=artifact,
-                                )
-                            )
-    return results
-
-
-def handle_update_messages(
-    update_messages,
-    validation_config,
-    log,
-    varys_client,
-):
-    """
-    Iterate through the artifact messages and do basic validation of whether the files provided match the specification
-    artifact_messages should be structured as follows:
-        {project_code:
-            {site_code :
-                {platform:
-                    {test_flag:
-                        {artifact:
-                            {file_type:
-                                s3 on create RabbitMQ message JSON}}}}}
-
-    It will return a list of named tuples with the following attributes:
-        success: True if the artifact matched the specification and was sent to the validator
-        previously_matched: Records to add to the previously matched dict
-        project: Project code
-        site_code: Site code
-        platform: Platform
-        artifact: Artifact name
-
+    Returns:
+        str | bool: Artifact name, or False if the artifact name can't be generated
     """
 
-    _result = namedtuple(
-        "result",
-        [
-            "success",
-            "records",
-            "project",
-            "site_code",
-            "platform",
-            "test_flag",
-            "artifact",
-        ],
+    layout = artifact_layout.split(".")
+
+    try:
+        artifact = ".".join(str(parsed_object_key[x]) for x in layout)
+    except KeyError:
+        return False
+
+    return artifact
+
+
+def gen_s3_uri(bucket_name: str, key: str) -> str:
+    """Generates an S3 URI from a bucket name and key.
+
+    Args:
+        bucket_name (str): Name of the bucket
+        key (str): Key of the object
+
+    Returns:
+        str: S3 URI
+    """
+    return f"s3://{bucket_name}/{key}"
+
+
+def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
+    """Parses existing objects into a dictionary of artifacts.
+
+    Args:
+        existing_objects (dict): Dictionary of existing objects from func get_existing_objects
+        config_dict (dict): Dictionary containing the config file
+
+    Returns:
+        dict: Dictionary of artifacts
+    """
+
+    parsed_objects = {}
+
+    for bucket_name, objs in existing_objects.items():
+        project, site, platform, test_flag = bucket_name.split("-")
+
+        for obj in objs:
+            extension, parsed_object_key = parse_object_key(
+                object_key=obj["Key"],
+                config_dict=config_dict,
+                project=project,
+                platform=platform,
+            )
+
+            if not extension:
+                continue
+
+            artifact = generate_artifact(
+                parsed_object_key=parsed_object_key,
+                artifact_layout=config_dict["configs"][project]["artifact_layout"],
+            )
+
+            if not artifact:
+                continue
+
+            parsed_objects.setdefault(
+                (artifact, project, site, platform, test_flag),
+                {"files": {}, "objects": {}},
+            )
+
+            parsed_objects[(artifact, project, site, platform, test_flag)]["files"][
+                extension
+            ] = {
+                "uri": gen_s3_uri(bucket_name, obj["Key"]),
+                "etag": obj["ETag"],
+                "key": obj["Key"],
+                "submitter": obj["Owner"]["DisplayName"],
+                "parsed_fname": parsed_object_key,
+            }
+
+            parsed_objects[(artifact, project, site, platform, test_flag)]["objects"][
+                extension
+            ] = obj
+
+    return parsed_objects
+
+
+def is_artifact_dict_complete(
+    index_tuple: tuple, existing_object_dict: dict, config_dict: dict
+) -> bool:
+    """Checks if an artifact dict is complete.
+
+    Args:
+        index_tuple (tuple): Tuple containing artifact name, project name, site name, platform name, and test flag
+        existing_object_dict (dict): Dictionary of artifacts
+        config_dict (dict): Dictionary containing the config file
+
+    Returns:
+        bool: True if the artifact dict is complete, False otherwise
+    """
+
+    artifact, project, site, platform, test_flag = index_tuple
+
+    artifact_dict = existing_object_dict[index_tuple]
+
+    file_spec = config_dict["configs"][project]["file_specs"][platform]
+
+    if artifact_dict["files"].keys() != file_spec.keys():
+        return False
+
+    return True
+
+
+def parse_new_object_message(
+    existing_object_dict: dict, new_object_message: dict, config_dict: dict
+) -> tuple[bool, dict, tuple]:
+    """Parses a new object message, adds it to the existing object dict, and checks if the artifact dict is complete according to the config file.
+
+    Args:
+        existing_object_dict (dict): Dictionary of artifacts
+        new_object_message (dict): Dictionary containing the new object message
+
+    Returns:
+        tuple[bool, dict, tuple]: Tuple containing True if the artifact dict is complete, the existing object dict, and the index tuple
+    """
+
+    # There should only ever be one record here
+    record = new_object_message["Records"][0]
+
+    bucket_name = record["s3"]["bucket"]["name"]
+
+    project, site, platform, test_flag = bucket_name.split("-")
+
+    object_key = record["s3"]["object"]["key"]
+
+    extension, parsed_object_key = parse_object_key(
+        object_key=object_key,
+        config_dict=config_dict,
+        project=project,
+        platform=platform,
     )
 
-    results = []
+    if not extension:
+        return (False, False)
 
-    for project, sites in update_messages.items():
-        for site_code, platforms in sites.items():
-            for platform, test_flags in platforms.items():
-                for test_flag, artifacts in test_flags.items():
-                    for artifact, records in artifacts.items():
-                        if test_flag == "test":
-                            test_bool = True
-                        elif test_flag == "prod":
-                            test_bool = False
+    artifact = generate_artifact(
+        parsed_object_key=parsed_object_key,
+        artifact_layout=config_dict["configs"][project]["artifact_layout"],
+    )
 
-                        modified_records = copy.deepcopy(records)
+    if not artifact:
+        return (False, False, False)
 
-                        # Slightly gross but it means that we can keep it project/platform general by parsing the filename of the first file described in the spec
-                        first_ftype = validation_config["configs"][project][
-                            "file_specs"
-                        ][platform]["files"][0]
-                        parsed_fname = parse_fname(
-                            fname=records[first_ftype]["s3"]["object"]["key"],
-                            fname_layout=validation_config["configs"][project][
-                                "file_specs"
-                            ][platform][first_ftype]["layout"],
-                        )
+    index_tuple = (artifact, project, site, platform, test_flag)
 
-                        log.info(
-                            f"Submission matched for previously rejected artifact: {artifact}, attempting to send submission payload"
-                        )
+    existing_object_dict.setdefault(index_tuple, {"files": {}, "objects": {}})
 
-                        try:
-                            to_send = generate_payload(
-                                artifact=artifact,
-                                parsed_fname=parsed_fname,
-                                file_submission=records,
-                                project=project,
-                                site_code=site_code,
-                                upload_config=validation_config,
-                                platform=platform,
-                                test_bool=test_bool,
-                            )
+    existing_object_dict[index_tuple]["files"][extension] = {
+        "uri": gen_s3_uri(bucket_name, object_key),
+        "etag": record["s3"]["object"]["eTag"],
+        "key": object_key,
+        "submitter": record["userIdentity"]["principalId"],
+        "parsed_fname": parsed_object_key,
+    }
 
-                            varys_client.send(
-                                message=to_send,
-                                exchange="inbound.matched",
-                                queue_suffix="s3_matcher",
-                            )
-                            results.append(
-                                _result(
-                                    success=True,
-                                    records=records,
-                                    project=project,
-                                    site_code=site_code,
-                                    platform=platform,
-                                    test_flag=test_flag,
-                                    artifact=artifact,
-                                )
-                            )
-                        except Exception as e:
-                            log.error(
-                                f"Failed to send payload for artifact: {artifact} with error: {e}"
-                            )
-                            results.append(
-                                _result(
-                                    success=False,
-                                    records=False,
-                                    project=project,
-                                    site_code=site_code,
-                                    platform=platform,
-                                    test_flag=test_flag,
-                                    artifact=artifact,
-                                )
-                            )
+    existing_object_dict[index_tuple]["objects"][extension] = record
 
-    return results
+    return (
+        is_artifact_dict_complete(
+            (artifact, project, site, platform, test_flag),
+            existing_object_dict,
+            config_dict,
+        ),
+        existing_object_dict,
+        index_tuple,
+    )
 
 
-def generate_payload(
-    artifact,
-    parsed_fname,
-    file_submission,
-    project,
-    site_code,
-    upload_config,
-    platform,
-    test_bool,
-):
+def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
+    """Generates a payload for the matched artifact.
+
+    Args:
+        index_tuple (tuple): Tuple containing artifact name, project name, site name, platform name, and test flag
+        existing_object_dict (dict): Dictionary of artifacts
+
+    Returns:
+        dict: Dictionary containing the payload
+    """
+
+    artifact, project, site, platform, test_flag = index_tuple
+
+    artifact_dict = existing_object_dict[index_tuple]
+
     unique = str(uuid.uuid4())
 
     ts = time.time_ns()
 
-    files = {
-        x: record_parser(file_submission[x])
-        for x in upload_config["configs"][project]["file_specs"][platform]["files"]
-    }
+    # Raise error if there's more than one sample id or run name (unpack the set like a tuple)
+    (sample_id,) = set(
+        x["parsed_fname"]["sample_id"] for x in artifact_dict["files"].values()
+    )
 
-    s3_msgs = {
-        x: file_submission[x]
-        for x in upload_config["configs"][project]["file_specs"][platform]["files"]
-    }
-
-    uploaders = set(msg["userIdentity"]["principalId"] for msg in s3_msgs.values())
+    (run_name,) = set(
+        x["parsed_fname"]["run_name"] for x in artifact_dict["files"].values()
+    )
 
     payload = {
         "uuid": unique,
-        "payload_version": 1,
-        "site": site_code,
-        "uploaders": list(uploaders),
+        "site": site,
+        "uploaders": list(set(x["submitter"] for x in artifact_dict["files"].values())),
         "match_timestamp": ts,
         "artifact": artifact,
-        "sample_id": parsed_fname["sample_id"],
-        "run_name": parsed_fname["run_name"],
+        "sample_id": sample_id,
+        "run_name": run_name,
         "project": project,
         "platform": platform,
-        "files": files,
-        "test_flag": test_bool,
+        "files": artifact_dict["files"],
+        "test_flag": test_flag == "test",
     }
 
     return payload
 
 
-def parse_fname(fname, fname_layout):
-    fname_split = fname.split(".")
-    spec_split = fname_layout.split(".")
-
-    return {field: content for field, content in zip(spec_split, fname_split)}
-
-
-def generate_artifact(parsed_fname, artifact_layout):
-    layout = artifact_layout.split(".")
-
-    return ".".join(str(parsed_fname[x]) for x in layout)
-
-
-def record_parser(record):
-    return {
-        "uri": generate_file_uri(record),
-        "etag": record["s3"]["object"]["eTag"],
-        "key": record["s3"]["object"]["key"],
-    }
-
-
-def run(args):
-    # TODO Standardise all of the ebvironmental variables -> parameterise them instead?
-
-    for i in (
-        "ONYX_ROZ_PASSWORD",
-        "ROZ_CONFIG_JSON",
-        "S3_MATCHER_LOG",
-        "INGEST_LOG_LEVEL",
-    ):
-        if not os.getenv(i):
-            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
-            sys.exit(3)
-
+def main():
     log = init_logger(
         "roz_client", os.getenv("S3_MATCHER_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
-    try:
-        with open(os.getenv("ROZ_CONFIG_JSON"), "rt") as validation_cfg_fh:
-            validation_config = json.load(validation_cfg_fh)
-    except:
-        log.error(
-            "ROZ configuration JSON could not be parsed, ensure it is valid JSON and restart"
-        )
-        sys.exit(2)
-
-    nested_ddict = lambda: defaultdict(nested_ddict)
-
     s3_credentials = get_s3_credentials()
 
-    # Init S3 client
     s3_client = boto3.client(
         "s3",
         endpoint_url=s3_credentials.endpoint,
@@ -419,163 +318,67 @@ def run(args):
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    varys_client = varys.varys(
+    varys_client = varys(
         profile="roz",
         logfile=os.getenv("S3_MATCHER_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),
     )
 
-    # previously_matched = get_already_matched_submissions()
-    previously_matched = nested_ddict()
+    with open(os.getenv("ROZ_CONFIG_JSON"), "r") as f:
+        config_dict = json.load(f)
 
-    artifact_messages = nested_ddict()
+    config_map = create_config_map(config_dict=config_dict)
+
+    buckets = []
+
+    # Get all site buckets (might need changing to check the bucket name label later)
+    for project, project_dict in config_dict["configs"].items():
+        for site, site_dict in project_dict["sites"].items():
+            buckets.extend(site_dict["site_buckets"])
+
+    objects = get_existing_objects(s3_client=s3_client, to_check=buckets)
+
+    existing_object_dict = parse_existing_objects(
+        existing_objects=objects, config_dict=config_dict
+    )
 
     while True:
-        messages = varys_client.receive_batch(
+        message = varys_client.receive(
             exchange="inbound.s3",
             queue_suffix="s3_matcher",
         )
 
-        update_messages = nested_ddict()
+        message_dict = json.loads(message.body)
 
-        for message in messages:
-            ftype = None
-            fname = None
-            ftype = None
-
-            payload = json.loads(message.body)
-
-            for record in payload["Records"]:
-                # Bucket names should follow the format "project-site_code-platform-test_status"
-                project = record["s3"]["bucket"]["name"].split("-")[0]
-                site_code = record["s3"]["bucket"]["name"].split("-")[1]
-                platform = record["s3"]["bucket"]["name"].split("-")[2]
-                test = record["s3"]["bucket"]["name"].split("-")[3]
-
-                fname = record["s3"]["object"]["key"]
-
-                if test != "prod" and test != "test":
-                    log.error(
-                        f"Test flag in bucket name is not either 'test' or 'prod' ignoring message"
-                    )
-                    continue
-
-                if "/" in fname or "\\" in fname:
-                    log.info(
-                        f"Submitted object: {fname} in bucket: {record['s3']['bucket']['name']} appears to be within a bucket subdirectory, ignoring"
-                    )
-                    continue
-
-                log.info(f"Attempting to process object with key: {fname}")
-
-                for ext, file_spec in validation_config["configs"][project][
-                    "file_specs"
-                ][platform].items():
-                    if fname.endswith(ext):
-                        ftype = ext
-                        break
-
-                if not ftype:
-                    log.error(
-                        f"File {fname} doesn't appear to have a valid extension (accepted extensions are: {', '.join(str(x) for x in validation_config['configs'][project]['file_specs'][platform]['files'])}), ignoring"
-                    )
-                    continue
-
-                if (
-                    len(fname.split("."))
-                    != validation_config["configs"][project]["file_specs"][platform][
-                        ftype
-                    ]["sections"]
-                ):
-                    log.error(
-                        f"File {fname} does not appear to conform to filename specification, ignoring"
-                    )
-                    continue
-
-                parsed_fname = parse_fname(
-                    fname,
-                    validation_config["configs"][project]["file_specs"][platform][
-                        ftype
-                    ]["layout"],
-                )
-
-                # If the filename spec contains "project" or "platform" ensure that the project in the filename matches the bucket name
-                if parsed_fname.get("project"):
-                    if parsed_fname["project"] != project:
-                        log.info(
-                            f"Submitted file: {fname} appears to be in a bucket for the wrong project, only files for the project {project} should be submitted to bucket: {record['s3']['bucket']['name']} ignoring"
-                        )
-                        continue
-
-                if parsed_fname.get("platform"):
-                    if parsed_fname["platform"] != platform:
-                        log.info(
-                            f"Submitted file: {fname} appears to be in a bucket for the wrong platform, only files for the platform {platform} should be submitted to bucket: {record['s3']['bucket']['name']} ignoring"
-                        )
-                        continue
-
-                artifact = generate_artifact(
-                    parsed_fname,
-                    validation_config["configs"][project]["artifact_layout"],
-                )
-
-                # if previously_matched[project][site_code][platform][test].get(artifact):
-                #     previous_etag = previously_matched[project][site_code][platform][
-                #         test
-                #     ][artifact][ftype]["s3"]["object"]["eTag"]
-
-                #     if previous_etag == record["s3"]["object"]["eTag"]:
-                #         log.info(
-                #             f"Previously ingested file: {fname} has been previously matched and appears identical to previously matched version, ignoring"
-                #         )
-                #         continue
-
-                # else:
-
-                artifact_messages[project][site_code][platform][test][artifact][
-                    ftype
-                ] = record
-
-        artifact_results = handle_artifact_messages(
-            artifact_messages=artifact_messages,
-            validation_config=validation_config,
-            log=log,
-            varys_client=varys_client,
+        artifact_complete, existing_object_dict, index_tuple = parse_new_object_message(
+            existing_object_dict=existing_object_dict,
+            new_object_message=message_dict,
+            config_dict=config_dict,
         )
 
-        for result in artifact_results:
-            if result.success:
-                previously_matched[result.project][result.site_code][result.platform][
-                    result.test_flag
-                ][result.artifact] = result.records
-                del artifact_messages[result.project][result.site_code][
-                    result.platform
-                ][result.test_flag][result.artifact]
+        artifact, project, site, platform, test_flag = index_tuple
 
-        update_results = handle_update_messages(
-            update_messages=update_messages,
-            validation_config=validation_config,
-            log=log,
-            varys_client=varys_client,
+        if not any(artifact_complete, existing_object_dict, index_tuple):
+            failure_message = f"Problem parsing object with key: {message_dict['Records'][0]['s3']['object']['key']}, probable cause - key does not match file spec for this bucket or is malformed"
+            log.info(failure_message)
+            varys_client.send(
+                message=failure_message,
+                exchange=f"inbound.results.{project}.{site}",
+                queue_suffix="s3_matcher",
+            )
+            continue
+
+        if not artifact_complete:
+            continue
+
+        payload = generate_payload(
+            index_tuple=index_tuple, existing_object_dict=existing_object_dict
         )
 
-        for result in update_results:
-            if result.success:
-                previously_matched[result.project][result.site_code][result.platform][
-                    result.test_flag
-                ][result.artifact] = result.records
-
-        time.sleep(args.sleep_time)
-
-
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--sleep-time", default=30)
-    args = parser.parse_args()
-
-    run(args)
+        log.info(f"Successful match for artifact: {artifact}. Sending payload.")
+        varys_client.send(
+            message=payload, exchange="inbound.matched", queue_suffix="s3_matcher"
+        )
 
 
 if __name__ == "__main__":

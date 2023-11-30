@@ -6,36 +6,73 @@
     ],
     "configs": {
         "mscape": {
-            "file_naming": {
-                "identical": true,
-                "allowed_characters": "alphanumeric,_,-,."
-            },
             "artifact_layout": "project.sample_name.run_name",
             "files": [
                 ".1.fastq.gz",
                 ".2.fastq.gz",
                 ".csv"
             ],
+            "sites": [
+                "birm",
+                "public"
+            ],
+            "bucket_policies": {
+                "site_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "site_read": [
+                    "get",
+                    "list"
+                ],
+                "project_read": [
+                    "get",
+                    "list"
+                ],
+                "project_private": []
+            },
+            "site_buckets": {
+                "ingest": {
+                    "name_layout": "{project}-{site}-{platform}-{test_flag}",
+                    "policy": "site_ingest",
+                    "owner": "{site}"
+                }
+            },
+            "project_buckets": {
+                "published_reads": {
+                    "name_layout": "{project}-published-reads",
+                    "policy": "project_private",
+                    "owner": "admin"
+                },
+                "published_binned_reads": {
+                    "name_layout": "{project}-published-binned-reads",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_taxon_reports": {
+                    "name_layout": "{project}-published-taxon-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_scylla_reports": {
+                    "name_layout": "{project}-published-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                }
+            },
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
-                        "sections": 6,
                         "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
                     ".2.fastq.gz": {
-                        "sections": 6,
                         "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
                     ".csv": {
-                        "sections": 4,
                         "layout": "project.sample_id.run_name.ftype"
-                    },
-                    "match_size": 3,
-                    "files": [
-                        ".1.fastq.gz",
-                        ".2.fastq.gz",
-                        ".csv"
-                    ]
+                    }
                 },
                 "ont": {
                     ".fastq.gz": {
@@ -45,12 +82,7 @@
                     ".csv": {
                         "sections": 4,
                         "layout": "project.sample_id.run_name.ftype"
-                    },
-                    "match_size": 2,
-                    "files": [
-                        ".ont.fastq.gz",
-                        ".csv"
-                    ]
+                    }
                 }
             }
         },
@@ -60,11 +92,51 @@
                 "allowed_characters": "alphanumeric,_,-,."
             },
             "artifact_layout": "project.sample_id.run_name",
-            "files": [
-                ".1.fastq.gz",
-                ".2.fastq.gz",
-                ".csv"
+            "sites": [
+                "birm",
+                "public"
             ],
+            "bucket_policies": {
+                "site_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "site_read": [
+                    "get",
+                    "list"
+                ],
+                "project_read": [
+                    "get",
+                    "list"
+                ],
+                "project_private": []
+            },
+            "site_buckets": {
+                "ingest": {
+                    "name_layout": "{project}-{site}-{platform}-{test_flag}",
+                    "policy": "site_ingest"
+                }
+            },
+            "project_buckets": {
+                "published_reads": {
+                    "name_layout": "{project}-published-reads",
+                    "policy": "project_private"
+                },
+                "published_binned_reads": {
+                    "name_layout": "{project}-published-binned-reads",
+                    "policy": "project_read"
+                },
+                "published_taxon_reports": {
+                    "name_layout": "{project}-published-taxon-reports",
+                    "policy": "project_read"
+                },
+                "published_scylla_reports": {
+                    "name_layout": "{project}-published-reports",
+                    "policy": "project_read"
+                }
+            },
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
@@ -78,13 +150,7 @@
                     ".csv": {
                         "sections": 4,
                         "layout": "project.sample_id.run_name.ftype"
-                    },
-                    "match_size": 3,
-                    "files": [
-                        ".1.fastq.gz",
-                        ".2.fastq.gz",
-                        ".csv"
-                    ]
+                    }
                 },
                 "ont": {
                     ".fastq.gz": {
@@ -94,12 +160,7 @@
                     ".csv": {
                         "sections": 4,
                         "layout": "project.sample_id.run_name.ftype"
-                    },
-                    "match_size": 2,
-                    "files": [
-                        ".fastq.gz",
-                        ".csv"
-                    ]
+                    }
                 }
             }
         },
@@ -114,6 +175,57 @@
                 ".2.fastq.gz",
                 ".csv"
             ],
+            "sites": [
+                "birm",
+                "public"
+            ],
+            "bucket_policies": {
+                "site_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "site_read": [
+                    "get",
+                    "list"
+                ],
+                "project_read": [
+                    "get",
+                    "list"
+                ],
+                "project_private": []
+            },
+            "platform_buckets": {
+                "ingest": {
+                    "name_layout": "{project}-{site}-{platform}-{test_flag}",
+                    "policy": "site_ingest",
+                    "owner": "{site}"
+                }
+            },
+            "site_buckets": {},
+            "project_buckets": {
+                "published_reads": {
+                    "name_layout": "{project}-published-reads",
+                    "policy": "project_private",
+                    "owner": "admin"
+                },
+                "published_binned_reads": {
+                    "name_layout": "{project}-published-binned-reads",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_taxon_reports": {
+                    "name_layout": "{project}-published-taxon-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_scylla_reports": {
+                    "name_layout": "{project}-published-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                }
+            },
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
@@ -127,13 +239,7 @@
                     ".csv": {
                         "sections": 4,
                         "layout": "project.sample_id.run_name.ftype"
-                    },
-                    "match_size": 3,
-                    "files": [
-                        ".1.fastq.gz",
-                        ".2.fastq.gz",
-                        ".csv"
-                    ]
+                    }
                 }
             }
         }
