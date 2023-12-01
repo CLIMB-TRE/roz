@@ -235,6 +235,24 @@ class test_s3_matcher(unittest.TestCase):
         self.assertTrue(len(existing_objects["project1-site1-illumina-test"]) == 1)
         self.assertNotIn("project2-site1-illumina-prod", existing_objects)
 
+    def test_get_existing_objects_no_bucket(self):
+        self.s3_client.create_bucket(Bucket="project1-site1-illumina-prod")
+
+        self.s3_client.put_object(
+            Bucket="project1-site1-illumina-prod",
+            Key="project1.sample1.run1.1.fastq.gz",
+            Body="",
+        )
+
+        buckets = ["project1-site1-illumina-prod", "project1-site1-illumina-test"]
+
+        existing_objects = s3_matcher.get_existing_objects(
+            s3_client=self.s3_client, to_check=buckets
+        )
+
+        print(existing_objects)
+        self.assertTrue(len(existing_objects) == 1)
+
     def test_parse_object_key(self):
         key = "project1.sample1.run1.1.fastq.gz"
 

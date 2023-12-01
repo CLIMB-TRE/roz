@@ -24,22 +24,21 @@ def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:
     existing_objects = {}
 
     for bucket_name in to_check:
-        existing_objects[bucket_name] = []
-
-        paginator = s3_client.get_paginator("list_objects_v2")
-
         try:
+            paginator = s3_client.get_paginator("list_objects_v2")
             response_iterator = paginator.paginate(Bucket=bucket_name, FetchOwner=True)
+
+            for response in response_iterator:
+                if "Contents" in response:
+                    existing_objects.setdefault(bucket_name, [])
+                    for obj in response["Contents"]:
+                        existing_objects[bucket_name].append(obj)
+
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchBucket":
                 continue
 
             raise e
-
-        for response in response_iterator:
-            if "Contents" in response:
-                for obj in response["Contents"]:
-                    existing_objects[bucket_name].append(obj)
 
     return existing_objects
 
