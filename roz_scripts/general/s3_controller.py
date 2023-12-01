@@ -428,7 +428,6 @@ def can_site_modify_policy(
             raise e
 
     try:
-        print(policy)
         s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
         return True
     except ClientError as e:
