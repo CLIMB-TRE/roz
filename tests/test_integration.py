@@ -717,41 +717,43 @@ class Test_ingest(unittest.TestCase):
         with patch("roz_scripts.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
 
-        self.ingest_process = mp.Process(target=ingest.main)
-        self.ingest_process.start()
+            self.ingest_process = mp.Process(target=ingest.main)
+            self.ingest_process.start()
 
-        self.varys_client.send(
-            example_match_message,
-            exchange="inbound.matched",
-            queue_suffix="s3_matcher",
-        )
+            self.varys_client.send(
+                example_match_message,
+                exchange="inbound.matched",
+                queue_suffix="s3_matcher",
+            )
 
-        message = self.varys_client.receive(
-            exchange="inbound.to_validate.mscapetest",
-            queue_suffix="ingest",
-            timeout=30,
-        )
+            message = self.varys_client.receive(
+                exchange="inbound.to_validate.mscapetest",
+                queue_suffix="ingest",
+                timeout=30,
+            )
 
-        self.assertIsNotNone(message)
+            self.assertIsNotNone(message)
 
-        message_dict = json.loads(message.body)
+            message_dict = json.loads(message.body)
 
-        self.assertEqual(message_dict["sample_id"], "sample-test")
-        self.assertEqual(message_dict["artifact"], "mscapetest.sample-test.run-test")
-        self.assertEqual(message_dict["run_name"], "run-test")
-        self.assertEqual(message_dict["project"], "mscapetest")
-        self.assertEqual(message_dict["platform"], "ont")
-        self.assertEqual(message_dict["site"], "birm")
-        self.assertEqual(message_dict["uploaders"], ["testuser"])
-        self.assertEqual(
-            message_dict["files"][".csv"]["key"],
-            "mscapetest.sample-test.run-test.csv",
-        )
-        self.assertTrue(message_dict["validate"])
-        self.assertTrue(message_dict["onyx_test_create_status"])
-        self.assertNotIn("cid", message_dict.keys())
-        self.assertFalse(message_dict["test_flag"])
-        self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
+            self.assertEqual(message_dict["sample_id"], "sample-test")
+            self.assertEqual(
+                message_dict["artifact"], "mscapetest.sample-test.run-test"
+            )
+            self.assertEqual(message_dict["run_name"], "run-test")
+            self.assertEqual(message_dict["project"], "mscapetest")
+            self.assertEqual(message_dict["platform"], "ont")
+            self.assertEqual(message_dict["site"], "birm")
+            self.assertEqual(message_dict["uploaders"], ["testuser"])
+            self.assertEqual(
+                message_dict["files"][".csv"]["key"],
+                "mscapetest.sample-test.run-test.csv",
+            )
+            self.assertTrue(message_dict["validate"])
+            self.assertTrue(message_dict["onyx_test_create_status"])
+            self.assertNotIn("cid", message_dict.keys())
+            self.assertFalse(message_dict["test_flag"])
+            self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
 
 # class Test_mscape_validator(unittest.TestCase):
