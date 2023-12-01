@@ -484,6 +484,8 @@ class Test_S3_matcher(unittest.TestCase):
         os.environ["AWS_SESSION_TOKEN"] = "testing"
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
+        os.environ["UNIT_TESTING"] = "True"
+
         config = {
             "version": "0.1",
             "profiles": {
