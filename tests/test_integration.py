@@ -514,6 +514,7 @@ class Test_S3_matcher(unittest.TestCase):
     def tearDown(self):
         self.varys_client.close()
         self.s3_matcher_process.kill()
+        self.server.stop()
 
         credentials = pika.PlainCredentials("guest", "guest")
 
