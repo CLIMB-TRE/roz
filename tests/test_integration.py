@@ -830,6 +830,7 @@ class Test_ingest(unittest.TestCase):
                 queue_suffix="ingest",
                 timeout=30,
             )
+            print(json.loads(message.body))
 
             print(mock_client.mock_calls)
 
