@@ -31,6 +31,9 @@ def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:
         try:
             response_iterator = paginator.paginate(Bucket=bucket_name, FetchOwner=True)
         except ClientError as e:
+            if e.response["Error"]["Code"] == "NoSuchBucket":
+                continue
+
             raise e
 
         for response in response_iterator:

@@ -66,7 +66,7 @@ example_csv_msg = {
                     "id": "testdata",
                 },
                 "object": {
-                    "key": "mscapetest.sample-test.run-test.ont.csv",
+                    "key": "mscapetest.sample-test.run-test.csv",
                     "size": 275,
                     "eTag": "7022ea6a3adb39323b5039c1d6587d08",
                     "versionId": "",
@@ -108,7 +108,7 @@ example_csv_msg_2 = {
                     "id": "testdata",
                 },
                 "object": {
-                    "key": "mscapetest.sample-test.run-test.ont.csv",
+                    "key": "mscapetest.sample-test.run-test.csv",
                     "size": 275,
                     "eTag": "29d33a6a67446891caf00d228b954ba7",
                     "versionId": "",
@@ -228,9 +228,9 @@ example_match_message = {
             "key": "mscapetest.sample-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.ont.csv",
+            "key": "mscapetest.sample-test.run-test.csv",
         },
     },
     "test_flag": False,
@@ -254,9 +254,9 @@ example_mismatch_match_message = {
             "key": "mscapetest.sample-test-2.run-test-2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.ont.csv",
+            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.ont.csv",
+            "key": "mscapetest.sample-test.run-test.csv",
         },
     },
     "test_flag": False,
@@ -505,6 +505,9 @@ class Test_S3_matcher(unittest.TestCase):
 
         self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
+        self.s3_matcher_process = mp.Process(target=s3_matcher.main)
+        self.s3_matcher_process.start()
+
     def tearDown(self):
         self.varys_client.close()
         self.s3_matcher_process.kill()
@@ -523,11 +526,6 @@ class Test_S3_matcher(unittest.TestCase):
         time.sleep(1)
 
     def test_s3_successful_match(self):
-        args = SimpleNamespace(sleep_time=5)
-
-        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-        self.s3_matcher_process.start()
-
         self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
@@ -553,7 +551,7 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertEqual(message_dict["uploaders"], ["testuser"])
         self.assertEqual(
             message_dict["files"][".csv"]["key"],
-            "mscapetest.sample-test.run-test.ont.csv",
+            "mscapetest.sample-test.run-test.csv",
         )
         self.assertEqual(
             message_dict["files"][".fastq.gz"]["key"],
@@ -562,11 +560,6 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
     def test_s3_incorrect_match(self):
-        args = SimpleNamespace(sleep_time=5)
-
-        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-        self.s3_matcher_process.start()
-
         self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
@@ -582,11 +575,6 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertIsNone(message)
 
     def test_s3_updated_csv(self):
-        args = SimpleNamespace(sleep_time=5)
-
-        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-        self.s3_matcher_process.start()
-
         self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
@@ -625,7 +613,7 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertEqual(message_dict["uploaders"], ["testuser"])
         self.assertEqual(
             message_dict["files"][".csv"]["key"],
-            "mscapetest.sample-test.run-test.ont.csv",
+            "mscapetest.sample-test.run-test.csv",
         )
         self.assertEqual(
             message_dict["files"][".fastq.gz"]["key"],
@@ -634,11 +622,6 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
     def test_s3_identical_csv(self):
-        args = SimpleNamespace(sleep_time=5)
-
-        self.s3_matcher_process = mp.Process(target=s3_matcher.run, args=(args,))
-        self.s3_matcher_process.start()
-
         self.varys_client.send(
             example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
         )
@@ -693,12 +676,12 @@ class Test_ingest(unittest.TestCase):
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
             "mscapetest-birm-ont-prod",
-            "mscapetest.sample-test.run-test.ont.csv",
+            "mscapetest.sample-test.run-test.csv",
         )
 
         resp = self.s3_client.head_object(
             Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.ont.csv",
+            Key="mscapetest.sample-test.run-test.csv",
         )
 
         csv_etag = resp["ETag"]
@@ -786,7 +769,7 @@ class Test_ingest(unittest.TestCase):
             self.assertEqual(message_dict["uploaders"], ["testuser"])
             self.assertEqual(
                 message_dict["files"][".csv"]["key"],
-                "mscapetest.sample-test.run-test.ont.csv",
+                "mscapetest.sample-test.run-test.csv",
             )
             self.assertTrue(message_dict["validate"])
             self.assertTrue(message_dict["onyx_test_create_status"])
@@ -828,7 +811,7 @@ class Test_ingest(unittest.TestCase):
             self.assertEqual(message_dict["uploaders"], ["testuser"])
             self.assertEqual(
                 message_dict["files"][".csv"]["key"],
-                "mscapetest.sample-test.run-test.ont.csv",
+                "mscapetest.sample-test.run-test.csv",
             )
             self.assertIn(
                 "Field does not match filename",
@@ -946,12 +929,12 @@ class Test_mscape_validator(unittest.TestCase):
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
             "mscapetest-birm-ont-prod",
-            "mscapetest.sample-test.run-test.ont.csv",
+            "mscapetest.sample-test.run-test.csv",
         )
 
         resp = self.s3_client.head_object(
             Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.ont.csv",
+            Key="mscapetest.sample-test.run-test.csv",
         )
 
         self.log = utils.init_logger(
@@ -1556,12 +1539,12 @@ class Test_mscape_validator(unittest.TestCase):
 #         self.s3_client.upload_file(
 #             TEST_CSV_FILENAME,
 #             "pathsafetest-birm-illumina-prod",
-#             "pathsafetest.sample-test.run-test.ont.csv",
+#             "pathsafetest.sample-test.run-test.csv",
 #         )
 
 #         resp = self.s3_client.head_object(
 #             Bucket="pathsafetest-birm-illumina-prod",
-#             Key="pathsafetest.sample-test.run-test.ont.csv",
+#             Key="pathsafetest.sample-test.run-test.csv",
 #         )
 
 #         self.log = utils.init_logger(
