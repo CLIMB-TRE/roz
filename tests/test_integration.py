@@ -808,11 +808,9 @@ class Test_ingest(unittest.TestCase):
 
     def test_multiline_csv(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.csv_create.return_value = (
-                Mock(
-                    side_effect=OnyxClientError(
-                        "Multiline metadata CSVs are not permitted"
-                    )
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = Mock(
+                side_effect=OnyxClientError(
+                    "File contains multiple records but this is not allowed. To upload multiple records, set 'multiline' = True."
                 )
             )
 
@@ -836,7 +834,7 @@ class Test_ingest(unittest.TestCase):
             message_dict = json.loads(message.body)
 
             self.assertIn(
-                "Multiline metadata CSVs are not permitted",
+                "File contains multiple records but this is not allowed. To upload multiple records, set 'multiline' = True.",
                 message_dict["onyx_test_create_errors"]["onyx_errors"],
             )
             self.assertFalse(message_dict["onyx_test_create_status"])
@@ -851,10 +849,15 @@ class Test_ingest(unittest.TestCase):
                             "data": [],
                             "messages": {"sample_id": "Test sample_id error handling"},
                         },
-                        response=MockResponse(status_code=400, json_data={
-                            "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
-                        }),
+                        response=MockResponse(
+                            status_code=400,
+                            json_data={
+                                "data": [],
+                                "messages": {
+                                    "sample_id": "Test sample_id error handling"
+                                },
+                            },
+                        ),
                     )
                 )
             )
