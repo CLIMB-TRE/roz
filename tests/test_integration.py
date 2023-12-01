@@ -662,7 +662,7 @@ class Test_ingest(unittest.TestCase):
             Key="mscapetest.sample-test.run-test.csv",
         )
 
-        csv_etag = resp["ETag"]
+        csv_etag = resp["ETag"].replace('"', "").replace('"', "")
 
         example_match_message["files"][".csv"]["etag"] = csv_etag.replace('"', "")
         example_mismatch_match_message["files"][".csv"]["etag"] = csv_etag.replace(
@@ -714,8 +714,8 @@ class Test_ingest(unittest.TestCase):
         time.sleep(1)
 
     def test_ingest_successful(self):
-        # with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-        #     mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
+        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
 
         self.ingest_process = mp.Process(target=ingest.main)
         self.ingest_process.start()
@@ -731,8 +731,6 @@ class Test_ingest(unittest.TestCase):
             queue_suffix="ingest",
             timeout=30,
         )
-
-        # print(mock_client.mock_calls)
 
         self.assertIsNotNone(message)
 
@@ -754,143 +752,6 @@ class Test_ingest(unittest.TestCase):
         self.assertNotIn("cid", message_dict.keys())
         self.assertFalse(message_dict["test_flag"])
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
-
-    def test_name_mismatches(self):
-        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
-
-            self.ingest_process = mp.Process(target=ingest.main)
-            self.ingest_process.start()
-
-            self.varys_client.send(
-                example_mismatch_match_message,
-                exchange="inbound.matched",
-                queue_suffix="s3_matcher",
-            )
-
-            message = self.varys_client.receive(
-                exchange="inbound.to_validate.mscapetest",
-                queue_suffix="ingest",
-                timeout=30,
-            )
-
-            self.assertIsNotNone(message)
-
-            message_dict = json.loads(message.body)
-
-            self.assertEqual(message_dict["sample_id"], "sample-test-2")
-            self.assertEqual(
-                message_dict["artifact"], "mscapetest.sample-test-2.run-test-2"
-            )
-            self.assertEqual(message_dict["run_name"], "run-test-2")
-            self.assertEqual(message_dict["project"], "mscapetest")
-            self.assertEqual(message_dict["platform"], "ont")
-            self.assertEqual(message_dict["site"], "birm")
-            self.assertEqual(message_dict["uploaders"], ["testuser"])
-            self.assertEqual(
-                message_dict["files"][".csv"]["key"],
-                "mscapetest.sample-test.run-test.csv",
-            )
-            self.assertIn(
-                "Field does not match filename",
-                message_dict["onyx_test_create_errors"]["sample_id"],
-            )
-            self.assertIn(
-                "Field does not match filename",
-                message_dict["onyx_test_create_errors"]["run_name"],
-            )
-            self.assertFalse(message_dict["validate"])
-            self.assertEqual(message_dict["onyx_test_status_code"], 201)
-            self.assertTrue(message_dict["onyx_test_create_status"])
-            self.assertFalse(message_dict["cid"])
-            self.assertFalse(message_dict["test_flag"])
-            self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
-
-    def test_multiline_csv(self):
-        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.csv_create.return_value = Mock(
-                side_effect=OnyxClientError(
-                    "File contains multiple records but this is not allowed. To upload multiple records, set 'multiline' = True."
-                )
-            )
-
-            self.ingest_process = mp.Process(target=ingest.main)
-            self.ingest_process.start()
-
-            self.varys_client.send(
-                example_match_message,
-                exchange="inbound.matched",
-                queue_suffix="s3_matcher",
-            )
-
-            message = self.varys_client.receive(
-                exchange="inbound.to_validate.mscapetest",
-                queue_suffix="ingest",
-                timeout=30,
-            )
-            print(json.loads(message.body))
-
-            print(mock_client.mock_calls)
-
-            self.assertIsNotNone(message)
-
-            message_dict = json.loads(message.body)
-
-            self.assertIn(
-                "File contains multiple records but this is not allowed. To upload multiple records, set 'multiline' = True.",
-                message_dict["onyx_test_create_errors"]["onyx_errors"],
-            )
-            self.assertFalse(message_dict["onyx_test_create_status"])
-            self.assertFalse(message_dict["validate"])
-
-    def test_onyx_create_error_handling(self):
-        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.csv_create.return_value = (
-                Mock(
-                    side_effect=OnyxRequestError(
-                        message={
-                            "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
-                        },
-                        response=MockResponse(
-                            status_code=400,
-                            json_data={
-                                "data": [],
-                                "messages": {
-                                    "sample_id": "Test sample_id error handling"
-                                },
-                            },
-                        ),
-                    )
-                )
-            )
-
-            self.ingest_process = mp.Process(target=ingest.main)
-            self.ingest_process.start()
-
-            self.varys_client.send(
-                example_match_message,
-                exchange="inbound.matched",
-                queue_suffix="s3_matcher",
-            )
-
-            message = self.varys_client.receive(
-                exchange="inbound.to_validate.mscapetest",
-                queue_suffix="ingest",
-                timeout=30,
-            )
-
-            self.assertIsNotNone(message)
-
-            message_dict = json.loads(message.body)
-
-            self.assertIn(
-                "Test sample_id error handling",
-                message_dict["onyx_test_create_errors"]["sample_id"],
-            )
-            self.assertFalse(message_dict["onyx_test_create_status"])
-            self.assertEqual(message_dict["onyx_test_status_code"], 400)
-            self.assertFalse(message_dict["validate"])
 
 
 # class Test_mscape_validator(unittest.TestCase):

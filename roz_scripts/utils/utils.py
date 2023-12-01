@@ -203,9 +203,9 @@ def csv_create(
                 if reconnect_count < 3:
                     reconnect_count += 1
                     log.error(
-                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 5 seconds"
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 3 seconds"
                     )
-                    time.sleep(5)
+                    time.sleep(3)
                     continue
 
                 else:
@@ -215,11 +215,11 @@ def csv_create(
                     if test_submission:
                         payload.setdefault("onyx_test_create_errors", {})
                         payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                        payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                        payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
                     else:
                         payload.setdefault("onyx_create_errors", {})
                         payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                        payload["onyx_create_errors"]["onyx_errors"].append(e)
+                        payload["onyx_create_errors"]["onyx_errors"].append(str(e))
 
                     return (False, True, payload)
 
@@ -228,11 +228,11 @@ def csv_create(
                 if test_submission:
                     payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
                 else:
                     payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_create_errors"]["onyx_errors"].append(e)
+                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
 
                 return (False, True, payload)
 
@@ -244,11 +244,11 @@ def csv_create(
                 if test_submission:
                     payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
                 else:
                     payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_create_errors"]["onyx_errors"].append(e)
+                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
 
                 return (False, False, payload)
 
@@ -262,27 +262,28 @@ def csv_create(
                     payload.setdefault("onyx_test_create_errors", {})
                     for field, messages in e.response.json()["messages"].items():
                         payload["onyx_test_create_errors"].setdefault(field, [])
-                        payload["onyx_errors"][field].extend(messages)
+                        payload["onyx_test_create_errors"][field].extend(messages)
                 else:
                     payload.setdefault("onyx_create_errors", {})
                     for field, messages in e.response.json()["messages"].items():
                         payload["onyx_create_errors"].setdefault(field, [])
-                        payload["onyx_errors"][field].extend(messages)
+                        payload["onyx_create_errors"][field].extend(messages)
 
                 return (False, False, payload)
 
             except Exception as e:
                 if test_submission:
                     log.error(f"Unhandled error: {e}")
-
+                    payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_test_create_errors"]["onyx_errors"].append(e)
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
                 else:
                     log.error(f"Unhandled error: {e}")
+                    payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_create_errors"]["onyx_errors"].append(e)
+                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
 
-                return (False, False, payload)
+                return (False, True, payload)
 
         # This should never be reached
         if test_submission:
@@ -465,17 +466,17 @@ def get_s3_credentials(
 
     credentials = {}
 
+    if args:
+        profile = "default" if not args.profile else args.profile
+    else:
+        profile = "default"
+
     try:
         credential_file.read_file(open(os.path.expanduser("~/.aws/credentials"), "rt"))
         credentials["access_key"] = credential_file[profile]["aws_access_key_id"]
         credentials["secret_key"] = credential_file[profile]["aws_secret_access_key"]
     except FileNotFoundError:
         pass
-
-    if args:
-        profile = "default" if not args.profile else args.profile
-    else:
-        profile = "default"
 
     if not os.getenv("UNIT_TESTING"):
         endpoint = "https://s3.climb.ac.uk"

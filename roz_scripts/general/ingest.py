@@ -33,6 +33,7 @@ def main():
         )
 
         payload = json.loads(message.body)
+        payload["validate"] = False
 
         test_create_status, alert, payload = csv_create(
             payload=payload, log=log, test_submission=True
