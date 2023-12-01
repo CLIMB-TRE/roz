@@ -89,7 +89,7 @@ class test_ingest(unittest.TestCase):
 
         example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
 
-        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
 
             success, alert, payload = csv_create(
@@ -102,7 +102,7 @@ class test_ingest(unittest.TestCase):
             self.assertFalse(alert)
             self.assertNotIn("cid", payload.keys())
 
-        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
                 "cid": "test_cid"
             }
@@ -117,7 +117,7 @@ class test_ingest(unittest.TestCase):
             self.assertFalse(alert)
             self.assertEqual("test_cid", payload["cid"])
 
-        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxClientError(
                     "File contains multiple records but this is not allowed. To upload multiple records, set 'multiline' = True."
@@ -137,7 +137,7 @@ class test_ingest(unittest.TestCase):
                 payload["onyx_test_create_errors"]["onyx_errors"],
             )
 
-        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
                     message={
@@ -169,7 +169,7 @@ class test_ingest(unittest.TestCase):
                 payload["onyx_test_create_errors"]["sample_id"],
             )
 
-        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxConnectionError()
             )
@@ -188,7 +188,7 @@ class test_ingest(unittest.TestCase):
 
             self.assertEqual(len(csv_create_calls), 4)
 
-        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxServerError(
                     message="Test server error handling",
@@ -205,7 +205,7 @@ class test_ingest(unittest.TestCase):
             self.assertFalse(success)
             self.assertTrue(alert)
 
-        with patch("roz_scripts.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxConfigError()
             )
@@ -233,8 +233,6 @@ class test_ingest(unittest.TestCase):
         example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
 
         success, alert, payload = csv_field_checks(payload=example_match)
-
-        print(payload)
 
         self.assertTrue(success)
         self.assertFalse(alert)
