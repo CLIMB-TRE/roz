@@ -194,6 +194,11 @@ def csv_create(
                     multiline=False,
                 )
 
+                if not test_submission:
+                    payload["cid"] = response["cid"]
+
+                return (True, False, payload)
+
             except OnyxConnectionError as e:
                 if reconnect_count < 3:
                     reconnect_count += 1
@@ -278,11 +283,6 @@ def csv_create(
                     payload["onyx_create_errors"]["onyx_errors"].append(e)
 
                 return (False, False, payload)
-
-            if not test_submission:
-                payload["cid"] = response["cid"]
-
-            return (True, False, payload)
 
         # This should never be reached
         if test_submission:
