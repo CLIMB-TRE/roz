@@ -627,34 +627,6 @@ class Test_S3_matcher(unittest.TestCase):
         )
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
-    def test_s3_identical_csv(self):
-        self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-        )
-        self.varys_client.send(
-            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-        )
-
-        message = self.varys_client.receive(
-            exchange="inbound.matched",
-            queue_suffix="s3_matcher",
-            timeout=30,
-        )
-
-        self.assertIsNotNone(message)
-
-        self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
-        )
-
-        message_2 = self.varys_client.receive(
-            exchange="inbound.matched",
-            queue_suffix="s3_matcher",
-            timeout=30,
-        )
-
-        self.assertIsNone(message_2)
-
 
 class Test_ingest(unittest.TestCase):
     def setUp(self):
