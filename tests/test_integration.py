@@ -720,6 +720,8 @@ class Test_ingest(unittest.TestCase):
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()
 
+            time.sleep(2)
+
             self.varys_client.send(
                 example_match_message,
                 exchange="inbound.matched",
@@ -729,7 +731,7 @@ class Test_ingest(unittest.TestCase):
             message = self.varys_client.receive(
                 exchange="inbound.to_validate.mscapetest",
                 queue_suffix="ingest",
-                timeout=30,
+                timeout=10,
             )
 
             self.assertIsNotNone(message)
