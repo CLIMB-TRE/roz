@@ -831,6 +831,8 @@ class Test_ingest(unittest.TestCase):
                 timeout=30,
             )
 
+            print(mock_client.mock_calls)
+
             self.assertIsNotNone(message)
 
             message_dict = json.loads(message.body)
