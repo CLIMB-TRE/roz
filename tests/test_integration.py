@@ -732,6 +732,8 @@ class Test_ingest(unittest.TestCase):
                 timeout=30,
             )
 
+            print(mock_client.mock_calls)
+
             self.assertIsNotNone(message)
 
             message_dict = json.loads(message.body)
@@ -767,8 +769,6 @@ class Test_ingest(unittest.TestCase):
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
             )
-
-            print(mock_client.call_args_list)
 
             message = self.varys_client.receive(
                 exchange="inbound.to_validate.mscapetest",
