@@ -732,7 +732,7 @@ class Test_ingest(unittest.TestCase):
             timeout=30,
         )
 
-        print(mock_client.mock_calls)
+        # print(mock_client.mock_calls)
 
         self.assertIsNotNone(message)
 
@@ -751,7 +751,7 @@ class Test_ingest(unittest.TestCase):
         )
         self.assertTrue(message_dict["validate"])
         self.assertTrue(message_dict["onyx_test_create_status"])
-        self.assertNotIn("cid", message_dict["cid"].keys())
+        self.assertNotIn("cid", message_dict.keys())
         self.assertFalse(message_dict["test_flag"])
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
