@@ -331,6 +331,7 @@ def main():
         config_dict = json.load(f)
 
     config_map = create_config_map(config_dict=config_dict)
+    print(config_map)
 
     buckets = []
 
