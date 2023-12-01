@@ -844,10 +844,20 @@ class Test_ingest(unittest.TestCase):
 
     def test_onyx_create_error_handling(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "data": [],
-                "messages": {"sample_id": "Test sample_id error handling"},
-            }
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = (
+                Mock(
+                    side_effect=OnyxRequestError(
+                        message={
+                            "data": [],
+                            "messages": {"sample_id": "Test sample_id error handling"},
+                        },
+                        response=MockResponse(status_code=400, json_data={
+                            "data": [],
+                            "messages": {"sample_id": "Test sample_id error handling"},
+                        }),
+                    )
+                )
+            )
 
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()

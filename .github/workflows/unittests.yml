@@ -27,7 +27,7 @@ jobs:
     - name: Install Varys
       run: python3 -m pip install git+https://github.com/CLIMB-TRE/varys.git
     - name: Install Onyx-client
-      run: python3 -m pip install git+https://github.com/CLIMB-TRE/onyx-client.git@development
+      run: python3 -m pip install climb-onyx-client
     - name: Install Roz
       run: python3 -m pip install -e .
     - name: Test with pytest
