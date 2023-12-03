@@ -758,620 +758,620 @@ class Test_ingest(unittest.TestCase):
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
 
-# class Test_mscape_validator(unittest.TestCase):
-#     def setUp(self):
-#         self.server = ThreadedMotoServer()
-#         self.server.start()
-
-#         os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-#         os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-#         os.environ["AWS_SECURITY_TOKEN"] = "testing"
-#         os.environ["AWS_SESSION_TOKEN"] = "testing"
-#         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-#         os.environ["ONYX_DOMAIN"] = "testing"
-#         os.environ["ONYX_USERNAME"] = "testing"
-#         os.environ["ONYX_PASSWORD"] = "testing"
-
-#         os.environ["UNIT_TESTING"] = "True"
-
-#         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
-#         self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
-#         self.s3_client.create_bucket(Bucket="mscapetest-published-reads")
-#         self.s3_client.create_bucket(Bucket="mscapetest-published-reports")
-#         self.s3_client.create_bucket(Bucket="mscapetest-published-taxon-reports")
-#         self.s3_client.create_bucket(Bucket="mscapetest-published-binned-reads")
-
-#         with open(TEST_CSV_FILENAME, "w") as f:
-#             f.write("sample_id,run_name,project,platform,site\n")
-#             f.write("sample-test,run-test,mscapetest,ont,birm")
-
-#         self.s3_client.upload_file(
-#             TEST_CSV_FILENAME,
-#             "mscapetest-birm-ont-prod",
-#             "mscapetest.sample-test.run-test.csv",
-#         )
-
-#         resp = self.s3_client.head_object(
-#             Bucket="mscapetest-birm-ont-prod",
-#             Key="mscapetest.sample-test.run-test.csv",
-#         )
-
-#         self.log = utils.init_logger(
-#             "mscape.ingest", MSCAPE_VALIDATION_LOG_FILENAME, "DEBUG"
-#         )
-
-#         csv_etag = resp["ETag"].replace('"', "")
-
-#         example_validator_message["files"][".csv"]["etag"] = csv_etag
-
-#         config = {
-#             "version": "0.1",
-#             "profiles": {
-#                 "roz": {
-#                     "username": "guest",
-#                     "password": "guest",
-#                     "amqp_url": "127.0.0.1",
-#                     "port": 5672,
-#                 }
-#             },
-#         }
-
-#         with open(VARYS_CFG_PATH, "w") as f:
-#             json.dump(config, f, ensure_ascii=False)
-
-#         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
-#         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
-#         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-#         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
-#         os.environ["ONYX_DOMAIN"] = "domain"
-
-#         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
-
-#         self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
-
-#     def tearDown(self):
-#         credentials = pika.PlainCredentials("guest", "guest")
-
-#         connection = pika.BlockingConnection(
-#             pika.ConnectionParameters("localhost", credentials=credentials)
-#         )
-#         channel = connection.channel()
-
-#         channel.queue_delete(queue="inbound.to_validate.mscapetest")
-#         channel.queue_delete(queue="inbound.new_artifact.mscape")
-#         channel.queue_delete(queue="inbound.results.mscape.birm")
-
-#         connection.close()
-
-#         os.remove(TEST_CSV_FILENAME)
-
-#         self.server.stop()
-#         self.varys_client.close()
-#         time.sleep(1)
-
-#     def test_validator_successful(self):
-#         with (
-#             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
-#             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
-#         ):
-#             mock_pipeline.return_value.execute.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_pipeline.return_value.cleanup.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-#             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
-
-#             mock_client.return_value.__enter__.return_value.update.return_value = {}
-
-#             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-#                 "data": {"cid": "test_cid"}
-#             }
-
-#             result_path = os.path.join(DIR, example_validator_message["uuid"])
-#             preprocess_path = os.path.join(result_path, "preprocess")
-#             classifications_path = os.path.join(result_path, "classifications")
-#             pipeline_info_path = os.path.join(result_path, "pipeline_info")
-#             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
-
-#             os.makedirs(preprocess_path, exist_ok=True)
-#             os.makedirs(classifications_path, exist_ok=True)
-#             os.makedirs(pipeline_info_path, exist_ok=True)
-#             os.makedirs(binned_reads_path, exist_ok=True)
-
-#             open(
-#                 os.path.join(
-#                     preprocess_path,
-#                     f"{example_validator_message['uuid']}.fastp.fastq.gz",
-#                 ),
-#                 "w",
-#             ).close()
-#             open(
-#                 os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-#             ).close()
-#             open(os.path.join(binned_reads_path, "reads.286.fastq.gz"), "w").close()
-#             open(
-#                 os.path.join(
-#                     result_path, f"{example_validator_message['uuid']}_report.html"
-#                 ),
-#                 "w",
-#             ).close()
-
-#             with open(
-#                 os.path.join(
-#                     pipeline_info_path,
-#                     f"execution_trace_{example_validator_message['uuid']}.txt",
-#                 ),
-#                 "w",
-#             ) as f:
-#                 f.write(example_execution_trace)
-
-#             with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-#                 json.dump(example_reads_summary, f)
-
-#             args = SimpleNamespace(
-#                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
-#                 log_level="DEBUG",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             pipeline = mscape_ingest_validation.pipeline(
-#                 pipe="test",
-#                 config="test",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
-
-#             Success, alert, payload, message = mscape_ingest_validation.validate(
-#                 in_message, args, pipeline
-#             )
-
-#             self.assertTrue(Success)
-#             self.assertFalse(alert)
-
-#             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
-#             self.assertEqual(
-#                 payload["artifact"],
-#                 "mscapetest.sample-test.run-test",
-#             )
-#             self.assertEqual(payload["project"], "mscapetest")
-#             self.assertEqual(payload["site"], "birm")
-#             self.assertEqual(payload["platform"], "ont")
-#             self.assertEqual(payload["cid"], "test_cid")
-#             self.assertEqual(payload["created"], True)
-#             self.assertEqual(payload["ingested"], True)
-#             self.assertEqual(payload["onyx_test_status_code"], 201)
-#             self.assertEqual(payload["onyx_test_create_status"], True)
-#             self.assertEqual(payload["onyx_status_code"], 201)
-#             self.assertEqual(payload["onyx_create_status"], True)
-#             self.assertEqual(payload["test_flag"], False)
-
-#             published_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reads"
-#             )
-#             self.assertEqual(
-#                 published_reads_contents["Contents"][0]["Key"], "test_cid.fastq.gz"
-#             )
-
-#             published_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reports"
-#             )
-#             self.assertEqual(
-#                 published_reports_contents["Contents"][0]["Key"],
-#                 "test_cid_scylla_report.html",
-#             )
-
-#             published_taxon_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-taxon-reports"
-#             )
-#             self.assertEqual(
-#                 published_taxon_reports_contents["Contents"][0]["Key"],
-#                 "test_cid/PlusPF.kraken_report.txt",
-#             )
-
-#             published_binned_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-binned-reads"
-#             )
-#             self.assertEqual(
-#                 published_binned_reads_contents["Contents"][0]["Key"],
-#                 "test_cid/286.fastq.gz",
-#             )
-
-#     def test_too_much_human(self):
-#         with (
-#             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
-#             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
-#         ):
-#             mock_pipeline.return_value.execute.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_pipeline.return_value.cleanup.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-#             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
-
-#             mock_client.return_value.__enter__.return_value.update.return_value = {}
-
-#             mock_client.return_value.__enter__.return_value._csv_create.return_value = (
-#                 {}
-#             )
-
-#             result_path = os.path.join(DIR, example_validator_message["uuid"])
-#             preprocess_path = os.path.join(result_path, "preprocess")
-#             classifications_path = os.path.join(result_path, "classifications")
-#             pipeline_info_path = os.path.join(result_path, "pipeline_info")
-#             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
-
-#             os.makedirs(preprocess_path, exist_ok=True)
-#             os.makedirs(classifications_path, exist_ok=True)
-#             os.makedirs(pipeline_info_path, exist_ok=True)
-#             os.makedirs(binned_reads_path, exist_ok=True)
-
-#             open(
-#                 os.path.join(
-#                     preprocess_path,
-#                     f"{example_validator_message['uuid']}.fastp.fastq.gz",
-#                 ),
-#                 "w",
-#             ).close()
-#             open(
-#                 os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-#             ).close()
-#             open(
-#                 os.path.join(
-#                     result_path, f"{example_validator_message['uuid']}_report.html"
-#                 ),
-#                 "w",
-#             ).close()
-
-#             with open(
-#                 os.path.join(
-#                     pipeline_info_path,
-#                     f"execution_trace_{example_validator_message['uuid']}.txt",
-#                 ),
-#                 "w",
-#             ) as f:
-#                 f.write(example_execution_trace_human)
-
-#             with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-#                 json.dump(example_reads_summary, f)
-
-#             args = SimpleNamespace(
-#                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
-#                 log_level="DEBUG",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             pipeline = mscape_ingest_validation.pipeline(
-#                 pipe="test",
-#                 config="test",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
-
-#             Success, alert, payload, message = mscape_ingest_validation.validate(
-#                 in_message, args, pipeline
-#             )
-
-#             self.assertFalse(Success)
-#             self.assertFalse(alert)
-
-#             self.assertIn(
-#                 "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly",
-#                 payload["ingest_errors"],
-#             )
-
-#             self.assertFalse(payload["created"])
-#             self.assertFalse(payload["ingested"])
-#             self.assertFalse(payload["onyx_create_status"])
-#             self.assertFalse(payload["cid"])
-
-#             published_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reads"
-#             )
-#             self.assertNotIn("Contents", published_reads_contents.keys())
-
-#             published_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reports"
-#             )
-#             self.assertNotIn("Contents", published_reports_contents.keys())
-
-#             published_taxon_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-taxon-reports"
-#             )
-#             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
-
-#             published_binned_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-binned-reads"
-#             )
-#             self.assertNotIn("Contents", published_binned_reads_contents.keys())
-
-#     def test_successful_test(self):
-#         with (
-#             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
-#             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
-#         ):
-#             mock_pipeline.return_value.execute.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_pipeline.return_value.cleanup.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-#             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
-
-#             mock_client.return_value.__enter__.return_value.update.return_value = {}
-
-#             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-#                 "data": {"cid": "test_cid"}
-#             }
-
-#             result_path = os.path.join(DIR, example_validator_message["uuid"])
-#             preprocess_path = os.path.join(result_path, "preprocess")
-#             classifications_path = os.path.join(result_path, "classifications")
-#             pipeline_info_path = os.path.join(result_path, "pipeline_info")
-#             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
-
-#             os.makedirs(preprocess_path, exist_ok=True)
-#             os.makedirs(classifications_path, exist_ok=True)
-#             os.makedirs(pipeline_info_path, exist_ok=True)
-#             os.makedirs(binned_reads_path, exist_ok=True)
-
-#             open(
-#                 os.path.join(
-#                     preprocess_path,
-#                     f"{example_test_validator_message['uuid']}.fastp.fastq.gz",
-#                 ),
-#                 "w",
-#             ).close()
-#             open(
-#                 os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-#             ).close()
-#             open(
-#                 os.path.join(
-#                     result_path, f"{example_test_validator_message['uuid']}_report.html"
-#                 ),
-#                 "w",
-#             ).close()
-
-#             with open(
-#                 os.path.join(
-#                     pipeline_info_path,
-#                     f"execution_trace_{example_test_validator_message['uuid']}.txt",
-#                 ),
-#                 "w",
-#             ) as f:
-#                 f.write(example_execution_trace)
-
-#             with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-#                 json.dump(example_reads_summary, f)
-
-#             args = SimpleNamespace(
-#                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
-#                 log_level="DEBUG",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             pipeline = mscape_ingest_validation.pipeline(
-#                 pipe="test",
-#                 config="test",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             in_message = SimpleNamespace(
-#                 body=json.dumps(example_test_validator_message)
-#             )
-
-#             Success, alert, payload, message = mscape_ingest_validation.validate(
-#                 in_message, args, pipeline
-#             )
-#             self.assertFalse(Success)
-#             self.assertFalse(alert)
-
-#             self.assertFalse(payload["created"])
-#             self.assertFalse(payload["ingested"])
-#             self.assertFalse(payload["onyx_create_status"])
-#             self.assertFalse(payload["cid"])
-#             self.assertTrue(payload["test_ingest_result"])
-#             self.assertFalse(payload["ingest_errors"])
-
-#             published_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reads"
-#             )
-#             self.assertNotIn("Contents", published_reads_contents.keys())
-
-#             published_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reports"
-#             )
-#             self.assertNotIn("Contents", published_reports_contents.keys())
-
-#             published_taxon_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-taxon-reports"
-#             )
-#             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
-
-#             published_binned_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-binned-reads"
-#             )
-#             self.assertNotIn("Contents", published_binned_reads_contents.keys())
-
-#     def test_onyx_fail(self):
-#         with (
-#             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
-#             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
-#         ):
-#             mock_pipeline.return_value.execute.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_pipeline.return_value.cleanup.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-#             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
-
-#             mock_client.return_value.__enter__.return_value.update.return_value = Mock(
-#                 side_effect=OnyxRequestError("Test error")
-#             )
-
-#             mock_client.return_value.__enter__.return_value._csv_create.return_value.side_effect = OnyxRequestError(
-#                 response=MockResponse(
-#                     status_code=400,
-#                     json_data={
-#                         "data": [],
-#                         "messages": {"sample_id": "Test sample_id error handling"},
-#                     },
-#                     ok=False,
-#                 )
-#             )
-
-#             mock_client.return_value.__enter__.return_value.filter.return_value.__next__.return_value = Mock(
-#                 side_effect=OnyxRequestError("Test error")
-#             )
-
-#             result_path = os.path.join(DIR, example_validator_message["uuid"])
-#             preprocess_path = os.path.join(result_path, "preprocess")
-#             classifications_path = os.path.join(result_path, "classifications")
-#             pipeline_info_path = os.path.join(result_path, "pipeline_info")
-#             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
-
-#             os.makedirs(preprocess_path, exist_ok=True)
-#             os.makedirs(classifications_path, exist_ok=True)
-#             os.makedirs(pipeline_info_path, exist_ok=True)
-#             os.makedirs(binned_reads_path, exist_ok=True)
-
-#             open(
-#                 os.path.join(
-#                     preprocess_path,
-#                     f"{example_validator_message['uuid']}.fastp.fastq.gz",
-#                 ),
-#                 "w",
-#             ).close()
-#             open(
-#                 os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
-#             ).close()
-#             open(
-#                 os.path.join(
-#                     result_path, f"{example_validator_message['uuid']}_report.html"
-#                 ),
-#                 "w",
-#             ).close()
-
-#             with open(
-#                 os.path.join(
-#                     pipeline_info_path,
-#                     f"execution_trace_{example_validator_message['uuid']}.txt",
-#                 ),
-#                 "w",
-#             ) as f:
-#                 f.write(example_execution_trace)
-
-#             with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
-#                 json.dump(example_reads_summary, f)
-
-#             args = SimpleNamespace(
-#                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
-#                 log_level="DEBUG",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             pipeline = mscape_ingest_validation.pipeline(
-#                 pipe="test",
-#                 config="test",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
-
-#             Success, payload, message = mscape_ingest_validation.validate(
-#                 in_message, args, pipeline
-#             )
-
-#             self.assertFalse(Success)
-
-#             self.assertFalse(payload["created"])
-#             self.assertFalse(payload["ingested"])
-#             self.assertFalse(payload["onyx_create_status"])
-#             self.assertFalse(payload["cid"])
-#             self.assertFalse(payload["test_ingest_result"])
-
-#             self.assertIn(
-#                 "Test sample_id error handling",
-#                 payload["onyx_errors"]["sample_id"],
-#             )
-#             self.assertFalse(payload["onyx_create_status"])
-#             self.assertEqual(payload["onyx_status_code"], 400)
-
-#             published_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reads"
-#             )
-#             self.assertNotIn("Contents", published_reads_contents.keys())
-
-#             published_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-reports"
-#             )
-#             self.assertNotIn("Contents", published_reports_contents.keys())
-
-#             published_taxon_reports_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-taxon-reports"
-#             )
-#             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
-
-#             published_binned_reads_contents = self.s3_client.list_objects(
-#                 Bucket="mscapetest-published-binned-reads"
-#             )
-#             self.assertNotIn("Contents", published_binned_reads_contents.keys())
+class Test_mscape_validator(unittest.TestCase):
+    def setUp(self):
+        self.server = ThreadedMotoServer()
+        self.server.start()
+
+        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+        os.environ["AWS_SECURITY_TOKEN"] = "testing"
+        os.environ["AWS_SESSION_TOKEN"] = "testing"
+        os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+        os.environ["ONYX_DOMAIN"] = "testing"
+        os.environ["ONYX_USERNAME"] = "testing"
+        os.environ["ONYX_PASSWORD"] = "testing"
+
+        os.environ["UNIT_TESTING"] = "True"
+
+        self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
+        self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
+        self.s3_client.create_bucket(Bucket="mscapetest-published-reads")
+        self.s3_client.create_bucket(Bucket="mscapetest-published-reports")
+        self.s3_client.create_bucket(Bucket="mscapetest-published-taxon-reports")
+        self.s3_client.create_bucket(Bucket="mscapetest-published-binned-reads")
+
+        with open(TEST_CSV_FILENAME, "w") as f:
+            f.write("sample_id,run_name,project,platform,site\n")
+            f.write("sample-test,run-test,mscapetest,ont,birm")
+
+        self.s3_client.upload_file(
+            TEST_CSV_FILENAME,
+            "mscapetest-birm-ont-prod",
+            "mscapetest.sample-test.run-test.csv",
+        )
+
+        resp = self.s3_client.head_object(
+            Bucket="mscapetest-birm-ont-prod",
+            Key="mscapetest.sample-test.run-test.csv",
+        )
+
+        self.log = utils.init_logger(
+            "mscape.ingest", MSCAPE_VALIDATION_LOG_FILENAME, "DEBUG"
+        )
+
+        csv_etag = resp["ETag"].replace('"', "")
+
+        example_validator_message["files"][".csv"]["etag"] = csv_etag
+
+        config = {
+            "version": "0.1",
+            "profiles": {
+                "roz": {
+                    "username": "guest",
+                    "password": "guest",
+                    "amqp_url": "127.0.0.1",
+                    "port": 5672,
+                }
+            },
+        }
+
+        with open(VARYS_CFG_PATH, "w") as f:
+            json.dump(config, f, ensure_ascii=False)
+
+        os.environ["VARYS_CFG"] = VARYS_CFG_PATH
+        os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
+        os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
+        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ONYX_DOMAIN"] = "domain"
+
+        os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
+
+        self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
+
+    def tearDown(self):
+        credentials = pika.PlainCredentials("guest", "guest")
+
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters("localhost", credentials=credentials)
+        )
+        channel = connection.channel()
+
+        channel.queue_delete(queue="inbound.to_validate.mscapetest")
+        channel.queue_delete(queue="inbound.new_artifact.mscape")
+        channel.queue_delete(queue="inbound.results.mscape.birm")
+
+        connection.close()
+
+        os.remove(TEST_CSV_FILENAME)
+
+        self.server.stop()
+        self.varys_client.close()
+        time.sleep(1)
+
+    def test_validator_successful(self):
+        with (
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
+
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "data": {"cid": "test_cid"}
+            }
+
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(os.path.join(binned_reads_path, "reads.286.fastq.gz"), "w").close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
+
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+
+            Success, alert, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
+            )
+
+            self.assertTrue(Success)
+            self.assertFalse(alert)
+
+            self.assertTrue(uuid.UUID(payload["uuid"], version=4))
+            self.assertEqual(
+                payload["artifact"],
+                "mscapetest.sample-test.run-test",
+            )
+            self.assertEqual(payload["project"], "mscapetest")
+            self.assertEqual(payload["site"], "birm")
+            self.assertEqual(payload["platform"], "ont")
+            self.assertEqual(payload["cid"], "test_cid")
+            self.assertEqual(payload["created"], True)
+            self.assertEqual(payload["ingested"], True)
+            self.assertEqual(payload["onyx_test_status_code"], 201)
+            self.assertEqual(payload["onyx_test_create_status"], True)
+            self.assertEqual(payload["onyx_status_code"], 201)
+            self.assertEqual(payload["onyx_create_status"], True)
+            self.assertEqual(payload["test_flag"], False)
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertEqual(
+                published_reads_contents["Contents"][0]["Key"], "test_cid.fastq.gz"
+            )
+
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertEqual(
+                published_reports_contents["Contents"][0]["Key"],
+                "test_cid_scylla_report.html",
+            )
+
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertEqual(
+                published_taxon_reports_contents["Contents"][0]["Key"],
+                "test_cid/PlusPF.kraken_report.txt",
+            )
+
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertEqual(
+                published_binned_reads_contents["Contents"][0]["Key"],
+                "test_cid/286.fastq.gz",
+            )
+
+    def test_too_much_human(self):
+        with (
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
+
+            mock_client.return_value.__enter__.return_value._csv_create.return_value = (
+                {}
+            )
+
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace_human)
+
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+
+            Success, alert, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
+            )
+
+            self.assertFalse(Success)
+            self.assertFalse(alert)
+
+            self.assertIn(
+                "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly",
+                payload["ingest_errors"],
+            )
+
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["cid"])
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
+
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertNotIn("Contents", published_reports_contents.keys())
+
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertNotIn("Contents", published_taxon_reports_contents.keys())
+
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertNotIn("Contents", published_binned_reads_contents.keys())
+
+    def test_successful_test(self):
+        with (
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
+
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "data": {"cid": "test_cid"}
+            }
+
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_test_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(
+                os.path.join(
+                    result_path, f"{example_test_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_test_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
+
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            in_message = SimpleNamespace(
+                body=json.dumps(example_test_validator_message)
+            )
+
+            Success, alert, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
+            )
+            self.assertFalse(Success)
+            self.assertFalse(alert)
+
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["cid"])
+            self.assertTrue(payload["test_ingest_result"])
+            self.assertFalse(payload["ingest_errors"])
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
+
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertNotIn("Contents", published_reports_contents.keys())
+
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertNotIn("Contents", published_taxon_reports_contents.keys())
+
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertNotIn("Contents", published_binned_reads_contents.keys())
+
+    def test_onyx_fail(self):
+        with (
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+            mock_client.return_value.__enter__.return_value.update.return_value = Mock(
+                side_effect=OnyxRequestError("Test error")
+            )
+
+            mock_client.return_value.__enter__.return_value._csv_create.return_value.side_effect = OnyxRequestError(
+                response=MockResponse(
+                    status_code=400,
+                    json_data={
+                        "data": [],
+                        "messages": {"sample_id": "Test sample_id error handling"},
+                    },
+                    ok=False,
+                )
+            )
+
+            mock_client.return_value.__enter__.return_value.filter.return_value.__next__.return_value = Mock(
+                side_effect=OnyxRequestError("Test error")
+            )
+
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
+
+            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+                json.dump(example_reads_summary, f)
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = mscape_ingest_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+
+            Success, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
+            )
+
+            self.assertFalse(Success)
+
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["test_ingest_result"])
+
+            self.assertIn(
+                "Test sample_id error handling",
+                payload["onyx_errors"]["sample_id"],
+            )
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertEqual(payload["onyx_status_code"], 400)
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reads"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
+
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-reports"
+            )
+            self.assertNotIn("Contents", published_reports_contents.keys())
+
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-taxon-reports"
+            )
+            self.assertNotIn("Contents", published_taxon_reports_contents.keys())
+
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscapetest-published-binned-reads"
+            )
+            self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
 
 # class Test_pathsafe_validator(unittest.TestCase):
