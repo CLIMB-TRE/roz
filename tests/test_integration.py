@@ -1252,40 +1252,55 @@ class Test_mscape_validator(unittest.TestCase):
 
             mock_client.return_value.__enter__.return_value.update = Mock(
                 side_effect=OnyxRequestError(
-                    MockResponse(
+                    message={
+                        "data": [],
+                        "messages": {"sample_id": "Test sample_id error handling"},
+                    },
+                    response=MockResponse(
                         status_code=400,
                         json_data={
                             "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
+                            "messages": {
+                                "sample_id": ["Test sample_id error handling"]
+                            },
                         },
-                        ok=False,
-                    )
+                    ),
                 )
             )
 
             mock_client.return_value.__enter__.return_value._csv_create = Mock(
                 side_effect=OnyxRequestError(
-                    MockResponse(
+                    message={
+                        "data": [],
+                        "messages": {"sample_id": "Test sample_id error handling"},
+                    },
+                    response=MockResponse(
                         status_code=400,
                         json_data={
                             "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
+                            "messages": {
+                                "sample_id": ["Test sample_id error handling"]
+                            },
                         },
-                        ok=False,
-                    )
+                    ),
                 )
             )
 
             mock_client.return_value.__enter__.return_value.filter.return_value.__next__ = Mock(
                 side_effect=OnyxRequestError(
-                    MockResponse(
+                    message={
+                        "data": [],
+                        "messages": {"sample_id": "Test sample_id error handling"},
+                    },
+                    response=MockResponse(
                         status_code=400,
                         json_data={
                             "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
+                            "messages": {
+                                "sample_id": ["Test sample_id error handling"]
+                            },
                         },
-                        ok=False,
-                    )
+                    ),
                 )
             )
 
