@@ -369,6 +369,8 @@ def onyx_update(
                     fields=fields,
                 )
 
+                return (False, True, payload)
+
             except OnyxConnectionError as e:
                 if reconnect_count < 3:
                     reconnect_count += 1
@@ -387,7 +389,7 @@ def onyx_update(
                     payload["onyx_errors"].setdefault("onyx_errors", [])
                     payload["onyx_errors"]["onyx_errors"].append(e)
 
-                    return (False, True, payload)
+                    return (True, True, payload)
 
             except (OnyxServerError, OnyxConfigError) as e:
                 log.error(f"Unhandled Onyx error: {e}")
@@ -395,7 +397,7 @@ def onyx_update(
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
                 payload["onyx_update_errors"]["onyx_errors"].append(e)
 
-                return (False, True, payload)
+                return (True, True, payload)
 
             except OnyxClientError as e:
                 log.error(
@@ -405,7 +407,7 @@ def onyx_update(
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
                 payload["onyx_update_errors"]["onyx_errors"].append(e)
 
-                return (False, False, payload)
+                return (True, False, payload)
 
             except OnyxRequestError as e:
                 log.error(
@@ -417,16 +419,14 @@ def onyx_update(
                     payload["onyx_update_errors"].setdefault(field, [])
                     payload["onyx_update_errors"][field].extend(messages)
 
-                return (False, False, payload)
+                return (True, False, payload)
 
             except Exception as e:
                 log.error(f"Unhandled error: {e}")
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
                 payload["onyx_update_errors"]["onyx_errors"].append(e)
 
-                return (False, True, payload)
-
-            return (True, False, payload)
+                return (True, True, payload)
 
     # This should never be reached
     payload.setdefault("onyx_update_errors", {})
@@ -434,7 +434,7 @@ def onyx_update(
     payload["onyx_update_errors"]["onyx_errors"].append(
         "End of onyx_update func reached, this should never happen!"
     )
-    return (False, True, payload)
+    return (True, True, payload)
 
 
 def get_onyx_credentials():

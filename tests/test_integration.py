@@ -453,7 +453,7 @@ example_reads_summary = [
         "human_readable": "Pseudomonas",
         "taxon": "286",
         "tax_level": "G",
-        "filenames": ["reads.286.fastq"],
+        "filenames": ["286.fastq"],
         "qc_metrics": {
             "num_reads": 20188,
             "avg_qual": 37.19427382603527,
