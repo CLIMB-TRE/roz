@@ -766,7 +766,12 @@ def validate(
         return (True, alert, payload, message)
 
     except BaseException as e:
-        raise (e, message)
+        log.error(
+            f"Unhandled exception for UUID: {payload['uuid']}, with CID: {payload['cid']}, exception: {e}"
+        )
+        alert = True
+        payload["rerun"] = True
+        return (False, alert, payload, message)
 
 
 def run(args):

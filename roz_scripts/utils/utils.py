@@ -418,7 +418,7 @@ def onyx_update(
                 payload.setdefault("onyx_update_errors", {})
                 for field, messages in e.response.json()["messages"].items():
                     payload["onyx_update_errors"].setdefault(field, [])
-                    payload["onyx_errors"][field].extend(messages)
+                    payload["onyx_update_errors"][field].extend(messages)
 
                 return (False, False, payload)
 
