@@ -176,9 +176,6 @@ def csv_create(
     onyx_config = get_onyx_credentials()
 
     with OnyxClient(config=onyx_config) as client:
-        log.info(
-            f"Received match for artifact: {payload['artifact']}, UUID: {payload['uuid']} now attempting to test_create record in Onyx"
-        )
         reconnect_count = 0
         while reconnect_count <= 3:
             try:

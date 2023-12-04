@@ -69,25 +69,26 @@ class worker_pool_handler:
 
             self._varys_client.acknowledge_message(message)
 
-            new_artifact_payload = {
-                "publish_timestamp": time.time_ns(),
-                "cid": payload["cid"],
-                "site": payload["site"],
-                "platform": payload["platform"],
-                "match_uuid": payload["uuid"],
-            }
-
-            self._varys_client.send(
-                message=new_artifact_payload,
-                exchange="inbound.new_artifact.mscape",
-                queue_suffix="validator",
-            )
-
             self._varys_client.send(
                 message=payload,
                 exchange=f"inbound.results.mscape.{payload['site']}",
                 queue_suffix="validator",
             )
+
+            if not payload["test_flag"]:
+                new_artifact_payload = {
+                    "publish_timestamp": time.time_ns(),
+                    "cid": payload["cid"],
+                    "site": payload["site"],
+                    "platform": payload["platform"],
+                    "match_uuid": payload["uuid"],
+                }
+
+                self._varys_client.send(
+                    message=new_artifact_payload,
+                    exchange="inbound.new_artifact.mscape",
+                    queue_suffix="validator",
+                )
 
         else:
             self._log.info(
@@ -689,7 +690,7 @@ def validate(
         )
         payload["test_ingest_result"] = True
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (True, alert, payload, message)
 
     submission_fail, alert, payload = csv_create(
         payload=payload,
