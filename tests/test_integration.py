@@ -954,7 +954,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(payload["platform"], "ont")
             self.assertEqual(payload["cid"], "test_cid")
             self.assertEqual(payload["created"], True)
-            self.assertEqual(payload["ingested"], True)
+            self.assertEqual(payload["published"], True)
             self.assertEqual(payload["onyx_create_status"], True)
             self.assertEqual(payload["test_flag"], False)
 
