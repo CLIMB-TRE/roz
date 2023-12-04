@@ -614,164 +614,163 @@ def validate(
     Returns:
         tuple[bool, bool, dict, namedtuple]: Tuple containing a bool indicating whether the validation was successful, a bool indicating whether to squawk in the alert channel, the updated payload dict and the Varys message object
     """
-    try:
-        s3_credentials = get_s3_credentials()
+    s3_credentials = get_s3_credentials()
 
-        s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=s3_credentials.access_key,
-            aws_secret_access_key=s3_credentials.secret_key,
-            endpoint_url=s3_credentials.endpoint,
-        )
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=s3_credentials.access_key,
+        aws_secret_access_key=s3_credentials.secret_key,
+        endpoint_url=s3_credentials.endpoint,
+    )
 
-        log = logging.getLogger("mscape.ingest")
+    log = logging.getLogger("mscape.ingest")
 
-        to_validate = json.loads(message.body)
+    to_validate = json.loads(message.body)
 
-        payload = copy.deepcopy(to_validate)
+    payload = copy.deepcopy(to_validate)
 
-        payload.setdefault("rerun", False)
+    payload.setdefault("rerun", False)
 
-        alert = False
+    alert = False
 
-        # This client is purely for Mscape, ignore all other messages
-        if to_validate["project"] != "mscapetest":
-            log.info(
-                f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
-            )
-            return (False, alert, payload, message)
-
-        if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
-            return (False, alert, payload, message)
-
-        rc, stdout, stderr = execute_validation_pipeline(
-            payload=payload, args=args, ingest_pipe=ingest_pipe
-        )
-
-        if ingest_pipe.cmd:
-            log.info(
-                f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {' '.join(str(x) for x in ingest_pipe.cmd)}"
-            )
-
-        args.result_dir = Path(args.result_dir)
-
-        result_path = Path(args.result_dir.resolve(), payload["uuid"])
-
-        if not os.path.exists(result_path):
-            os.makedirs(result_path)
-
-        with open(Path(result_path, "nextflow.stdout"), "wt") as out_fh, open(
-            Path(result_path, "nextflow.stderr"), "wt"
-        ) as err_fh:
-            out_fh.write(stdout)
-            err_fh.write(stderr)
-
-        if rc != 0:
-            log.error(
-                f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
-            )
-            payload["rerun"] = True
-            ingest_pipe.cleanup(stdout=stdout)
-            return (False, alert, payload, message)
-
-        ingest_fail, payload = ret_0_parser(
-            log=log,
-            payload=payload,
-            result_path=result_path,
-        )
-
-        if ingest_fail:
-            ingest_pipe.cleanup(stdout=stdout)
-            return (False, alert, payload, message)
-
-        if payload["test_flag"]:
-            log.info(
-                f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
-            )
-            payload["test_ingest_result"] = True
-            ingest_pipe.cleanup(stdout=stdout)
-            return (False, alert, payload, message)
-
-        submission_fail, alert, payload = csv_create(
-            payload=payload,
-            log=log,
-            test_submission=False,
-        )
-
-        if submission_fail:
-            log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
-            ingest_pipe.cleanup(stdout=stdout)
-            return (False, alert, payload, message)
-
-        payload["onyx_create_status"] = True
-        payload["created"] = True
-
+    # This client is purely for Mscape, ignore all other messages
+    if to_validate["project"] != "mscapetest":
         log.info(
-            f"Uploading files to long-term storage buckets for CID: {payload['cid']} after sucessful Onyx submission"
+            f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
         )
-
-        raw_read_fail, reads_alert, payload = add_reads_record(
-            payload=payload,
-            s3_client=s3_client,
-            result_path=result_path,
-            log=log,
-        )
-
-        binned_read_fail, taxa_alert, payload = add_taxon_records(
-            payload=payload, result_path=result_path, log=log, s3_client=s3_client
-        )
-
-        report_fail, report_alert, payload = push_report_file(
-            payload=payload, result_path=result_path, log=log, s3_client=s3_client
-        )
-
-        taxon_report_fail, taxa_reports_alert, payload = push_taxon_reports(
-            payload=payload, result_path=result_path, log=log, s3_client=s3_client
-        )
-
-        if reads_alert or taxa_alert or report_alert or taxa_reports_alert:
-            alert = True
-
-        if raw_read_fail or binned_read_fail or report_fail or taxon_report_fail:
-            log.error(
-                f"Failed to upload at least one file to long-term storage for CID: {payload['cid']}"
-            )
-            ingest_pipe.cleanup(stdout=stdout)
-            return (False, alert, payload, message)
-
-        unsuppress_fail, alert, payload = onyx_update(
-            payload=payload, log=log, fields={"suppressed": False}
-        )
-
-        if unsuppress_fail:
-            ingest_pipe.cleanup(stdout=stdout)
-            return (False, alert, payload, message)
-
-        payload["published"] = True
-        log.info(
-            f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['cid']}"
-        )
-
-        (
-            cleanup_rc,
-            cleanup_stdout,
-            cleanup_stderr,
-        ) = ingest_pipe.cleanup(stdout=stdout)
-
-        if cleanup_rc != 0:
-            log.error(
-                f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_rc}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
-            )
-
-        return (True, alert, payload, message)
-
-    except BaseException as e:
-        log.error(
-            f"Unhandled exception for UUID: {payload['uuid']}, with CID: {payload['cid']}, exception: {e}"
-        )
-        alert = True
-        payload["rerun"] = True
         return (False, alert, payload, message)
+
+    if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
+        return (False, alert, payload, message)
+
+    rc, stdout, stderr = execute_validation_pipeline(
+        payload=payload, args=args, ingest_pipe=ingest_pipe
+    )
+
+    if ingest_pipe.cmd:
+        log.info(
+            f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {' '.join(str(x) for x in ingest_pipe.cmd)}"
+        )
+
+    args.result_dir = Path(args.result_dir)
+
+    result_path = Path(args.result_dir.resolve(), payload["uuid"])
+
+    if not os.path.exists(result_path):
+        os.makedirs(result_path)
+
+    with open(Path(result_path, "nextflow.stdout"), "wt") as out_fh, open(
+        Path(result_path, "nextflow.stderr"), "wt"
+    ) as err_fh:
+        out_fh.write(stdout)
+        err_fh.write(stderr)
+
+    if rc != 0:
+        log.error(
+            f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
+        )
+        payload["rerun"] = True
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
+
+    ingest_fail, payload = ret_0_parser(
+        log=log,
+        payload=payload,
+        result_path=result_path,
+    )
+
+    if ingest_fail:
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
+
+    if payload["test_flag"]:
+        log.info(
+            f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
+        )
+        payload["test_ingest_result"] = True
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
+
+    submission_fail, alert, payload = csv_create(
+        payload=payload,
+        log=log,
+        test_submission=False,
+    )
+
+    if submission_fail:
+        log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
+
+    payload["onyx_create_status"] = True
+    payload["created"] = True
+
+    log.info(
+        f"Uploading files to long-term storage buckets for CID: {payload['cid']} after sucessful Onyx submission"
+    )
+
+    raw_read_fail, reads_alert, payload = add_reads_record(
+        payload=payload,
+        s3_client=s3_client,
+        result_path=result_path,
+        log=log,
+    )
+
+    binned_read_fail, taxa_alert, payload = add_taxon_records(
+        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+    )
+
+    report_fail, report_alert, payload = push_report_file(
+        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+    )
+
+    taxon_report_fail, taxa_reports_alert, payload = push_taxon_reports(
+        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+    )
+
+    if reads_alert or taxa_alert or report_alert or taxa_reports_alert:
+        alert = True
+
+    if raw_read_fail or binned_read_fail or report_fail or taxon_report_fail:
+        log.error(
+            f"Failed to upload at least one file to long-term storage for CID: {payload['cid']}"
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
+
+    unsuppress_fail, alert, payload = onyx_update(
+        payload=payload, log=log, fields={"suppressed": False}
+    )
+
+    if unsuppress_fail:
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
+
+    payload["published"] = True
+    log.info(
+        f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['cid']}"
+    )
+
+    (
+        cleanup_rc,
+        cleanup_stdout,
+        cleanup_stderr,
+    ) = ingest_pipe.cleanup(stdout=stdout)
+
+    if cleanup_rc != 0:
+        log.error(
+            f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_rc}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
+        )
+
+    return (True, alert, payload, message)
+
+    # except BaseException as e:
+    #     log.error(
+    #         f"Unhandled exception for UUID: {payload['uuid']}, with CID: {payload['cid']}, exception: {e}"
+    #     )
+    #     alert = True
+    #     payload["rerun"] = True
+    #     return (False, alert, payload, message)
 
 
 def run(args):
