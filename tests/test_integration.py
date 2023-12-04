@@ -1184,9 +1184,6 @@ class Test_mscape_validator(unittest.TestCase):
                 pipe="test",
                 nxf_executable="test",
                 config="test",
-                k2_host="test",
-                result_dir=DIR,
-                n_workers=2,
             )
 
             in_message = SimpleNamespace(
@@ -1352,9 +1349,6 @@ class Test_mscape_validator(unittest.TestCase):
                 pipe="test",
                 config="test",
                 nxf_executable="test",
-                k2_host="test",
-                result_dir=DIR,
-                n_workers=2,
             )
 
             in_message = SimpleNamespace(body=json.dumps(example_validator_message))
