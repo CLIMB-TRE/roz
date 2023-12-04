@@ -911,7 +911,7 @@ class Test_mscape_validator(unittest.TestCase):
             ) as f:
                 f.write(example_execution_trace)
 
-            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+            with open(os.path.join(binned_reads_path, "reads_summary_combined.json"), "w") as f:
                 json.dump(example_reads_summary, f)
 
             args = SimpleNamespace(
@@ -1046,7 +1046,7 @@ class Test_mscape_validator(unittest.TestCase):
             ) as f:
                 f.write(example_execution_trace_human)
 
-            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+            with open(os.path.join(binned_reads_path, "reads_summary_combined.json"), "w") as f:
                 json.dump(example_reads_summary, f)
 
             args = SimpleNamespace(
@@ -1332,7 +1332,7 @@ class Test_mscape_validator(unittest.TestCase):
             ) as f:
                 f.write(example_execution_trace)
 
-            with open(os.path.join(binned_reads_path, "reads_summary.json"), "w") as f:
+            with open(os.path.join(binned_reads_path, "reads_summary_combined.json"), "w") as f:
                 json.dump(example_reads_summary, f)
 
             args = SimpleNamespace(
