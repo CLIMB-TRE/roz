@@ -512,6 +512,7 @@ class Test_S3_matcher(unittest.TestCase):
 
         self.s3_matcher_process = mp.Process(target=s3_matcher.main)
         self.s3_matcher_process.start()
+        time.sleep(1)
 
     def tearDown(self):
         self.varys_client.close()
@@ -720,7 +721,7 @@ class Test_ingest(unittest.TestCase):
             self.ingest_process = mp.Process(target=ingest.main)
             self.ingest_process.start()
 
-            time.sleep(2)
+            time.sleep(1)
 
             self.varys_client.send(
                 example_match_message,
@@ -894,7 +895,7 @@ class Test_mscape_validator(unittest.TestCase):
             open(
                 os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
             ).close()
-            open(os.path.join(binned_reads_path, "reads.286.fastq.gz"), "w").close()
+            open(os.path.join(binned_reads_path, "286.fastq.gz"), "w").close()
             open(
                 os.path.join(
                     result_path, f"{example_validator_message['uuid']}_report.html"
