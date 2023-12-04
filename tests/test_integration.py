@@ -918,7 +918,7 @@ class Test_mscape_validator(unittest.TestCase):
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -928,7 +928,7 @@ class Test_mscape_validator(unittest.TestCase):
                 pipe="test",
                 config="test",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1059,7 +1059,7 @@ class Test_mscape_validator(unittest.TestCase):
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1069,7 +1069,7 @@ class Test_mscape_validator(unittest.TestCase):
                 pipe="test",
                 config="test",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1182,7 +1182,7 @@ class Test_mscape_validator(unittest.TestCase):
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1192,7 +1192,7 @@ class Test_mscape_validator(unittest.TestCase):
                 pipe="test",
                 config="test",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1253,23 +1253,43 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value.update.return_value = Mock(
-                side_effect=OnyxRequestError("Test error")
-            )
-
-            mock_client.return_value.__enter__.return_value._csv_create.return_value.side_effect = OnyxRequestError(
-                response=MockResponse(
-                    status_code=400,
-                    json_data={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
-                    ok=False,
+            mock_client.return_value.__enter__.return_value.update = Mock(
+                side_effect=OnyxRequestError(
+                    MockResponse(
+                        status_code=400,
+                        json_data={
+                            "data": [],
+                            "messages": {"sample_id": "Test sample_id error handling"},
+                        },
+                        ok=False,
+                    )
                 )
             )
 
-            mock_client.return_value.__enter__.return_value.filter.return_value.__next__.return_value = Mock(
-                side_effect=OnyxRequestError("Test error")
+            mock_client.return_value.__enter__.return_value._csv_create = Mock(
+                side_effect=OnyxRequestError(
+                    MockResponse(
+                        status_code=400,
+                        json_data={
+                            "data": [],
+                            "messages": {"sample_id": "Test sample_id error handling"},
+                        },
+                        ok=False,
+                    )
+                )
+            )
+
+            mock_client.return_value.__enter__.return_value.filter.return_value.__next__ = Mock(
+                side_effect=OnyxRequestError(
+                    MockResponse(
+                        status_code=400,
+                        json_data={
+                            "data": [],
+                            "messages": {"sample_id": "Test sample_id error handling"},
+                        },
+                        ok=False,
+                    )
+                )
             )
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
@@ -1316,7 +1336,7 @@ class Test_mscape_validator(unittest.TestCase):
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1326,7 +1346,7 @@ class Test_mscape_validator(unittest.TestCase):
                 pipe="test",
                 config="test",
                 nxf_executable="test",
-                nxf_config="test",
+                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1524,7 +1544,7 @@ class Test_mscape_validator(unittest.TestCase):
 #                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
 #                 log_level="DEBUG",
 #                 nxf_executable="test",
-#                 nxf_config="test",
+#                 config="test",
 #                 k2_host="test",
 #                 result_dir=DIR,
 #                 n_workers=2,
@@ -1534,7 +1554,7 @@ class Test_mscape_validator(unittest.TestCase):
 #                 pipe="test",
 #                 config="test",
 #                 nxf_executable="test",
-#                 nxf_config="test",
+#                 config="test",
 #                 k2_host="test",
 #                 result_dir=DIR,
 #                 n_workers=2,
@@ -1649,7 +1669,7 @@ class Test_mscape_validator(unittest.TestCase):
 #                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
 #                 log_level="DEBUG",
 #                 nxf_executable="test",
-#                 nxf_config="test",
+#                 config="test",
 #                 k2_host="test",
 #                 result_dir=DIR,
 #                 n_workers=2,
@@ -1659,7 +1679,7 @@ class Test_mscape_validator(unittest.TestCase):
 #                 pipe="test",
 #                 config="test",
 #                 nxf_executable="test",
-#                 nxf_config="test",
+#                 config="test",
 #                 k2_host="test",
 #                 result_dir=DIR,
 #                 n_workers=2,
@@ -1757,7 +1777,7 @@ class Test_mscape_validator(unittest.TestCase):
 #                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
 #                 log_level="DEBUG",
 #                 nxf_executable="test",
-#                 nxf_config="test",
+#                 config="test",
 #                 k2_host="test",
 #                 result_dir=DIR,
 #                 n_workers=2,
@@ -1767,7 +1787,7 @@ class Test_mscape_validator(unittest.TestCase):
 #                 pipe="test",
 #                 config="test",
 #                 nxf_executable="test",
-#                 nxf_config="test",
+#                 config="test",
 #                 k2_host="test",
 #                 result_dir=DIR,
 #                 n_workers=2,
