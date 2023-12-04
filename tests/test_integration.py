@@ -926,7 +926,6 @@ class Test_mscape_validator(unittest.TestCase):
 
             pipeline = mscape_ingest_validation.pipeline(
                 pipe="test",
-                config="test",
                 nxf_executable="test",
                 config="test",
                 k2_host="test",
@@ -1067,7 +1066,6 @@ class Test_mscape_validator(unittest.TestCase):
 
             pipeline = mscape_ingest_validation.pipeline(
                 pipe="test",
-                config="test",
                 nxf_executable="test",
                 config="test",
                 k2_host="test",
@@ -1190,7 +1188,6 @@ class Test_mscape_validator(unittest.TestCase):
 
             pipeline = mscape_ingest_validation.pipeline(
                 pipe="test",
-                config="test",
                 nxf_executable="test",
                 config="test",
                 k2_host="test",
@@ -1336,7 +1333,7 @@ class Test_mscape_validator(unittest.TestCase):
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                nxf_config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1346,7 +1343,6 @@ class Test_mscape_validator(unittest.TestCase):
                 pipe="test",
                 config="test",
                 nxf_executable="test",
-                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1777,7 +1773,7 @@ class Test_mscape_validator(unittest.TestCase):
 #                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
 #                 log_level="DEBUG",
 #                 nxf_executable="test",
-#                 config="test",
+#                 nxf_config="test",
 #                 k2_host="test",
 #                 result_dir=DIR,
 #                 n_workers=2,
@@ -1785,7 +1781,6 @@ class Test_mscape_validator(unittest.TestCase):
 
 #             pipeline = pathsafe_validation.pipeline(
 #                 pipe="test",
-#                 config="test",
 #                 nxf_executable="test",
 #                 config="test",
 #                 k2_host="test",
