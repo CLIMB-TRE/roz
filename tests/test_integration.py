@@ -870,7 +870,7 @@ class Test_mscape_validator(unittest.TestCase):
             mock_client.return_value.__enter__.return_value.update.return_value = {}
 
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "data": {"cid": "test_cid"}
+                "cid": "test_cid"
             }
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
@@ -1381,7 +1381,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             self.assertIn(
                 "Test sample_id error handling",
-                payload["onyx_errors"]["sample_id"],
+                payload["onyx_create_errors"]["sample_id"],
             )
             self.assertFalse(payload["onyx_create_status"])
             self.assertEqual(payload["onyx_status_code"], 400)
