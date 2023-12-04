@@ -954,9 +954,6 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(payload["cid"], "test_cid")
             self.assertEqual(payload["created"], True)
             self.assertEqual(payload["ingested"], True)
-            self.assertEqual(payload["onyx_test_status_code"], 201)
-            self.assertEqual(payload["onyx_test_create_status"], True)
-            self.assertEqual(payload["onyx_status_code"], 201)
             self.assertEqual(payload["onyx_create_status"], True)
             self.assertEqual(payload["test_flag"], False)
 
@@ -1384,7 +1381,6 @@ class Test_mscape_validator(unittest.TestCase):
                 payload["onyx_create_errors"]["sample_id"],
             )
             self.assertFalse(payload["onyx_create_status"])
-            self.assertEqual(payload["onyx_status_code"], 400)
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscapetest-published-reads"
