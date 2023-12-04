@@ -231,7 +231,7 @@ def csv_create(
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
                     payload["onyx_create_errors"]["onyx_errors"].append(str(e))
 
-                return (True, True, payload)
+                return (False, True, payload)
 
             except OnyxClientError as e:
                 log.info(
