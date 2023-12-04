@@ -851,7 +851,7 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_validator_successful(self):
         with (
-            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
@@ -924,7 +924,7 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            pipeline = mscape_ingest_validation.pipeline(
+            pipeline = utils.pipeline(
                 pipe="test",
                 nxf_executable="test",
                 config="test",
@@ -989,7 +989,7 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_too_much_human(self):
         with (
-            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
@@ -1059,7 +1059,7 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            pipeline = mscape_ingest_validation.pipeline(
+            pipeline = utils.pipeline(
                 pipe="test",
                 nxf_executable="test",
                 config="test",
@@ -1106,7 +1106,7 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_successful_test(self):
         with (
-            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
@@ -1178,7 +1178,7 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            pipeline = mscape_ingest_validation.pipeline(
+            pipeline = utils.pipeline(
                 pipe="test",
                 nxf_executable="test",
                 config="test",
@@ -1223,7 +1223,7 @@ class Test_mscape_validator(unittest.TestCase):
 
     def test_onyx_fail(self):
         with (
-            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
             mock_pipeline.return_value.execute.return_value = (
@@ -1343,7 +1343,7 @@ class Test_mscape_validator(unittest.TestCase):
                 n_workers=2,
             )
 
-            pipeline = mscape_ingest_validation.pipeline(
+            pipeline = utils.pipeline(
                 pipe="test",
                 config="test",
                 nxf_executable="test",
