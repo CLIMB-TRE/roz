@@ -1007,9 +1007,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             mock_client.return_value.__enter__.return_value.update.return_value = {}
 
-            mock_client.return_value.__enter__.return_value._csv_create.return_value = (
-                {}
-            )
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
@@ -1259,7 +1257,7 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
-            mock_client.return_value.__enter__.return_value._csv_create = Mock(
+            mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
                     message={
                         "data": [],
