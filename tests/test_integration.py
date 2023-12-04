@@ -530,7 +530,7 @@ class Test_S3_matcher(unittest.TestCase):
         channel.queue_delete(queue="inbound.matched")
 
         connection.close()
-        time.sleep(1)
+        time.sleep(2)
 
     def test_s3_successful_match(self):
         self.varys_client.send(

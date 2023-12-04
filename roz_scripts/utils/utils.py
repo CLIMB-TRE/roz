@@ -369,7 +369,7 @@ def onyx_update(
                     fields=fields,
                 )
 
-                return (False, True, payload)
+                return (False, False, payload)
 
             except OnyxConnectionError as e:
                 if reconnect_count < 3:
