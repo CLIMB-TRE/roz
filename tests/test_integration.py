@@ -1202,7 +1202,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             print(payload)
 
-            self.assertFalse(Success)
+            self.assertTrue(Success)
             self.assertFalse(alert)
 
             self.assertFalse(payload["created"])

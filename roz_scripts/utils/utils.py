@@ -168,7 +168,7 @@ def csv_create(
         test_submission (bool, optional): Bool to indicate if submission is a test or not. Defaults to False.
 
     Returns:
-        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the create failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the create was successful, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
     # Not sure how to fully generalise this, the idea is to have a csv as the only file that will always exist, so I guess this is okay?
     # CSV file must always be called '.csv' though
@@ -231,7 +231,7 @@ def csv_create(
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
                     payload["onyx_create_errors"]["onyx_errors"].append(str(e))
 
-                return (False, True, payload)
+                return (True, True, payload)
 
             except OnyxClientError as e:
                 log.info(

@@ -692,13 +692,13 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (True, alert, payload, message)
 
-    submission_fail, alert, payload = csv_create(
+    create_success, alert, payload = csv_create(
         payload=payload,
         log=log,
         test_submission=False,
     )
 
-    if submission_fail:
+    if not create_success:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
