@@ -228,7 +228,7 @@ def add_taxon_records(
 
                     try:
                         s3_bucket = "mscapetest-published-binned-reads"
-                        s3_key = f"{payload['cid']}/{taxa['taxon']}_{i}.fastq.gz"
+                        s3_key = f"{payload['cid']}/{payload['cid']}_{taxa['taxon']}_{i}.fastq.gz"
                         s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
                         s3_client.upload_file(
@@ -258,7 +258,9 @@ def add_taxon_records(
 
                 try:
                     s3_bucket = "mscapetest-published-binned-reads"
-                    s3_key = f"{payload['cid']}/{taxa['taxon']}.fastq.gz"
+                    s3_key = (
+                        f"{payload['cid']}/{payload['cid']}_{taxa['taxon']}.fastq.gz"
+                    )
                     s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
                     s3_client.upload_file(
@@ -331,7 +333,7 @@ def push_taxon_reports(
         s3_bucket = "mscapetest-published-taxon-reports"
 
         for report in reports:
-            s3_key = f"{payload['cid']}/{report}"
+            s3_key = f"{payload['cid']}/{payload['cid']}_{report}"
             # Add handling for Db in name etc
             s3_client.upload_file(
                 os.path.join(taxon_report_path, report),

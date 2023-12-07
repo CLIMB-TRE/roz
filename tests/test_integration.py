@@ -978,7 +978,7 @@ class Test_mscape_validator(unittest.TestCase):
             )
             self.assertEqual(
                 published_taxon_reports_contents["Contents"][0]["Key"],
-                "test_cid/PlusPF.kraken_report.txt",
+                "test_cid/test_cid_PlusPF.kraken_report.txt",
             )
 
             published_binned_reads_contents = self.s3_client.list_objects(
@@ -986,7 +986,7 @@ class Test_mscape_validator(unittest.TestCase):
             )
             self.assertEqual(
                 published_binned_reads_contents["Contents"][0]["Key"],
-                "test_cid/286.fastq.gz",
+                "test_cid/test_cid_286.fastq.gz",
             )
 
     def test_too_much_human(self):
