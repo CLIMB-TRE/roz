@@ -172,6 +172,18 @@ fake_aws_cred_dict = {
             "username": "bryn-site2",
         },
     },
+    "project3": {
+        "site1": {
+            "aws_access_key_id": "",
+            "aws_secret_access_key": "",
+            "username": "bryn-site1",
+        },
+        "site2": {
+            "aws_access_key_id": "",
+            "aws_secret_access_key": "",
+            "username": "bryn-site2",
+        },
+    },
     "admin": {
         "aws_access_key_id": "",
         "aws_secret_access_key": "",
@@ -188,6 +200,7 @@ class TestS3Controller(unittest.TestCase):
         os.environ["AWS_SESSION_TOKEN"] = "testing"
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
         os.environ["MOTO_S3_CUSTOM_ENDPOINTS"] = "https://s3.climb.ac.uk"
+
         os.environ["FAKE_VARYS_CFG_PATH"] = FAKE_VARYS_CFG_PATH
         os.environ["FAKE_ROZ_CFG_PATH"] = FAKE_ROZ_CFG_PATH
 
@@ -203,12 +216,30 @@ class TestS3Controller(unittest.TestCase):
         self.mock_s3 = moto.mock_s3()
         self.mock_s3.start()
 
+        self.mock_iam = moto.mock_iam()
+        self.mock_iam.start()
+
         self.s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk")
+        self.iam_client = boto3.client("iam")
+
+        self.iam_client.create_user(UserName="bryn-site1")
+
+        resp = self.iam_client.create_access_key(UserName="bryn-site1")
+
+        fake_aws_cred_dict["project1"]["site1"]["aws_access_key_id"] = resp[
+            "AccessKey"
+        ]["AccessKeyId"]
+
+        fake_aws_cred_dict["project1"]["site1"]["aws_secret_access_key"] = resp[
+            "AccessKey"
+        ]["SecretAccessKey"]
 
     def TearDown(self):
         self.mock_s3.stop()
+        self.mock_iam.stop()
 
         self.s3_client.close()
+        self.iam_client.close()
 
     def test_s3_bucket_exists(self):
         self.s3_client.create_bucket(Bucket="fake_bucket")
@@ -276,20 +307,6 @@ class TestS3Controller(unittest.TestCase):
 
         self.assertFalse(
             s3_controller.can_site_put_object(
-                "fake_bucket", fake_aws_cred_dict, "project1", "site1"
-            )
-        )
-
-    @set_initial_no_auth_action_count(2)
-    def test_can_site_create_bucket(self):
-        self.assertTrue(
-            s3_controller.can_site_create_bucket(
-                "fake_bucket", fake_aws_cred_dict, "project1", "site2"
-            )
-        )
-
-        self.assertFalse(
-            s3_controller.can_site_create_bucket(
                 "fake_bucket", fake_aws_cred_dict, "project1", "site1"
             )
         )
@@ -366,17 +383,25 @@ class TestS3Controller(unittest.TestCase):
                         audit[project]["site_buckets"][site][(bucket, bucket_arn)]
                     )
 
-    def test_test_policies(self):
+    def test_test_policies_fail(self):
         config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
 
         s3_controller.check_bucket_exist_and_create(fake_aws_cred_dict, config_map)
 
         audit = s3_controller.audit_all_buckets(fake_aws_cred_dict, config_map)
 
-        policy_results = s3_controller.test_policies(
-            audit, config_map, fake_roz_cfg_dict
-        )
+        policy_results = s3_controller.test_policies(audit, fake_roz_cfg_dict)
 
-        print(policy_results)
+        for project, project_config in config_map.items():
+            for bucket, bucket_arn in project_config["project_buckets"]:
+                self.assertIn(
+                    (bucket, bucket_arn, project),
+                    policy_results["project_buckets"],
+                )
 
-        self.assertTrue()
+            for site, site_config in project_config["sites"].items():
+                for bucket, bucket_arn in site_config["site_buckets"]:
+                    self.assertIn(
+                        (bucket, bucket_arn, project, site),
+                        policy_results["site_buckets"],
+                    )
