@@ -100,7 +100,7 @@ def create_config_map(config_dict: dict) -> dict:
         project_config.setdefault("project_buckets", [])
 
         for bucket, bucket_config in config["project_buckets"].items():
-            desired_labels = re.findall("{(\w*)}", bucket_config["name_layout"])
+            desired_labels = re.findall(r"{(\w*)}", bucket_config["name_layout"])
 
             try:
                 namespace = {}
