@@ -103,22 +103,23 @@ def create_config_map(config_dict: dict) -> dict:
             desired_labels = re.findall(r"{(\w*)}", bucket_config["name_layout"])
 
             for platform in config["file_specs"].keys():
-                try:
-                    namespace = {}
+                for test_flag in ["prod", "test"]:
+                    try:
+                        namespace = {}
 
-                    # Can't do a dict comp here
-                    for label in desired_labels:
-                        namespace[label] = locals()[label]
+                        # Can't do a dict comp here
+                        for label in desired_labels:
+                            namespace[label] = locals()[label]
 
-                    bucket_name = bucket_config["name_layout"].format(**namespace)
+                        bucket_name = bucket_config["name_layout"].format(**namespace)
 
-                    project_config["project_buckets"].add((bucket, bucket_name))
+                        project_config["project_buckets"].add((bucket, bucket_name))
 
-                except KeyError as e:
-                    e.add_note(
-                        f"Bucket layout {bucket_config['name_layout']} is invalid"
-                    )
-                    raise e
+                    except KeyError as e:
+                        e.add_note(
+                            f"Bucket layout {bucket_config['name_layout']} is invalid"
+                        )
+                        raise e
 
         for site in config["sites"]:
             for bucket, bucket_config in config["site_buckets"].items():
