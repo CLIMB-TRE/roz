@@ -94,32 +94,35 @@ def create_config_map(config_dict: dict) -> dict:
         # Put this in the config file eventually so it can vary on a per-project basis
 
         project_config = {
-            "sites": {site: {"site_buckets": []} for site in config["sites"]}
+            "sites": {site: {"site_buckets": set()} for site in config["sites"]}
         }
 
-        project_config.setdefault("project_buckets", [])
+        project_config.setdefault("project_buckets", set())
 
         for bucket, bucket_config in config["project_buckets"].items():
             desired_labels = re.findall(r"{(\w*)}", bucket_config["name_layout"])
 
-            try:
-                namespace = {}
+            for platform in config["file_specs"].keys():
+                try:
+                    namespace = {}
 
-                # Can't do a dict comp here
-                for label in desired_labels:
-                    namespace[label] = locals()[label]
+                    # Can't do a dict comp here
+                    for label in desired_labels:
+                        namespace[label] = locals()[label]
 
-                bucket_name = bucket_config["name_layout"].format(**namespace)
+                    bucket_name = bucket_config["name_layout"].format(**namespace)
 
-                project_config["project_buckets"].append((bucket, bucket_name))
+                    project_config["project_buckets"].add((bucket, bucket_name))
 
-            except KeyError as e:
-                e.add_note(f"Bucket layout {bucket_config['name_layout']} is invalid")
-                raise e
+                except KeyError as e:
+                    e.add_note(
+                        f"Bucket layout {bucket_config['name_layout']} is invalid"
+                    )
+                    raise e
 
         for site in config["sites"]:
             for bucket, bucket_config in config["site_buckets"].items():
-                desired_labels = re.findall("{(\w*)}", bucket_config["name_layout"])
+                desired_labels = re.findall(r"{(\w*)}", bucket_config["name_layout"])
 
                 for platform in config["file_specs"].keys():
                     for test_flag in ["prod", "test"]:
@@ -134,7 +137,7 @@ def create_config_map(config_dict: dict) -> dict:
                                 **namespace
                             )
 
-                            project_config["sites"][site]["site_buckets"].append(
+                            project_config["sites"][site]["site_buckets"].add(
                                 (bucket, bucket_name)
                             )
 
@@ -1011,7 +1014,7 @@ def setup_messaging(
     bucket_name: str,
     topic_arn: str,
     amqp_topic: str,
-):
+) -> bool:
     """Setup AMQP(S) messaging for a bucket
 
     Args:
@@ -1020,7 +1023,10 @@ def setup_messaging(
         topic_arn (str): ARN of previously setup topic to attach to bucket
         amqp_topic (str): Name of topic to create
 
+    Returns:
+        bool: True if messaging was setup successfully, False otherwise
     """
+
     s3_client = boto3.client(
         "s3",
         endpoint_url="https://s3.climb.ac.uk",
@@ -1042,6 +1048,88 @@ def setup_messaging(
         Bucket=bucket_name,
         NotificationConfiguration={"TopicConfigurations": topic_conf_list},
     )
+    if resp["ResponseMetadata"]["HTTPStatusCode"] == 200:
+        return True
+    else:
+        return False
+
+
+def test_bucket_messaging(
+    aws_credentials_dict: dict, bucket_name: str, correct_topic: str
+) -> bool:
+    """Test if a bucket has the correct messaging setup
+
+    Args:
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
+        bucket_name (str): Name of bucket to test
+        correct_topic (str): Name of topic that should be attached to bucket
+
+    Returns:
+        bool: True if the bucket has the correct messaging setup, False otherwise
+    """
+
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url="https://s3.climb.ac.uk",
+        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
+        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
+    )
+
+    resp = s3_client.get_bucket_notification_configuration(Bucket=bucket_name)
+
+    if resp["ResponseMetadata"]["HTTPStatusCode"] != 200:
+        return False
+
+    if "TopicConfigurations" not in resp:
+        return False
+
+    if len(resp["TopicConfigurations"]) != 1:
+        return False
+
+    if resp["TopicConfigurations"][0]["Id"] != correct_topic:
+        return False
+
+    return True
+
+
+def audit_bucket_messaging(
+    aws_credentials_dict: dict, config_map: dict, config_dict: dict
+) -> list:
+    """Audit the messaging setup on all buckets
+
+    Args:
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
+        config_map (dict): The config map as a dictionary
+        config_dict (dict): The config file as a dictionary
+
+    Returns:
+        list: A list of buckets that need to be fixed, of the form [(bucket, bucket_arn)]
+    """
+    to_fix = []
+
+    for project, project_config in config_map.items():
+        for bucket, bucket_arn in project_config["project_buckets"]:
+            if bucket in config_dict[project]["notification_bucket_configs"].keys():
+                if not test_bucket_messaging(
+                    aws_credentials_dict=aws_credentials_dict,
+                    bucket_name=bucket_arn,
+                    correct_topic=config_dict[project]["notification_bucket_configs"][
+                        bucket
+                    ],
+                ):
+                    to_fix.append((bucket, bucket_arn))
+
+        for site, site_config in project_config["sites"].items():
+            for bucket, bucket_arn in site_config["site_buckets"]:
+                if bucket in config_dict[project]["notification_bucket_configs"].keys():
+                    if not test_bucket_messaging(
+                        aws_credentials_dict=aws_credentials_dict,
+                        bucket_name=bucket_arn,
+                        correct_topic=config_dict[project][
+                            "notification_bucket_configs"
+                        ][bucket],
+                    ):
+                        to_fix.append((bucket, bucket_arn))
 
 
 def run(args):
@@ -1071,47 +1159,94 @@ def run(args):
             f"Would apply policies to {len(to_fix['in_buckets'])} in buckets and {len(to_fix['out_buckets'])} out buckets",
             file=sys.stdout,
         )
-    else:
-        apply_policies(
-            to_fix=to_fix,
+        sys.exit(0)
+
+    apply_policies(
+        to_fix=to_fix,
+        aws_credentials_dict=aws_credentials_dict,
+        config_map=config_map,
+    )
+    print(
+        f"Applied policies to {len(to_fix['in_buckets'])} in buckets and {len(to_fix['out_buckets'])} out buckets",
+        file=sys.stdout,
+    )
+
+    for project, project_config in config_dict["configs"].items():
+        to_setup_messaging = audit_bucket_messaging(
             aws_credentials_dict=aws_credentials_dict,
             config_map=config_map,
-        )
-        print(
-            f"Applied policies to {len(to_fix['in_buckets'])} in buckets and {len(to_fix['out_buckets'])} out buckets",
-            file=sys.stdout,
+            config_dict=config_dict,
         )
 
-        retest_audit_dict = audit_all_buckets(
-            aws_credentials_dict=aws_credentials_dict, config_map=config_map
+        for bucket, bucket_arn in to_setup_messaging:
+            amqp_host = os.getenv("AMQP_HOST")
+            amqp_user = os.getenv("AMQP_USER")
+            amqp_pass = os.getenv("AMQP_PASS")
+            topic_arn = setup_sns_topic(
+                aws_credentials_dict=aws_credentials_dict,
+                topic_name=bucket,
+                amqp_host=amqp_host,
+                amqp_user=amqp_user,
+                amqp_pass=amqp_pass,
+                amqp_exchange=project_config["notification_bucket_configs"][bucket][
+                    "rmq_exchange"
+                ],
+                amqps=True,
+            )
+
+            success = setup_messaging(
+                aws_credentials_dict=aws_credentials_dict,
+                bucket_name=bucket_arn,
+                topic_arn=topic_arn,
+                amqp_topic=bucket,
+            )
+            if success:
+                print(f"Setup messaging for bucket {bucket}", file=sys.stdout)
+            else:
+                print(f"Failed to setup messaging for bucket {bucket}", file=sys.stdout)
+
+        retest_messaging = audit_bucket_messaging(
+            aws_credentials_dict=aws_credentials_dict,
+            config_map=config_map,
+            config_dict=config_dict,
         )
 
-        retest_to_fix = test_policies(
-            audit_dict=retest_audit_dict, config_map=config_map
-        )
-
-        if (
-            len(retest_to_fix["in_buckets"]) == 0
-            and len(retest_to_fix["out_buckets"]) == 0
-        ):
-            print("All policies applied successfully", file=sys.stdout)
-        else:
-            print("Policies not applied successfully", file=sys.stdout)
+        if retest_messaging:
             print(
-                "Buckets which still appear to have incorrect policies:",
+                f"Failed to setup messaging for {len(retest_messaging)} buckets in project: {project}",
                 file=sys.stdout,
             )
-            for bucket, project, site in retest_to_fix["in_buckets"]:
-                print(f"{bucket} in {project} at {site}", file=sys.stdout)
-            for bucket, project in retest_to_fix["out_buckets"]:
-                print(f"{bucket} in {project}", file=sys.stdout)
 
-            varys_client = varys(
-                profile="roz",
-                logfile=os.devnull,
-                log_level="CRITICAL",
-                auto_acknowledge=False,
-            )
+    retest_audit_dict = audit_all_buckets(
+        aws_credentials_dict=aws_credentials_dict, config_map=config_map
+    )
+
+    retest_to_fix = test_policies(audit_dict=retest_audit_dict, config_map=config_map)
+
+    if retest_to_fix["project_buckets"]:
+        print(
+            f"Failed to apply policies to {len(retest_to_fix['project_buckets'])} project buckets",
+            file=sys.stdout,
+        )
+        for site, buckets in retest_to_fix["site_buckets"]:
+            if buckets:
+                print(
+                    f"Failed to apply policies to {len(buckets)} site buckets for site {site}",
+                    file=sys.stdout,
+                )
+
+        varys_client = varys(
+            profile="roz",
+            logfile=os.devnull,
+            log_level="CRITICAL",
+            auto_acknowledge=False,
+        )
+
+        varys_client.send(
+            message="Bucket controlled failed in some manner :(",
+            exchange="mscape.restricted.announce",
+            queue_suffix="slack_integration",
+        )
 
 
 def main():

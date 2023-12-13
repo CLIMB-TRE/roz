@@ -335,9 +335,13 @@ def main():
 
     # Get all site buckets (might need changing to check the bucket name label later)
     for project, project_config in config_map.items():
+        for bucket, bucket_arn in project_config["project_buckets"]:
+            if bucket == "ingest":
+                buckets.extend(bucket_arn)
         for site, site_config in project_config["sites"].items():
             for bucket, bucket_arn in site_config["site_buckets"]:
-                buckets.extend(bucket_arn)
+                if bucket == "ingest":
+                    buckets.extend(bucket_arn)
 
     objects = get_existing_objects(s3_client=s3_client, to_check=buckets)
 

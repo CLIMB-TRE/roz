@@ -1,4 +1,4 @@
-FROM python:3.7-alpine
+FROM python:3.12-alpine
 
 RUN apk add --no-cache wget \
     git \
@@ -16,12 +16,12 @@ RUN mkdir /.nextflow \
 
 RUN chown -R jovyan:jovyan /.nextflow
 
-RUN pip3 install .
-
 ADD "https://api.github.com/repos/CLIMB-TRE/varys/commits?per_page=1" latest_varys_commit
 RUN pip3 install git+https://github.com/CLIMB-TRE/varys.git
 
 RUN pip3 install climb-onyx-client
+
+RUN pip3 install .
 
 ENV PATH=/opt/bin:$PATH
 
