@@ -23,6 +23,12 @@
                     "list",
                     "delete"
                 ],
+                "project_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
                 "site_read": [
                     "get",
                     "list"
@@ -38,6 +44,13 @@
                     "name_layout": "{project}-{site}-{platform}-{test_flag}",
                     "policy": "site_ingest",
                     "owner": "{site}"
+                }
+            },
+            "notification_bucket_configs": {
+                "ingest": {
+                    "rmq_exchange": "inbound.s3",
+                    "rmq_queue_env": "s3_matcher",
+                    "amqps": false
                 }
             },
             "project_buckets": {
@@ -59,6 +72,11 @@
                 "published_scylla_reports": {
                     "name_layout": "{project}-published-reports",
                     "policy": "project_read",
+                    "owner": "admin"
+                },
+                "ingest": {
+                    "name_layout": "{project}-public-{platform}-{test_flag}",
+                    "policy": "project_ingest",
                     "owner": "admin"
                 }
             },
