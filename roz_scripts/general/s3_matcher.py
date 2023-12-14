@@ -352,11 +352,11 @@ def main():
     for project, project_config in config_map.items():
         for bucket, bucket_arn in project_config["project_buckets"]:
             if bucket == "ingest":
-                buckets.extend(bucket_arn)
+                buckets.append(bucket_arn)
         for site, site_config in project_config["sites"].items():
             for bucket, bucket_arn in site_config["site_buckets"]:
                 if bucket == "ingest":
-                    buckets.extend(bucket_arn)
+                    buckets.append(bucket_arn)
 
     objects = get_existing_objects(s3_client=s3_client, to_check=buckets)
 
