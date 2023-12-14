@@ -227,17 +227,18 @@ def parse_new_object_message(
     )
 
     if not extension:
-        return (False, existing_object_dict, False)
+        index_tuple = (False, project, site, platform, test_flag)
+        return (False, existing_object_dict, index_tuple)
 
     artifact = generate_artifact(
         parsed_object_key=parsed_object_key,
         artifact_layout=config_dict["configs"][project]["artifact_layout"],
     )
 
-    if not artifact:
-        return (False, existing_object_dict, False)
-
     index_tuple = (artifact, project, site, platform, test_flag)
+
+    if not artifact:
+        return (False, existing_object_dict, index_tuple)
 
     existing_object_dict.setdefault(index_tuple, {"files": {}, "objects": {}})
 
@@ -376,7 +377,9 @@ def main():
             config_dict=config_dict,
         )
 
-        if not index_tuple:
+        artifact, project, site, platform, test_flag = index_tuple
+
+        if not artifact:
             failure_message = f"Problem parsing object with key: {message_dict['Records'][0]['s3']['object']['key']}, probable cause - key does not match file spec for this bucket or is malformed"
             log.info(failure_message)
             varys_client.send(
@@ -385,8 +388,6 @@ def main():
                 queue_suffix="s3_matcher",
             )
             continue
-
-        artifact, project, site, platform, test_flag = index_tuple
 
         if not artifact_complete:
             continue

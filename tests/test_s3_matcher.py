@@ -855,4 +855,9 @@ class test_s3_matcher(unittest.TestCase):
         )
 
         self.assertFalse(artifact_complete)
-        self.assertFalse(index_tuple)
+        self.assertTrue(index_tuple)
+
+        artifact, project, site, platform, test_flag = index_tuple
+
+        self.assertFalse(artifact)
+        self.assertTrue(all((project, site, platform, test_flag)))
