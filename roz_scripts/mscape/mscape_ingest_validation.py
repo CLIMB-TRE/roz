@@ -788,7 +788,8 @@ def run(args):
     )
 
     ingest_pipe = pipeline(
-        pipe="snowy-leopard/scylla",
+        pipe=args.ingest_pipeline,
+        branch=args.pipeline_branch,
         profile="docker",
         config=args.nxf_config,
         nxf_executable=args.nxf_executable,
@@ -816,6 +817,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--logfile", type=Path)
     parser.add_argument("--log_level", type=str, default="DEBUG")
+    parser.add_argument("--ingest_pipeline", type=str, default="snowy-leopard/scylla")
+    parser.add_argument("--pipeline_branch", type=str, default="main")
     parser.add_argument("--nxf_config")
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--k2_host", type=str)

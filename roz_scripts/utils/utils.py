@@ -34,6 +34,7 @@ class pipeline:
     def __init__(
         self,
         pipe: str,
+        branch: str,
         config: Path,
         nxf_executable: Path,
         profile=None,
@@ -52,6 +53,7 @@ class pipeline:
         """
 
         self.pipe = pipe
+        self.branch = branch
         self.config = Path(config) if config else None
         self.nxf_executable = nxf_executable
         self.timeout = timeout
@@ -80,7 +82,7 @@ class pipeline:
                 ]
             )
 
-        cmd.extend(["run", "-r", "main", "-latest", self.pipe])
+        cmd.extend(["run", "-r", self.branch, "-latest", self.pipe])
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])
