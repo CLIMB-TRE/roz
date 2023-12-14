@@ -9,8 +9,12 @@ from roz_scripts.utils.utils import init_logger, csv_create, csv_field_checks
 
 def main():
     for i in (
-        "ONYX_ROZ_PASSWORD",
+        "ONYX_DOMAIN",
+        "ONYX_USERNAME",
+        "ONYX_PASSWORD",
         "ROZ_INGEST_LOG",
+        "INGEST_LOG_LEVEL",
+        "VARYS_CFG",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
@@ -25,6 +29,7 @@ def main():
         profile="roz",
         logfile=os.getenv("ROZ_INGEST_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),
+        auto_acknowledge=False,
     )
 
     while True:
@@ -35,21 +40,37 @@ def main():
         payload = json.loads(message.body)
         payload["validate"] = False
 
+        log.info(
+            f"Attempting to test create metadata record in onyx for match with UUID: {payload['uuid']}"
+        )
         test_create_status, alert, payload = csv_create(
             payload=payload, log=log, test_submission=True
         )
 
         if alert:
+            log.error(
+                "Something went wrong with the test create, more details available in the alert channel"
+            )
             varys_client.send(
                 message=payload,
                 exchange=f"restricted.{payload['project']}.alert",
                 queue_suffix="ingest",
             )
+            varys_client.nack_message(message)
             continue
 
-        if test_create_status:
-            payload["onyx_test_create_status"] = True
-            payload["validate"] = True
+        if not test_create_status:
+            log.info(f"Test create failed for UUID: {payload['uuid']}")
+            varys_client.acknowledge_message(message)
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
+                queue_suffix="s3_matcher",
+            )
+            continue
+
+        payload["onyx_test_create_status"] = True
+        payload["validate"] = True
 
         field_check_status, alert, payload = csv_field_checks(payload=payload)
 
@@ -59,10 +80,21 @@ def main():
                 exchange=f"restricted.{payload['project']}.alert",
                 queue_suffix="ingest",
             )
+            varys_client.nack_message(message)
             continue
 
         if not field_check_status:
             payload["validate"] = False
+            log.info(f"Field checks failed for UUID: {payload['uuid']}")
+            varys_client.acknowledge_message(message)
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
+                queue_suffix="s3_matcher",
+            )
+            continue
+
+        varys_client.acknowledge_message(message)
 
         varys_client.send(
             message=payload,
