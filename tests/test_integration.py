@@ -512,7 +512,7 @@ class Test_S3_matcher(unittest.TestCase):
 
         self.s3_matcher_process = mp.Process(target=s3_matcher.main)
         self.s3_matcher_process.start()
-        time.sleep(2)
+        time.sleep(5)
 
     def tearDown(self):
         self.varys_client.close()
