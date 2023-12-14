@@ -15,6 +15,8 @@ def main():
         "ROZ_INGEST_LOG",
         "INGEST_LOG_LEVEL",
         "VARYS_CFG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)

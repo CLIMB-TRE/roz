@@ -12,6 +12,7 @@ import logging
 import argparse
 import multiprocessing as mp
 from collections import namedtuple
+import sys
 
 from roz_scripts.utils.utils import (
     pipeline,
@@ -824,6 +825,20 @@ def main():
         "--pipeline_timeout", type=int, default=10800
     )  # 3 hours, might not even be enough for larger datasets (e.g. promethion / HiSeq)
     args = parser.parse_args()
+
+    for i in (
+        "ONYX_DOMAIN",
+        "ONYX_USERNAME",
+        "ONYX_PASSWORD",
+        "ROZ_INGEST_LOG",
+        "INGEST_LOG_LEVEL",
+        "VARYS_CFG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+    ):
+        if not os.getenv(i):
+            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            sys.exit(3)
 
     run(args)
 

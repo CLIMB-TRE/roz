@@ -9,6 +9,7 @@ import uuid
 import time
 import json
 import os
+import sys
 
 
 def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:
@@ -226,7 +227,7 @@ def parse_new_object_message(
     )
 
     if not extension:
-        return (False, False)
+        return (False, False, False)
 
     artifact = generate_artifact(
         parsed_object_key=parsed_object_key,
@@ -307,6 +308,18 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
 
 
 def main():
+    for i in (
+        "S3_MATCHER_LOG",
+        "INGEST_LOG_LEVEL",
+        "VARYS_CFG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "ROZ_CONFIG_JSON",
+    ):
+        if not os.getenv(i):
+            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            sys.exit(3)
+
     log = init_logger(
         "roz_client", os.getenv("S3_MATCHER_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
@@ -363,8 +376,6 @@ def main():
             config_dict=config_dict,
         )
 
-        artifact, project, site, platform, test_flag = index_tuple
-
         if not any((artifact_complete, existing_object_dict, index_tuple)):
             failure_message = f"Problem parsing object with key: {message_dict['Records'][0]['s3']['object']['key']}, probable cause - key does not match file spec for this bucket or is malformed"
             log.info(failure_message)
@@ -374,6 +385,8 @@ def main():
                 queue_suffix="s3_matcher",
             )
             continue
+
+        artifact, project, site, platform, test_flag = index_tuple
 
         if not artifact_complete:
             continue
