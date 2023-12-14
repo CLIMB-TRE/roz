@@ -512,7 +512,8 @@ class Test_S3_matcher(unittest.TestCase):
 
         self.s3_matcher_process = mp.Process(target=s3_matcher.main)
         self.s3_matcher_process.start()
-        time.sleep(5)
+        # Annoying but required so that the matcher can make the huge number of S3 calls it needs to make when it starts
+        time.sleep(3)
 
     def tearDown(self):
         self.varys_client.close()
@@ -530,7 +531,7 @@ class Test_S3_matcher(unittest.TestCase):
         channel.queue_delete(queue="inbound.matched")
 
         connection.close()
-        time.sleep(2)
+        time.sleep(1)
 
     def test_s3_successful_match(self):
         self.varys_client.send(

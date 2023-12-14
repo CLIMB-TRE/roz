@@ -376,7 +376,7 @@ def main():
             config_dict=config_dict,
         )
 
-        if not all((artifact_complete, existing_object_dict, index_tuple)):
+        if not index_tuple:
             failure_message = f"Problem parsing object with key: {message_dict['Records'][0]['s3']['object']['key']}, probable cause - key does not match file spec for this bucket or is malformed"
             log.info(failure_message)
             varys_client.send(
