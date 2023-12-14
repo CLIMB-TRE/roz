@@ -72,7 +72,7 @@ class worker_pool_handler:
 
             self._varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{payload['site']}",
+                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
                 queue_suffix="validator",
             )
 
@@ -101,6 +101,7 @@ class worker_pool_handler:
                     self._log.error(
                         f"Message for UUID: {payload['uuid']} failed after {self._retry_log[payload['uuid']]} attempts, sending to dead letter queue"
                     )
+                    payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Validation failed for UUID: {payload['uuid']} unrecoverably"
                     )
@@ -113,7 +114,7 @@ class worker_pool_handler:
 
                     self._varys_client.send(
                         message=payload,
-                        exchange=f"inbound.results.mscape.{payload['site']}",
+                        exchange=f"inbound.results.{payload['project']}.{payload['site']}",
                         queue_suffix="validator",
                     )
 
@@ -129,7 +130,7 @@ class worker_pool_handler:
 
                 self._varys_client.send(
                     message=payload,
-                    exchange=f"inbound.results.mscape.{payload['site']}",
+                    exchange=f"inbound.results.{payload['project']}.{payload['site']}",
                     queue_suffix="validator",
                 )
 
@@ -286,6 +287,7 @@ def add_taxon_records(
 
             else:
                 log.error(f"Unknown platform: {payload['platform']}")
+                payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
                     f"Unknown platform: {payload['platform']}"
                 )
@@ -585,6 +587,7 @@ def ret_0_parser(
                 process.startswith("extract_paired_reads")
                 or process.startswith("extract_reads")
             ) and trace["exit"] == "2":
+                payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
                     "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
                 )
@@ -595,6 +598,7 @@ def ret_0_parser(
             ) and trace["exit"] == "3":
                 continue
             else:
+                payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
                     f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
                 )
@@ -825,8 +829,8 @@ def main():
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)
     parser.add_argument(
-        "--pipeline_timeout", type=int, default=10800
-    )  # 3 hours, might not even be enough for larger datasets (e.g. promethion / HiSeq)
+        "--pipeline_timeout", type=int, default=43200
+    )  # 12 hours, might not even be enough for larger datasets (e.g. promethion / HiSeq)
     args = parser.parse_args()
 
     for i in (
