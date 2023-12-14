@@ -6,7 +6,7 @@
     ],
     "configs": {
         "mscape": {
-            "artifact_layout": "project.sample_name.run_name",
+            "artifact_layout": "project.sample_id.run_name",
             "files": [
                 ".1.fastq.gz",
                 ".2.fastq.gz",
@@ -105,7 +105,7 @@
             }
         },
         "mscapetest": {
-            "artifact_layout": "project.sample_name.run_name",
+            "artifact_layout": "project.sample_id.run_name",
             "files": [
                 ".1.fastq.gz",
                 ".2.fastq.gz",
