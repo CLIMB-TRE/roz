@@ -746,6 +746,51 @@ class test_s3_matcher(unittest.TestCase):
             ]
         }
 
+        message_3 = {
+            "Records": [
+                {
+                    "eventVersion": "2.2",
+                    "eventSource": "ceph:s3",
+                    "awsRegion": "",
+                    "eventTime": "2023-10-10T06:39:35.470367Z",
+                    "eventName": "ObjectCreated:Put",
+                    "userIdentity": {"principalId": "bryn-site1"},
+                    "requestParameters": {"sourceIPAddress": ""},
+                    "responseElements": {
+                        "x-amz-request-id": "testdata",
+                        "x-amz-id-2": "testdata",
+                    },
+                    "s3": {
+                        "s3SchemaVersion": "1.0",
+                        "configurationId": "inbound.s3",
+                        "bucket": {
+                            "name": "project1-site1-illumina-prod",
+                            "ownerIdentity": {"principalId": "admin"},
+                            "arn": "arn:aws:s3:::project1-site1-illumina-prod",
+                            "id": "testdata",
+                        },
+                        "object": {
+                            "key": "project1.sample1.run2.nonsense",
+                            "size": 123123123,
+                            "eTag": "179d94f8cd22896c2a80a9a7c98463d2-21",
+                            "versionId": "",
+                            "sequencer": "testdata",
+                            "metadata": [
+                                {
+                                    "key": "x-amz-content-sha256",
+                                    "val": "UNSIGNED-PAYLOAD",
+                                },
+                                {"key": "x-amz-date", "val": "testdata"},
+                            ],
+                            "tags": [],
+                        },
+                    },
+                    "eventId": "testdata",
+                    "opaqueData": "",
+                }
+            ]
+        }
+
         (
             artifact_complete,
             existing_object_dict,
@@ -798,3 +843,16 @@ class test_s3_matcher(unittest.TestCase):
         self.assertEqual(
             existing_object_dict[index_tuple_2]["files"], expected_existing_obj_entry
         )
+
+        (
+            artifact_complete,
+            existing_object_dict,
+            index_tuple,
+        ) = s3_matcher.parse_new_object_message(
+            existing_object_dict=existing_object_dict,
+            new_object_message=message_3,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        self.assertFalse(artifact_complete)
+        self.assertFalse(index_tuple)
