@@ -158,9 +158,9 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
                 extension
             ] = {
                 "uri": gen_s3_uri(bucket_name, obj["Key"]),
-                "etag": obj["ETag"],
+                "etag": obj["ETag"].replace('"', ""),
                 "key": obj["Key"],
-                "submitter": obj["Owner"]["DisplayName"],
+                "submitter": obj["Owner"]["ID"],
                 "parsed_fname": parsed_object_key,
             }
 
