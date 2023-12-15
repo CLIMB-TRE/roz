@@ -584,8 +584,8 @@ def ret_0_parser(
     for process, trace in trace_dict.items():
         if trace["exit"] != "0":
             if (
-                process.startswith("extract_paired_reads")
-                or process.startswith("extract_reads")
+                process.startswith("extract_taxa_reads")
+                or process.startswith("extract_taxa_paired_reads")
             ) and trace["exit"] == "2":
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
@@ -593,8 +593,8 @@ def ret_0_parser(
                 )
                 ingest_fail = True
             elif (
-                process.startswith("extract_paired_reads")
-                or process.startswith("extract_reads")
+                process.startswith("extract_taxa_reads")
+                or process.startswith("extract_taxa_paired_reads")
             ) and trace["exit"] == "3":
                 continue
             else:

@@ -421,31 +421,55 @@ example_test_validator_message = {
 }
 
 example_execution_trace = """task_id	hash	native_id	name	status	exit	submit	duration	realtime	%cpu	peak_rss	peak_vmem	rchar	wchar
-2	88/1abc3f	nf-881abc3f59bf578b7e0aa4e6b409e936	ingest:kraken_pipeline:run_kraken_and_bracken:determine_bracken_length	COMPLETED	0	2023-09-15 04:08:18.717	13.3s	3.4s	2.3%	3.2 MB	5.6 MB	85.6 KB	472 B
-1	13/ffbf02	nf-13ffbf024c264c53f1fc73d8127df00c	ingest:fastp_paired (1)	COMPLETED	0	2023-09-15 04:08:27.882	2m 24s	2m 6s	546.7%	2.6 GB	3.1 GB	13.4 GB	13.2 GB
-3	62/dda4b3	nf-62dda4b32420ecddcf2aee1de8e9b423	ingest:paired_concatenate (1)	COMPLETED	0	2023-09-15 04:10:58.524	5m 35s	5m 17s	164.2%	38.3 MB	232.7 MB	12.6 GB	12.5 GB
-4	66/50cebb	nf-6650cebb7a8caf2a21cc57d9ad28a48e	ingest:kraken_pipeline:qc_checks:read_stats (1)	COMPLETED	0	2023-09-15 04:16:38.492	2m 9s	1m 54s	98.5%	6.1 MB	11 MB	3 GB	10.9 GB
-6	51/510a2b	nf-51510a2bafede6b088237c8d1ba4b01e	ingest:kraken_pipeline:qc_checks:combine_stats (1)	COMPLETED	0	2023-09-15 04:19:03.509	35.5s	20.7s	114.4%	199.7 MB	12.9 GB	2.7 GB	1.4 GB
-5	91/c305e2	nf-91c305e22a18d1362fbd90c3a9ecdb3f	ingest:kraken_pipeline:run_kraken_and_bracken:kraken2_client (1)	COMPLETED	0	2023-09-15 04:16:38.746	19m 24s	19m 15s	33.0%	695.2 MB	1.2 GB	3 GB	1.4 GB
-7	8d/8d5d7b	nf-8d8d5d7b4d994f3c81aba6cbcd94200a	ingest:kraken_pipeline:run_kraken_and_bracken:combine_kraken_outputs	COMPLETED	0	2023-09-15 04:36:08.725	38.3s	21.9s	149.7%	58.2 MB	12.7 GB	1.4 GB	1.4 GB
-8	33/b742de	nf-33b742dee3413d67186dfc1ef7187914	ingest:kraken_pipeline:run_kraken_and_bracken:bracken	COMPLETED	0	2023-09-15 04:36:48.809	10.2s	0ms	94.9%	6.1 MB	10.8 MB	4.1 MB	802.3 KB
-9	24/8ce934	nf-248ce9347747953fa4c71ed275e35463	ingest:kraken_pipeline:run_kraken_and_bracken:bracken_to_json	COMPLETED	0	2023-09-15 04:37:03.642	18.4s	3.6s	194.7%	679.7 MB	1.4 GB	394.7 MB	4 MB
-11	a2/f41a10	nf-a2f41a105cdc1416d6d5b49cd98228e7	ingest:kraken_pipeline:generate_report:make_report (1)	COMPLETED	0	2023-09-15 04:37:28.660	22.3s	5.2s	240.2%	3.2 MB	5.6 MB	6.3 MB	755.2 KB
-10	44/646e08	nf-44646e080dd2f81a22feacd597bb4f6c	ingest:extract_paired_reads (1)	COMPLETED	0	2023-09-15 04:37:03.713	2m 35s	2m 21s	-	-	-	-	-
+1	c8/ff67a6	nf-c8ff67a652a85eda6287589d2e7cd49f	ingest:get_params_and_versions:get_params	COMPLETED	0	2023-12-14 21:27:52.842	13.2s	84ms	55.8%	3.3 MB	5.6 MB	65.2 KB	4.9 KB
+3	80/6be72c	nf-806be72cd3bb8ac04caa16b2e232e757	ingest:get_params_and_versions:get_versions	COMPLETED	0	2023-12-14 21:27:53.449	14.6s	1.8s	97.2%	43 MB	56.7 MB	13.8 MB	9 KB
+2	35/232dc9	nf-35232dc9a9711f2747073e1d90020b81	ingest:preprocess:fastp_single (1)	COMPLETED	0	2023-12-14 21:32:18.624	6m 44s	6m 31s	456.6%	2.4 GB	2.9 GB	31.5 GB	26.3 GB
+5	09/84c320	nf-0984c3209aef763c49d95a9c3de6957b	ingest:classify_and_report:qc_checks:read_stats (1)	COMPLETED	0	2023-12-14 21:39:08.654	4m 22s	4m 14s	93.9%	6.1 MB	11.3 MB	8.8 GB	17.8 GB
+6	88/d6fa5c	nf-88d6fa5cc7eca3ec17af559611b8063c	ingest:classify_and_report:qc_checks:publish_stats (1)	COMPLETED	0	2023-12-14 21:43:41.168	14.8s	35ms	125.5%	0	0	70 KB	213 B
+4	2f/3f5e13	nf-2f3f5e13dea535095f6e6a236b560080	ingest:classify_and_report:kraken_classify:run_kraken_and_bracken:kraken2_client (1)	COMPLETED	0	2023-12-14 21:39:08.773	9m 38s	9m 25s	61.1%	4.6 GB	5.2 GB	8.8 GB	2.2 GB
+8	51/d29ab2	nf-51d29ab2012d75109e2ea08723d726d4	ingest:classify_and_report:kraken_classify:run_kraken_and_bracken:kraken_to_json (1)	COMPLETED	0	2023-12-14 21:48:52.545	19.5s	4.7s	190.3%	702.3 MB	1.8 GB	417.9 MB	1.8 MB
+7	fa/2551d1	nf-fa2551d15cd1c1b13a810293a1ecd13c	ingest:extract_all:extract_taxa:split_kreport (1)	COMPLETED	0	2023-12-14 21:48:52.762	17.2s	0ms	88.0%	3 MB	5.4 MB	1.8 MB	804.6 KB
+10	b2/7766a1	nf-b27766a1c07e7be17d969689a0a33e91	ingest:extract_all:extract_fractions:extract_virus_and_unclassified (1)	COMPLETED	0	2023-12-14 21:48:52.654	2m 28s	2m 20s	97.1%	730.3 MB	738.3 MB	11.4 GB	1.6 MB
+13	08/dc8a41	nf-08dc8a4161e92d4c883b47822b63cc33	ingest:extract_all:extract_taxa:extract_taxa_reads (2)	FAILED	3	2023-12-14 21:49:17.974	2m 25s	2m 12s	-	-	-	-	-
+14	e3/eb8b5b	nf-e3eb8b5b9d3d3221b72f75fc036e4ca1	ingest:extract_all:extract_taxa:extract_taxa_reads (3)	COMPLETED	0	2023-12-14 21:49:18.074	2m 30s	2m 15s	99.1%	603.5 MB	613.6 MB	11.2 GB	52.5 KB
+16	a6/b5fecf	nf-a6b5fecfd116ba580f7635ea6b71aebb	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (1)	COMPLETED	0	2023-12-14 21:51:51.875	7.1s	138ms	66.8%	3.2 MB	5.6 MB	162.4 KB	26.7 KB
+15	03/8a312f	nf-038a312f81e661f14c9559f165393ea6	ingest:extract_all:extract_taxa:extract_taxa_reads (4)	COMPLETED	0	2023-12-14 21:49:18.170	4m 5s	3m 51s	100.0%	1.4 GB	1.4 GB	11.2 GB	1.7 GB
+17	71/814115	nf-71814115b27f7b8fc9499f8f392b9eef	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (2)	COMPLETED	0	2023-12-14 21:53:28.562	32.4s	24.6s	416.4%	13.4 MB	586.6 MB	1.7 GB	908.5 MB
+9	78/1c46e3	nf-781c46e36e7bcb6fcd36f1ce88e58f8c	ingest:classify_and_report:check_hcid_status:check_hcid (1)	COMPLETED	0	2023-12-14 21:48:52.868	16m 28s	16m 11s	99.4%	392.4 MB	613.5 MB	4.3 GB	2.2 KB
+18	79/46778a	nf-7946778a7caee2e4e3269b71a898d09e	ingest:classify_and_report:generate_report:make_report (1)	COMPLETED	0	2023-12-14 22:05:26.866	33.1s	18.4s	99.0%	188.8 MB	202.1 MB	344.7 MB	315.6 KB
+12	c7/041109	nf-c7041109325a3a30579502b4605a86e4	ingest:extract_all:extract_taxa:extract_taxa_reads (1)	COMPLETED	0	2023-12-14 21:49:17.848	24m 42s	24m 28s	100.3%	18.1 GB	18.1 GB	11.2 GB	18.6 GB
+11	cb/7c562d	nf-cb7c562da605ac9820b9a60f1f86c755	ingest:extract_all:extract_fractions:extract_dehumanized (1)	COMPLETED	0	2023-12-14 21:48:52.345	25m 10s	24m 55s	99.0%	600.3 MB	609.5 MB	11.4 GB	17.2 GB
+20	c1/d5b2c4	nf-c1d5b2c4709000759e76fbfb765f0b41	ingest:extract_all:extract_taxa:merge_read_summary (1)	COMPLETED	0	2023-12-14 22:14:12.519	13.5s	82ms	79.3%	3.3 MB	5.6 MB	77.4 KB	16 KB
+23	4f/a59b6e	nf-4fa59b6e01b05128c3ac44a633729437	ingest:extract_all:extract_fractions:merge_read_summary (1)	COMPLETED	0	2023-12-14 22:14:12.959	16s	54ms	77.2%	3.2 MB	5.6 MB	65.7 KB	874 B
+22	55/6248c5	nf-556248c5bf00e5694d83b81b36eb019d	ingest:extract_all:extract_fractions:bgzip_extracted_taxa (2)	COMPLETED	0	2023-12-14 22:14:13.061	1m 38s	181ms	87.9%	3.1 MB	5.6 MB	1.7 MB	838.3 KB
+21	19/d1c288	nf-19d1c28844e360082ae73ef34ee95b52	ingest:extract_all:extract_fractions:bgzip_extracted_taxa (1)	COMPLETED	0	2023-12-14 22:14:12.919	2m 41s	2m 32s	497.5%	13.1 MB	522.5 MB	17.2 GB	8.7 GB
+19	8c/292cce	nf-8c292cce85d72effaa636db6ad0098ab	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (3)	COMPLETED	0	2023-12-14 22:14:12.692	3m 34s	3m 21s	476.5%	13.3 MB	585.3 MB	18.6 GB	9.4 GB
 """
 
 example_execution_trace_human = """task_id	hash	native_id	name	status	exit	submit	duration	realtime	%cpu	peak_rss	peak_vmem	rchar	wchar
-2	88/1abc3f	nf-881abc3f59bf578b7e0aa4e6b409e936	ingest:kraken_pipeline:run_kraken_and_bracken:determine_bracken_length	COMPLETED	0	2023-09-15 04:08:18.717	13.3s	3.4s	2.3%	3.2 MB	5.6 MB	85.6 KB	472 B
-1	13/ffbf02	nf-13ffbf024c264c53f1fc73d8127df00c	ingest:fastp_paired (1)	COMPLETED	0	2023-09-15 04:08:27.882	2m 24s	2m 6s	546.7%	2.6 GB	3.1 GB	13.4 GB	13.2 GB
-3	62/dda4b3	nf-62dda4b32420ecddcf2aee1de8e9b423	ingest:paired_concatenate (1)	COMPLETED	0	2023-09-15 04:10:58.524	5m 35s	5m 17s	164.2%	38.3 MB	232.7 MB	12.6 GB	12.5 GB
-4	66/50cebb	nf-6650cebb7a8caf2a21cc57d9ad28a48e	ingest:kraken_pipeline:qc_checks:read_stats (1)	COMPLETED	0	2023-09-15 04:16:38.492	2m 9s	1m 54s	98.5%	6.1 MB	11 MB	3 GB	10.9 GB
-6	51/510a2b	nf-51510a2bafede6b088237c8d1ba4b01e	ingest:kraken_pipeline:qc_checks:combine_stats (1)	COMPLETED	0	2023-09-15 04:19:03.509	35.5s	20.7s	114.4%	199.7 MB	12.9 GB	2.7 GB	1.4 GB
-5	91/c305e2	nf-91c305e22a18d1362fbd90c3a9ecdb3f	ingest:kraken_pipeline:run_kraken_and_bracken:kraken2_client (1)	COMPLETED	0	2023-09-15 04:16:38.746	19m 24s	19m 15s	33.0%	695.2 MB	1.2 GB	3 GB	1.4 GB
-7	8d/8d5d7b	nf-8d8d5d7b4d994f3c81aba6cbcd94200a	ingest:kraken_pipeline:run_kraken_and_bracken:combine_kraken_outputs	COMPLETED	0	2023-09-15 04:36:08.725	38.3s	21.9s	149.7%	58.2 MB	12.7 GB	1.4 GB	1.4 GB
-8	33/b742de	nf-33b742dee3413d67186dfc1ef7187914	ingest:kraken_pipeline:run_kraken_and_bracken:bracken	COMPLETED	0	2023-09-15 04:36:48.809	10.2s	0ms	94.9%	6.1 MB	10.8 MB	4.1 MB	802.3 KB
-9	24/8ce934	nf-248ce9347747953fa4c71ed275e35463	ingest:kraken_pipeline:run_kraken_and_bracken:bracken_to_json	COMPLETED	0	2023-09-15 04:37:03.642	18.4s	3.6s	194.7%	679.7 MB	1.4 GB	394.7 MB	4 MB
-11	a2/f41a10	nf-a2f41a105cdc1416d6d5b49cd98228e7	ingest:kraken_pipeline:generate_report:make_report (1)	COMPLETED	0	2023-09-15 04:37:28.660	22.3s	5.2s	240.2%	3.2 MB	5.6 MB	6.3 MB	755.2 KB
-10	44/646e08	nf-44646e080dd2f81a22feacd597bb4f6c	ingest:extract_paired_reads (1)	FAILED	2	2023-09-15 04:37:03.713	2m 35s	2m 21s	-	-	-	-	-
+1	c8/ff67a6	nf-c8ff67a652a85eda6287589d2e7cd49f	ingest:get_params_and_versions:get_params	COMPLETED	0	2023-12-14 21:27:52.842	13.2s	84ms	55.8%	3.3 MB	5.6 MB	65.2 KB	4.9 KB
+3	80/6be72c	nf-806be72cd3bb8ac04caa16b2e232e757	ingest:get_params_and_versions:get_versions	COMPLETED	0	2023-12-14 21:27:53.449	14.6s	1.8s	97.2%	43 MB	56.7 MB	13.8 MB	9 KB
+2	35/232dc9	nf-35232dc9a9711f2747073e1d90020b81	ingest:preprocess:fastp_single (1)	COMPLETED	0	2023-12-14 21:32:18.624	6m 44s	6m 31s	456.6%	2.4 GB	2.9 GB	31.5 GB	26.3 GB
+5	09/84c320	nf-0984c3209aef763c49d95a9c3de6957b	ingest:classify_and_report:qc_checks:read_stats (1)	COMPLETED	0	2023-12-14 21:39:08.654	4m 22s	4m 14s	93.9%	6.1 MB	11.3 MB	8.8 GB	17.8 GB
+6	88/d6fa5c	nf-88d6fa5cc7eca3ec17af559611b8063c	ingest:classify_and_report:qc_checks:publish_stats (1)	COMPLETED	0	2023-12-14 21:43:41.168	14.8s	35ms	125.5%	0	0	70 KB	213 B
+4	2f/3f5e13	nf-2f3f5e13dea535095f6e6a236b560080	ingest:classify_and_report:kraken_classify:run_kraken_and_bracken:kraken2_client (1)	COMPLETED	0	2023-12-14 21:39:08.773	9m 38s	9m 25s	61.1%	4.6 GB	5.2 GB	8.8 GB	2.2 GB
+8	51/d29ab2	nf-51d29ab2012d75109e2ea08723d726d4	ingest:classify_and_report:kraken_classify:run_kraken_and_bracken:kraken_to_json (1)	COMPLETED	0	2023-12-14 21:48:52.545	19.5s	4.7s	190.3%	702.3 MB	1.8 GB	417.9 MB	1.8 MB
+7	fa/2551d1	nf-fa2551d15cd1c1b13a810293a1ecd13c	ingest:extract_all:extract_taxa:split_kreport (1)	COMPLETED	0	2023-12-14 21:48:52.762	17.2s	0ms	88.0%	3 MB	5.4 MB	1.8 MB	804.6 KB
+10	b2/7766a1	nf-b27766a1c07e7be17d969689a0a33e91	ingest:extract_all:extract_fractions:extract_virus_and_unclassified (1)	COMPLETED	0	2023-12-14 21:48:52.654	2m 28s	2m 20s	97.1%	730.3 MB	738.3 MB	11.4 GB	1.6 MB
+13	08/dc8a41	nf-08dc8a4161e92d4c883b47822b63cc33	ingest:extract_all:extract_taxa:extract_taxa_reads (2)	FAILED	3	2023-12-14 21:49:17.974	2m 25s	2m 12s	-	-	-	-	-
+14	e3/eb8b5b	nf-e3eb8b5b9d3d3221b72f75fc036e4ca1	ingest:extract_all:extract_taxa:extract_taxa_reads (3)	COMPLETED	0	2023-12-14 21:49:18.074	2m 30s	2m 15s	99.1%	603.5 MB	613.6 MB	11.2 GB	52.5 KB
+16	a6/b5fecf	nf-a6b5fecfd116ba580f7635ea6b71aebb	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (1)	COMPLETED	0	2023-12-14 21:51:51.875	7.1s	138ms	66.8%	3.2 MB	5.6 MB	162.4 KB	26.7 KB
+15	03/8a312f	nf-038a312f81e661f14c9559f165393ea6	ingest:extract_all:extract_taxa:extract_taxa_reads (4)	COMPLETED	0	2023-12-14 21:49:18.170	4m 5s	3m 51s	100.0%	1.4 GB	1.4 GB	11.2 GB	1.7 GB
+17	71/814115	nf-71814115b27f7b8fc9499f8f392b9eef	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (2)	COMPLETED	0	2023-12-14 21:53:28.562	32.4s	24.6s	416.4%	13.4 MB	586.6 MB	1.7 GB	908.5 MB
+9	78/1c46e3	nf-781c46e36e7bcb6fcd36f1ce88e58f8c	ingest:classify_and_report:check_hcid_status:check_hcid (1)	COMPLETED	0	2023-12-14 21:48:52.868	16m 28s	16m 11s	99.4%	392.4 MB	613.5 MB	4.3 GB	2.2 KB
+18	79/46778a	nf-7946778a7caee2e4e3269b71a898d09e	ingest:classify_and_report:generate_report:make_report (1)	COMPLETED	0	2023-12-14 22:05:26.866	33.1s	18.4s	99.0%	188.8 MB	202.1 MB	344.7 MB	315.6 KB
+12	c7/041109	nf-c7041109325a3a30579502b4605a86e4	ingest:extract_all:extract_taxa:extract_taxa_reads (1)	FAILED	2	2023-12-14 21:49:17.848	24m 42s	24m 28s	100.3%	18.1 GB	18.1 GB	11.2 GB	18.6 GB
+11	cb/7c562d	nf-cb7c562da605ac9820b9a60f1f86c755	ingest:extract_all:extract_fractions:extract_dehumanized (1)	COMPLETED	0	2023-12-14 21:48:52.345	25m 10s	24m 55s	99.0%	600.3 MB	609.5 MB	11.4 GB	17.2 GB
+20	c1/d5b2c4	nf-c1d5b2c4709000759e76fbfb765f0b41	ingest:extract_all:extract_taxa:merge_read_summary (1)	COMPLETED	0	2023-12-14 22:14:12.519	13.5s	82ms	79.3%	3.3 MB	5.6 MB	77.4 KB	16 KB
+23	4f/a59b6e	nf-4fa59b6e01b05128c3ac44a633729437	ingest:extract_all:extract_fractions:merge_read_summary (1)	COMPLETED	0	2023-12-14 22:14:12.959	16s	54ms	77.2%	3.2 MB	5.6 MB	65.7 KB	874 B
+22	55/6248c5	nf-556248c5bf00e5694d83b81b36eb019d	ingest:extract_all:extract_fractions:bgzip_extracted_taxa (2)	COMPLETED	0	2023-12-14 22:14:13.061	1m 38s	181ms	87.9%	3.1 MB	5.6 MB	1.7 MB	838.3 KB
+21	19/d1c288	nf-19d1c28844e360082ae73ef34ee95b52	ingest:extract_all:extract_fractions:bgzip_extracted_taxa (1)	COMPLETED	0	2023-12-14 22:14:12.919	2m 41s	2m 32s	497.5%	13.1 MB	522.5 MB	17.2 GB	8.7 GB
+19	8c/292cce	nf-8c292cce85d72effaa636db6ad0098ab	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (3)	COMPLETED	0	2023-12-14 22:14:12.692	3m 34s	3m 21s	476.5%	13.3 MB	585.3 MB	18.6 GB	9.4 GB
 """
 
 example_reads_summary = [
