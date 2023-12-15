@@ -62,7 +62,7 @@ while True:
     if public_result_message:
         in_dict = json.loads(public_result_message.body)
 
-        outcome = "Success" if in_dict["published"] else "Failure"
+        outcome = "Success" if in_dict.get("published") else "Failure"
 
         out_text = public_result_message_template.format(
             outcome, json.dumps(in_dict, indent=2)
