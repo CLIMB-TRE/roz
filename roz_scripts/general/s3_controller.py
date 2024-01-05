@@ -30,14 +30,10 @@ in_actions_template = [
 
 # out_actions_template = ["s3:GetObject", "s3:ListBucket"]
 
-admin_actions_template = [
-    "s3:AbortMultipartUpload",
-    "s3:CreateBucket",
+admin_bucket_actions_template = [
     "s3:DeleteBucketPolicy",
     "s3:DeleteBucketWebsite",
     "s3:DeleteBucket",
-    "s3:DeleteObject",
-    "s3:DeleteObjectVersion",
     "s3:GetBucketAcl",
     "s3:GetBucketLogging",
     "s3:GetBucketNotification",
@@ -46,17 +42,10 @@ admin_actions_template = [
     "s3:GetBucketVersioning",
     "s3:GetBucketWebsite",
     "s3:GetLifecycleConfiguration",
-    "s3:GetObjectAcl",
-    "s3:GetObject",
-    "s3:GetObjectVersionAcl",
-    "s3:GetObjectVersion",
-    "s3:GetObjectVersionTorrent",
+    "s3:ListBucket",
     "s3:ListAllMyBuckets",
     "s3:ListBucketMultipartUploads",
-    "s3:ListBucket",
     "s3:ListBucketVersions",
-    "s3:ListMultipartUploadParts",
-    "s3:PutBucketAcl",
     "s3:PutBucketLogging",
     "s3:PutBucketNotification",
     "s3:PutBucketPolicy",
@@ -64,11 +53,25 @@ admin_actions_template = [
     "s3:PutBucketTagging",
     "s3:PutBucketVersioning",
     "s3:PutBucketWebsite",
+    "s3:PutBucketAcl",
+]
+
+admin_obj_actions_template = [
+    "s3:AbortMultipartUpload",
+    "s3:CreateBucket",
+    "s3:DeleteObject",
+    "s3:DeleteObjectVersion",
+    "s3:GetObjectAcl",
+    "s3:GetObject",
+    "s3:GetObjectVersionAcl",
+    "s3:GetObjectVersion",
+    "s3:GetObjectVersionTorrent",
+    "s3:ListMultipartUploadParts",
     "s3:PutLifecycleConfiguration",
     "s3:PutObjectAcl",
-    "s3:PutObject",
     "s3:PutObjectVersionAcl",
     "s3:RestoreObject",
+    "s3:PutObject",
 ]
 
 perm_map = {
@@ -153,7 +156,9 @@ def create_config_map(config_dict: dict) -> dict:
     return config_map
 
 
-def check_bucket_exists(bucket_name: str, aws_credentials_dict: dict) -> bool:
+def check_bucket_exists(
+    bucket_name: str, aws_credentials_dict: dict, project: str, site: str
+) -> bool:
     """Check if a bucket exists
 
     Args:
@@ -163,21 +168,31 @@ def check_bucket_exists(bucket_name: str, aws_credentials_dict: dict) -> bool:
     Returns:
         bool: True if the bucket exists, False otherwise
     """
+    if site == "admin":
+        credentials = aws_credentials_dict["admin"]
+    else:
+        credentials = aws_credentials_dict[project][site]
 
-    credentials = aws_credentials_dict["admin"]
-    s3_client = boto3.client(
+    s3 = boto3.resource(
         "s3",
         aws_access_key_id=credentials["aws_access_key_id"],
         aws_secret_access_key=credentials["aws_secret_access_key"],
         endpoint_url="https://s3.climb.ac.uk",
     )
 
-    try:
-        s3_client.head_bucket(Bucket=bucket_name)
-        return True
+    bucket = s3.Bucket(bucket_name)
 
-    except ClientError:
+    if bucket.creation_date:
+        return True
+    else:
         return False
+
+    # try:
+    #     s3_client.head_bucket(Bucket=bucket_name)
+    #     return True
+
+    # except ClientError:
+    #     return False
 
 
 def can_site_list_objects(
@@ -197,7 +212,10 @@ def can_site_list_objects(
     Returns:
         bool: True if the site can list objects in the bucket, False otherwise
     """
-    site_credentials = aws_credentials_dict[project][site]
+    if site == "admin":
+        site_credentials = aws_credentials_dict["admin"]
+    else:
+        site_credentials = aws_credentials_dict[project][site]
 
     s3 = boto3.client(
         "s3",
@@ -230,7 +248,10 @@ def can_site_get_object(
     Returns:
         bool: True if the site can get an object from the bucket, False otherwise
     """
-    site_credentials = aws_credentials_dict[project][site]
+    if site == "admin":
+        site_credentials = aws_credentials_dict["admin"]
+    else:
+        site_credentials = aws_credentials_dict[project][site]
 
     s3 = boto3.client(
         "s3",
@@ -268,7 +289,11 @@ def can_site_put_object(
     Returns:
         bool: True if the site can put an object in the bucket, False otherwise
     """
-    site_credentials = aws_credentials_dict[project][site]
+
+    if site == "admin":
+        site_credentials = aws_credentials_dict["admin"]
+    else:
+        site_credentials = aws_credentials_dict[project][site]
 
     s3 = boto3.client(
         "s3",
@@ -277,16 +302,8 @@ def can_site_put_object(
         endpoint_url="https://s3.climb.ac.uk",
     )
 
-    admin_s3 = boto3.client(
-        "s3",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
-
     try:
         s3.put_object(Bucket=bucket_name, Key="test", Body=b"test")
-        admin_s3.delete_object(Bucket=bucket_name, Key="test")
         return True
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchBucket":
@@ -312,8 +329,10 @@ def can_site_delete_object(
     Returns:
         bool: True if the site can delete an object from the bucket, False otherwise
     """
-
-    site_credentials = aws_credentials_dict[project][site]
+    if site == "admin":
+        site_credentials = aws_credentials_dict["admin"]
+    else:
+        site_credentials = aws_credentials_dict[project][site]
 
     s3 = boto3.client(
         "s3",
@@ -371,17 +390,32 @@ def can_site_modify_policy(
         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
             policy = copy.deepcopy(policy_template)
 
-            statement = copy.deepcopy(statement_template)
+            # Add the admin object permissions statement
+            admin_obj_statement = copy.deepcopy(statement_template)
 
-            statement["Principal"][
-                "AWS"
-            ] = f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+            admin_obj_statement["Principal"]["AWS"] = [
+                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+            ]
 
-            statement["Action"] = admin_actions_template
+            admin_obj_statement["Action"] = admin_obj_actions_template
 
-            statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+            admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
 
-            policy["Statement"].append(statement)
+            policy["Statement"].append(admin_obj_statement)
+
+            # Add the admin bucket permissions statement
+
+            admin_bucket_statement = copy.deepcopy(statement_template)
+
+            admin_bucket_statement["Principal"]["AWS"] = [
+                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+            ]
+
+            admin_bucket_statement["Action"] = admin_bucket_actions_template
+
+            admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
+
+            policy["Statement"].append(admin_bucket_statement)
 
         elif e.response["Error"]["Code"] == "AccessDenied":
             return False
@@ -433,13 +467,32 @@ def can_site_delete_policy(
         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
             policy = copy.deepcopy(policy_template)
 
-            policy["Statement"] = copy.deepcopy(statement_template)
+            # Add the admin object permissions statement
+            admin_obj_statement = copy.deepcopy(statement_template)
 
-            policy["Statement"]["Principal"][
-                "AWS"
-            ] = f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+            admin_obj_statement["Principal"]["AWS"] = [
+                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+            ]
 
-            policy["Statement"]["Action"] = admin_actions_template
+            admin_obj_statement["Action"] = admin_obj_actions_template
+
+            admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+
+            policy["Statement"].append(admin_obj_statement)
+
+            # Add the admin bucket permissions statement
+
+            admin_bucket_statement = copy.deepcopy(statement_template)
+
+            admin_bucket_statement["Principal"]["AWS"] = [
+                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+            ]
+
+            admin_bucket_statement["Action"] = admin_bucket_actions_template
+
+            admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
+
+            policy["Statement"].append(admin_bucket_statement)
 
         elif e.response["Error"]["Code"] == "AccessDenied":
             return False
@@ -477,7 +530,9 @@ def can_site_get_policy(
         return False
 
 
-def put_policy(bucket_name: str, aws_credentials_dict: dict, policy: dict) -> bool:
+def put_policy(
+    bucket_arn: str, aws_credentials_dict: dict, policy: dict, project: str, site: str
+) -> bool:
     """Put a policy on a bucket
 
     Args:
@@ -488,8 +543,11 @@ def put_policy(bucket_name: str, aws_credentials_dict: dict, policy: dict) -> bo
     Returns:
         bool: True if the policy was put on the bucket, False otherwise
     """
+    if project == "admin":
+        credentials = aws_credentials_dict["admin"]
 
-    credentials = aws_credentials_dict["admin"]
+    else:
+        credentials = aws_credentials_dict[project][site]
 
     s3 = boto3.client(
         "s3",
@@ -502,14 +560,22 @@ def put_policy(bucket_name: str, aws_credentials_dict: dict, policy: dict) -> bo
         policy = json.dumps(policy)
 
     try:
-        s3.put_bucket_policy(Bucket=bucket_name, Policy=policy)
+        # Retrieve waiter instance that will wait till a specified bucket exists
+        s3_bucket_exists_waiter = s3.get_waiter("bucket_exists")
+
+        # Wait till bucket exists
+        s3_bucket_exists_waiter.wait(Bucket=bucket_arn)
+
+        resp = s3.put_bucket_policy(Bucket=bucket_arn, Policy=policy)
         return True
     except ClientError as e:
+        print(e)
         return False
 
 
 def generate_site_policy(
     bucket_name: str,
+    bucket_arn: str,
     project: str,
     site: str,
     aws_credentials_dict: dict,
@@ -528,22 +594,44 @@ def generate_site_policy(
     """
     policy = copy.deepcopy(policy_template)
 
-    # Add the admin statement
-    admin_statement = copy.deepcopy(statement_template)
+    # Add the admin object permissions statement
+    admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_statement["Principal"]["AWS"] = [
+    admin_obj_statement["Principal"]["AWS"] = [
         f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
     ]
 
-    admin_statement["Action"] = admin_actions_template
+    admin_obj_statement["Action"] = admin_obj_actions_template
 
-    policy["Statement"].append(admin_statement)
+    admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
+
+    policy["Statement"].append(admin_obj_statement)
+
+    # Add the admin bucket permissions statement
+
+    admin_bucket_statement = copy.deepcopy(statement_template)
+
+    admin_bucket_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+    ]
+
+    admin_bucket_statement["Action"] = admin_bucket_actions_template
+
+    admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
+
+    policy["Statement"].append(admin_bucket_statement)
 
     # Add the site statement
-    site_statement = copy.deepcopy(statement_template)
+    site_obj_statement = copy.deepcopy(statement_template)
 
-    site_statement["Principal"]["AWS"] = [
-        aws_credentials_dict[project][site]["username"]
+    site_obj_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
+    ]
+
+    site_bucket_statement = copy.deepcopy(statement_template)
+
+    site_bucket_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
     ]
 
     permission_set = config_dict["configs"][project]["site_buckets"][bucket_name][
@@ -552,17 +640,30 @@ def generate_site_policy(
 
     correct_perms = config_dict["configs"][project]["bucket_policies"][permission_set]
 
-    site_statement["Action"] = [perm_map[x] for x in correct_perms]
+    site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
 
-    site_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+    site_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
 
-    policy["Statement"].append(site_statement)
+    for perm in correct_perms:
+        aws_perm = perm_map[perm]
+        if aws_perm in admin_obj_actions_template:
+            site_obj_statement["Action"].append(perm_map[perm])
+
+        elif aws_perm in admin_bucket_actions_template:
+            site_bucket_statement["Action"].append(perm_map[perm])
+
+    if site_obj_statement["Action"]:
+        policy["Statement"].append(site_obj_statement)
+
+    if site_bucket_statement["Action"]:
+        policy["Statement"].append(site_bucket_statement)
 
     return policy
 
 
 def generate_project_policy(
     bucket_name: str,
+    bucket_arn: str,
     project: str,
     config_dict: dict,
     aws_credentials_dict: dict,
@@ -581,38 +682,72 @@ def generate_project_policy(
 
     policy = copy.deepcopy(policy_template)
 
-    # Add the admin statement
-    admin_statement = copy.deepcopy(statement_template)
+    # Add the admin object permissions statement
+    admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_statement["Principal"]["AWS"] = [
+    admin_obj_statement["Principal"]["AWS"] = [
         f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
     ]
 
-    admin_statement["Action"] = admin_actions_template
+    admin_obj_statement["Action"] = admin_obj_actions_template
 
-    policy["Statement"].append(admin_statement)
+    admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
 
-    for site, config in config_dict[project].items():
+    policy["Statement"].append(admin_obj_statement)
+
+    # Add the admin bucket permissions statement
+
+    admin_bucket_statement = copy.deepcopy(statement_template)
+
+    admin_bucket_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+    ]
+
+    admin_bucket_statement["Action"] = admin_bucket_actions_template
+
+    admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
+
+    policy["Statement"].append(admin_bucket_statement)
+
+    for site in config_dict["configs"][project]["sites"]:
         # Add the site statement
-        site_statement = copy.deepcopy(statement_template)
+        site_obj_statement = copy.deepcopy(statement_template)
 
-        site_statement["Principal"]["AWS"] = [
-            aws_credentials_dict[project][site]["username"]
+        site_obj_statement["Principal"]["AWS"] = [
+            f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
         ]
 
-        permission_set = config_dict["configs"][project]["site_buckets"][bucket_name][
-            "policy"
+        site_bucket_statement = copy.deepcopy(statement_template)
+
+        site_bucket_statement["Principal"]["AWS"] = [
+            f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
         ]
+
+        permission_set = config_dict["configs"][project]["project_buckets"][
+            bucket_name
+        ]["policy"]
 
         correct_perms = config_dict["configs"][project]["bucket_policies"][
             permission_set
         ]
 
-        site_statement["Action"] = [perm_map[x] for x in correct_perms]
+        site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
 
-        policy["Statement"].append(site_statement)
+        site_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
 
-    policy["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+        for perm in correct_perms:
+            aws_perm = perm_map[perm]
+            if aws_perm in admin_obj_actions_template:
+                site_obj_statement["Action"].append(perm_map[perm])
+
+            elif aws_perm in admin_bucket_actions_template:
+                site_bucket_statement["Action"].append(perm_map[perm])
+
+        if site_obj_statement["Action"]:
+            policy["Statement"].append(site_obj_statement)
+
+        if site_bucket_statement["Action"]:
+            policy["Statement"].append(site_bucket_statement)
 
     return policy
 
@@ -669,20 +804,22 @@ def audit_bucket_policy(
         dict: A dictionary of the form {site: {list: True, get: True, put: True, delete: True, put_policy: True, delete_policy: True, get_policy: True}}
     """
 
+    to_test = [x for x in config_map[project]["sites"].keys()]
+    to_test.append("admin")
+
     policy_audit = {
         x: {
             "list": None,
             "get": None,
             "put": None,
             "delete": None,
-            "put_policy": None,
-            "delete_policy": None,
-            "get_policy": None,
+            # "put_policy": None,
+            # "delete_policy": None,
         }
-        for x in config_map[project]["sites"].keys()
+        for x in to_test
     }
 
-    for site in config_map[project]["sites"].keys():
+    for site in to_test:
         policy_audit[site]["list"] = can_site_list_objects(
             bucket_name=bucket_name,
             aws_credentials_dict=aws_credentials_dict,
@@ -707,29 +844,25 @@ def audit_bucket_policy(
             project=project,
             site=site,
         )
-        policy_audit[site]["put_policy"] = can_site_modify_policy(
-            bucket_name=bucket_name,
-            aws_credentials_dict=aws_credentials_dict,
-            project=project,
-            site=site,
-        )
-        policy_audit[site]["delete_policy"] = can_site_delete_policy(
-            bucket_name=bucket_name,
-            aws_credentials_dict=aws_credentials_dict,
-            project=project,
-            site=site,
-        )
-        policy_audit[site]["get_policy"] = can_site_get_policy(
-            bucket_name=bucket_name,
-            aws_credentials_dict=aws_credentials_dict,
-            project=project,
-            site=site,
-        )
+        # policy_audit[site]["put_policy"] = can_site_modify_policy(
+        #     bucket_name=bucket_name,
+        #     aws_credentials_dict=aws_credentials_dict,
+        #     project=project,
+        #     site=site,
+        # )
+        # policy_audit[site]["delete_policy"] = can_site_delete_policy(
+        #     bucket_name=bucket_name,
+        #     aws_credentials_dict=aws_credentials_dict,
+        #     project=project,
+        #     site=site,
+        # )
 
     return policy_audit
 
 
-def check_bucket_exist_and_create(aws_credentials_dict: dict, config_map: dict) -> None:
+def check_bucket_exist_and_create(
+    aws_credentials_dict: dict, config_map: dict, dry_run: bool = False
+) -> None:
     """Check if all specified buckets exist, and if not, create them
 
     Args:
@@ -741,18 +874,24 @@ def check_bucket_exist_and_create(aws_credentials_dict: dict, config_map: dict) 
     """
 
     for project, project_config in config_map.items():
-        # Create out buckets (made by admin user)
+        # Create project buckets (made by admin user)
         for bucket, bucket_arn in project_config["project_buckets"]:
-            exists = check_bucket_exists(bucket_arn, aws_credentials_dict)
+            exists = check_bucket_exists(
+                bucket_arn, aws_credentials_dict, project, "admin"
+            )
 
             if exists:
                 print(
-                    f"Bucket {bucket} already exists, no need to create",
+                    f"Bucket {bucket_arn} already exists, no need to create",
                     file=sys.stdout,
                 )
                 continue
 
-            print(f"Creating bucket {bucket}", file=sys.stdout)
+            if dry_run:
+                print(f"Dry run, not creating bucket: {bucket_arn}", file=sys.stdout)
+                continue
+
+            print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
             create_success = create_bucket(
                 bucket_name=bucket_arn,
                 project=project,
@@ -761,12 +900,20 @@ def check_bucket_exist_and_create(aws_credentials_dict: dict, config_map: dict) 
             )
 
             if not create_success:
-                raise ValueError(f"Bucket {bucket} could not be created")
+                raise ValueError(f"Bucket {bucket_arn} could not be created")
 
         # Create in buckets (made by site user)
         for site, site_config in project_config["sites"].items():
             for bucket, bucket_arn in site_config["site_buckets"]:
-                exists = check_bucket_exists(bucket_arn, aws_credentials_dict)
+                exists = check_bucket_exists(
+                    bucket_arn, aws_credentials_dict, project, site
+                )
+
+                if dry_run:
+                    print(
+                        f"Dry run, not creating bucket: {bucket_arn}", file=sys.stdout
+                    )
+                    continue
 
                 if exists:
                     print(
@@ -774,6 +921,8 @@ def check_bucket_exist_and_create(aws_credentials_dict: dict, config_map: dict) 
                         file=sys.stdout,
                     )
                     continue
+
+                print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
 
                 create_success = create_bucket(
                     bucket_name=bucket_arn,
@@ -786,7 +935,9 @@ def check_bucket_exist_and_create(aws_credentials_dict: dict, config_map: dict) 
                     raise ValueError(f"Bucket {bucket} could not be created")
 
 
-def audit_all_buckets(aws_credentials_dict: dict, config_map: dict) -> dict:
+def audit_all_buckets(
+    aws_credentials_dict: dict, config_map: dict, dry_run: bool = False
+) -> dict:
     """Iterate through all buckets and audit their policies
 
     Args:
@@ -804,6 +955,9 @@ def audit_all_buckets(aws_credentials_dict: dict, config_map: dict) -> dict:
         }
         for project in config_map.keys()
     }
+
+    if dry_run:
+        return audit_dict
 
     for project, project_config in config_map.items():
         # Audit out buckets (made by admin user)
@@ -862,7 +1016,7 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
 
                     for permission, result in audit_results.items():
                         if result:
-                            if permission in correct_perms:
+                            if permission in correct_perms or audit_site == "admin":
                                 continue
                             else:
                                 print(
@@ -873,7 +1027,7 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
                                     (bucket, bucket_arn, project, site)
                                 )
                         else:
-                            if permission in correct_perms:
+                            if permission in correct_perms or audit_site == "admin":
                                 print(
                                     f"Missing policy for bucket {bucket_arn} detected",
                                     file=sys.stdout,
@@ -896,7 +1050,7 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
 
                 for permission, result in audit_results.items():
                     if result:
-                        if permission in correct_perms:
+                        if permission in correct_perms or audit_site == "admin":
                             continue
                         else:
                             print(
@@ -905,7 +1059,7 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
                             )
                             to_fix["project_buckets"].add((bucket, bucket_arn, project))
                     else:
-                        if permission in correct_perms:
+                        if permission in correct_perms or audit_site == "admin":
                             print(
                                 f"Missing policy for bucket {bucket} detected",
                                 file=sys.stdout,
@@ -917,7 +1071,7 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
     return to_fix
 
 
-def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_map: dict) -> None:
+def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_dict: dict) -> list:
     """Apply the correct policies to all buckets that need to be fixed
 
     Args:
@@ -929,25 +1083,47 @@ def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_map: dict) -
     for bucket, bucket_arn, project, site in to_fix["site_buckets"]:
         policy = generate_site_policy(
             bucket_name=bucket,
+            bucket_arn=bucket_arn,
             project=project,
             site=site,
             aws_credentials_dict=aws_credentials_dict,
-            config_dict=config_map,
+            config_dict=config_dict,
         )
-        put_policy(
-            bucket_name=bucket, aws_credentials_dict=aws_credentials_dict, policy=policy
+
+        policy_success = put_policy(
+            bucket_arn=bucket_arn,
+            project=project,
+            site=site,
+            aws_credentials_dict=aws_credentials_dict,
+            policy=policy,
         )
+
+        if not policy_success:
+            print(
+                f"Policy for bucket {bucket_arn} could not be applied", file=sys.stdout
+            )
 
     for bucket, bucket_arn, project in to_fix["project_buckets"]:
         policy = generate_project_policy(
-            bucket_name=bucket_arn,
+            bucket_name=bucket,
+            bucket_arn=bucket_arn,
             project=project,
             aws_credentials_dict=aws_credentials_dict,
-            config_dict=config_map,
+            config_dict=config_dict,
         )
-        put_policy(
-            bucket_name=bucket, aws_credentials_dict=aws_credentials_dict, policy=policy
+
+        policy_success = put_policy(
+            bucket_arn=bucket_arn,
+            project="admin",
+            site=None,
+            aws_credentials_dict=aws_credentials_dict,
+            policy=policy,
         )
+
+        if not policy_success:
+            print(
+                f"Policy for bucket {bucket_arn} could not be applied", file=sys.stdout
+            )
 
 
 def setup_sns_topic(
@@ -996,11 +1172,29 @@ def setup_sns_topic(
     else:
         push_endpoint = f"{protocol}://{amqp_host}:{amqp_port}"
 
+    topic_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": ["sns:GetTopicAttributes"],
+                    "Resource": [f"arn:aws:sns:s3::{amqp_exchange}"],
+                }
+            ],
+        }
+    )
+
     attributes = {
         "push-endpoint": push_endpoint,
         "amqp-exchange": amqp_exchange,
         "amqp-ack-level": "broker",
         "verify-ssl": "false",
+        "max_retries": "20",
+        "retry_sleep_duration": "60",
+        "persistent": "false",
+        "Policy": topic_policy,
     }
 
     resp = sns_client.create_topic(Name=topic_name, Attributes=attributes)
@@ -1013,6 +1207,8 @@ def setup_sns_topic(
 def setup_messaging(
     aws_credentials_dict: dict,
     bucket_name: str,
+    site: str,
+    project: str,
     topic_arn: str,
     amqp_topic: str,
 ) -> bool:
@@ -1031,8 +1227,10 @@ def setup_messaging(
     s3_client = boto3.client(
         "s3",
         endpoint_url="https://s3.climb.ac.uk",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
+        aws_access_key_id=aws_credentials_dict[project][site]["aws_access_key_id"],
+        aws_secret_access_key=aws_credentials_dict[project][site][
+            "aws_secret_access_key"
+        ],
     )
 
     topic_conf_list = [
@@ -1049,6 +1247,7 @@ def setup_messaging(
         Bucket=bucket_name,
         NotificationConfiguration={"TopicConfigurations": topic_conf_list},
     )
+
     if resp["ResponseMetadata"]["HTTPStatusCode"] == 200:
         return True
     else:
@@ -1056,7 +1255,11 @@ def setup_messaging(
 
 
 def test_bucket_messaging(
-    aws_credentials_dict: dict, bucket_name: str, correct_topic: str
+    aws_credentials_dict: dict,
+    bucket_name: str,
+    correct_topic: str,
+    project: str,
+    site: str,
 ) -> bool:
     """Test if a bucket has the correct messaging setup
 
@@ -1069,12 +1272,24 @@ def test_bucket_messaging(
         bool: True if the bucket has the correct messaging setup, False otherwise
     """
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url="https://s3.climb.ac.uk",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-    )
+    if site == "admin":
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url="https://s3.climb.ac.uk",
+            aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
+            aws_secret_access_key=aws_credentials_dict["admin"][
+                "aws_secret_access_key"
+            ],
+        )
+    else:
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url="https://s3.climb.ac.uk",
+            aws_access_key_id=aws_credentials_dict[project][site]["aws_access_key_id"],
+            aws_secret_access_key=aws_credentials_dict[project][site][
+                "aws_secret_access_key"
+            ],
+        )
 
     resp = s3_client.get_bucket_notification_configuration(Bucket=bucket_name)
 
@@ -1094,7 +1309,10 @@ def test_bucket_messaging(
 
 
 def audit_bucket_messaging(
-    aws_credentials_dict: dict, config_map: dict, config_dict: dict
+    aws_credentials_dict: dict,
+    config_map: dict,
+    config_dict: dict,
+    dry_run: bool = False,
 ) -> list:
     """Audit the messaging setup on all buckets
 
@@ -1108,32 +1326,55 @@ def audit_bucket_messaging(
     """
     to_fix = []
 
+    if dry_run:
+        print("Dry run, not auditing messaging", file=sys.stdout)
+        return to_fix
+
     for project, project_config in config_map.items():
         for bucket, bucket_arn in project_config["project_buckets"]:
-            if bucket in config_dict[project]["notification_bucket_configs"].keys():
+            if (
+                bucket
+                in config_dict["configs"][project]["notification_bucket_configs"].keys()
+            ):
                 if not test_bucket_messaging(
                     aws_credentials_dict=aws_credentials_dict,
                     bucket_name=bucket_arn,
-                    correct_topic=config_dict[project]["notification_bucket_configs"][
-                        bucket
-                    ],
+                    project=project,
+                    site="admin",
+                    correct_topic=config_dict["configs"][project][
+                        "notification_bucket_configs"
+                    ][bucket]["rmq_exchange"],
                 ):
-                    to_fix.append((bucket, bucket_arn))
+                    to_fix.append((bucket, bucket_arn, project, "admin"))
 
         for site, site_config in project_config["sites"].items():
             for bucket, bucket_arn in site_config["site_buckets"]:
-                if bucket in config_dict[project]["notification_bucket_configs"].keys():
+                if (
+                    bucket
+                    in config_dict["configs"][project][
+                        "notification_bucket_configs"
+                    ].keys()
+                ):
                     if not test_bucket_messaging(
                         aws_credentials_dict=aws_credentials_dict,
                         bucket_name=bucket_arn,
-                        correct_topic=config_dict[project][
+                        project=project,
+                        site=site,
+                        correct_topic=config_dict["configs"][project][
                             "notification_bucket_configs"
-                        ][bucket],
+                        ][bucket]["rmq_exchange"],
                     ):
-                        to_fix.append((bucket, bucket_arn))
+                        to_fix.append((bucket, bucket_arn, project, site))
+
+    return to_fix
 
 
 def run(args):
+    for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS"]:
+        if env_var not in os.environ.keys():
+            print(f"Environment variable {env_var} not set", file=sys.stderr)
+            sys.exit(1)
+
     with open(args.config, "r") as f:
         config_dict = json.load(f)
 
@@ -1145,66 +1386,77 @@ def run(args):
     check_bucket_exist_and_create(
         aws_credentials_dict=aws_credentials_dict,
         config_map=config_map,
-        config_dict=config_dict,
+        dry_run=args.dry_run,
     )
 
-    audit_dict = audit_all_buckets(
-        aws_credentials_dict=aws_credentials_dict, config_map=config_map
-    )
-
-    to_fix = test_policies(audit_dict=audit_dict, config_map=config_map)
-
-    if args.dry_run:
-        print("Dry run, not applying policies", file=sys.stdout)
-        print(
-            f"Would apply policies to {len(to_fix['in_buckets'])} in buckets and {len(to_fix['out_buckets'])} out buckets",
-            file=sys.stdout,
+    if not args.dry_run:
+        audit_dict = audit_all_buckets(
+            aws_credentials_dict=aws_credentials_dict, config_map=config_map
         )
-        sys.exit(0)
 
-    apply_policies(
-        to_fix=to_fix,
+        to_fix = test_policies(audit_dict=audit_dict, config_dict=config_dict)
+
+        if not to_fix["site_buckets"] and not to_fix["project_buckets"]:
+            print("All buckets have correct policies", file=sys.stdout)
+        else:
+            apply_policies(
+                to_fix=to_fix,
+                aws_credentials_dict=aws_credentials_dict,
+                config_dict=config_dict,
+            )
+
+            print(
+                f"Applied policies to {len(to_fix['site_buckets']) + len(to_fix['project_buckets'])} buckets",
+                file=sys.stdout,
+            )
+
+    to_setup_messaging = audit_bucket_messaging(
         aws_credentials_dict=aws_credentials_dict,
         config_map=config_map,
-    )
-    print(
-        f"Applied policies to {len(to_fix['in_buckets'])} in buckets and {len(to_fix['out_buckets'])} out buckets",
-        file=sys.stdout,
+        config_dict=config_dict,
+        dry_run=args.dry_run,
     )
 
-    for project, project_config in config_dict["configs"].items():
-        to_setup_messaging = audit_bucket_messaging(
-            aws_credentials_dict=aws_credentials_dict,
-            config_map=config_map,
-            config_dict=config_dict,
-        )
+    if not to_setup_messaging:
+        print("All buckets have correct messaging configuration", file=sys.stdout)
 
-        for bucket, bucket_arn in to_setup_messaging:
+    # for project, project_config in config_dict["configs"].items():
+    if not args.dry_run and args.setup_messaging:
+        for bucket, bucket_arn, project, site in to_setup_messaging:
             amqp_host = os.getenv("AMQP_HOST")
             amqp_user = os.getenv("AMQP_USER")
             amqp_pass = os.getenv("AMQP_PASS")
             topic_arn = setup_sns_topic(
                 aws_credentials_dict=aws_credentials_dict,
-                topic_name=bucket,
+                topic_name=config_dict["configs"][project][
+                    "notification_bucket_configs"
+                ][bucket]["rmq_exchange"],
                 amqp_host=amqp_host,
                 amqp_user=amqp_user,
                 amqp_pass=amqp_pass,
-                amqp_exchange=project_config["notification_bucket_configs"][bucket][
-                    "rmq_exchange"
-                ],
+                amqp_exchange=config_dict["configs"][project][
+                    "notification_bucket_configs"
+                ][bucket]["rmq_exchange"],
                 amqps=True,
             )
 
             success = setup_messaging(
                 aws_credentials_dict=aws_credentials_dict,
                 bucket_name=bucket_arn,
+                project=project,
+                site=site,
                 topic_arn=topic_arn,
-                amqp_topic=bucket,
+                amqp_topic=config_dict["configs"][project][
+                    "notification_bucket_configs"
+                ][bucket]["rmq_exchange"],
             )
             if success:
-                print(f"Setup messaging for bucket {bucket}", file=sys.stdout)
+                print(f"Setup messaging for bucket {bucket_arn}", file=sys.stdout)
             else:
-                print(f"Failed to setup messaging for bucket {bucket}", file=sys.stdout)
+                print(
+                    f"Failed to setup messaging for bucket {bucket_arn}",
+                    file=sys.stdout,
+                )
 
         retest_messaging = audit_bucket_messaging(
             aws_credentials_dict=aws_credentials_dict,
@@ -1218,36 +1470,37 @@ def run(args):
                 file=sys.stdout,
             )
 
-    retest_audit_dict = audit_all_buckets(
-        aws_credentials_dict=aws_credentials_dict, config_map=config_map
-    )
-
-    retest_to_fix = test_policies(audit_dict=retest_audit_dict, config_map=config_map)
-
-    if retest_to_fix["project_buckets"]:
-        print(
-            f"Failed to apply policies to {len(retest_to_fix['project_buckets'])} project buckets",
-            file=sys.stdout,
-        )
-        for site, buckets in retest_to_fix["site_buckets"]:
-            if buckets:
-                print(
-                    f"Failed to apply policies to {len(buckets)} site buckets for site {site}",
-                    file=sys.stdout,
-                )
-
-        varys_client = varys(
-            profile="roz",
-            logfile=os.devnull,
-            log_level="CRITICAL",
-            auto_acknowledge=False,
+    if (to_fix["site_buckets"] or to_fix["project_buckets"]) and not args.dry_run:
+        retest_audit_dict = audit_all_buckets(
+            aws_credentials_dict=aws_credentials_dict,
+            config_map=config_map,
+            dry_run=args.dry_run,
         )
 
-        varys_client.send(
-            message="Bucket controlled failed in some manner :(",
-            exchange="mscape.restricted.announce",
-            queue_suffix="slack_integration",
+        retest_to_fix = test_policies(
+            audit_dict=retest_audit_dict, config_dict=config_dict
         )
+
+        if retest_to_fix["site_buckets"] or retest_to_fix["project_buckets"]:
+            print(
+                f"Failed to apply policies to {len(retest_to_fix['site_buckets']) + len(retest_to_fix['project_buckets'])} buckets",
+                file=sys.stdout,
+            )
+
+            varys_client = varys(
+                profile="roz",
+                logfile=os.devnull,
+                log_level="CRITICAL",
+                auto_acknowledge=False,
+            )
+
+            varys_client.send(
+                message="Bucket controller failed in some manner :(",
+                exchange="mscape.restricted.announce",
+                queue_suffix="slack_integration",
+            )
+        else:
+            print("All buckets have correct policies", file=sys.stdout)
 
 
 def main():
@@ -1267,7 +1520,11 @@ def main():
         help="The AWS credentials file to use",
         type=str,
     )
-
+    parser.add_argument(
+        "--setup-messaging",
+        action="store_true",
+        help="Whether or not to setup messaging",
+    )
     args = parser.parse_args()
 
     run(args)

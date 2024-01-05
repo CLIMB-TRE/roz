@@ -219,6 +219,9 @@ class TestS3Controller(unittest.TestCase):
         self.mock_iam = moto.mock_iam()
         self.mock_iam.start()
 
+        self.mock_sns = moto.mock_sns()
+        self.mock_sns.start()
+
         self.s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk")
         self.iam_client = boto3.client("iam")
 
@@ -240,18 +243,19 @@ class TestS3Controller(unittest.TestCase):
 
         self.s3_client.close()
         self.iam_client.close()
+        self.mock_sns.stop()
 
     def test_s3_bucket_exists(self):
         self.s3_client.create_bucket(Bucket="fake_bucket")
 
         bucket_exists = s3_controller.check_bucket_exists(
-            "fake_bucket", fake_aws_cred_dict
+            "fake_bucket", fake_aws_cred_dict, "project1", "site1"
         )
 
         self.assertTrue(bucket_exists)
 
         bucket_does_not_exist = s3_controller.check_bucket_exists(
-            "other_fake_bucket", fake_aws_cred_dict
+            "other_fake_bucket", fake_aws_cred_dict, "project1", "site1"
         )
 
         self.assertFalse(bucket_does_not_exist)
@@ -262,7 +266,7 @@ class TestS3Controller(unittest.TestCase):
         )
 
         bucket_exists = s3_controller.check_bucket_exists(
-            "fake_bucket", fake_aws_cred_dict
+            "fake_bucket", fake_aws_cred_dict, "project1", "site1"
         )
 
         self.assertTrue(bucket_exists)
@@ -290,7 +294,7 @@ class TestS3Controller(unittest.TestCase):
             )
         )
 
-    @set_initial_no_auth_action_count(3)
+    @set_initial_no_auth_action_count(2)
     def test_can_site_put_objects(self):
         self.s3_client.create_bucket(
             Bucket="fake_bucket",
@@ -355,14 +359,16 @@ class TestS3Controller(unittest.TestCase):
         for project, project_config in config_map.items():
             for bucket, bucket_arn in project_config["project_buckets"]:
                 self.assertTrue(
-                    s3_controller.check_bucket_exists(bucket_arn, fake_aws_cred_dict)
+                    s3_controller.check_bucket_exists(
+                        bucket_arn, fake_aws_cred_dict, project, "admin"
+                    )
                 )
 
             for site, site_config in project_config["sites"].items():
                 for bucket, bucket_arn in site_config["site_buckets"]:
                     self.assertTrue(
                         s3_controller.check_bucket_exists(
-                            bucket_arn, fake_aws_cred_dict
+                            bucket_arn, fake_aws_cred_dict, project, site
                         )
                     )
 
@@ -383,7 +389,7 @@ class TestS3Controller(unittest.TestCase):
                         audit[project]["site_buckets"][site][(bucket, bucket_arn)]
                     )
 
-    def test_test_policies_fail(self):
+    def test_test_policies(self):
         config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
 
         s3_controller.check_bucket_exist_and_create(fake_aws_cred_dict, config_map)
