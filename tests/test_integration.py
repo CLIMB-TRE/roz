@@ -517,7 +517,7 @@ class Test_S3_matcher(unittest.TestCase):
                     "username": "guest",
                     "password": "guest",
                     "amqp_url": "127.0.0.1",
-                    "port": 5672,
+                    "use_tls": False,
                 }
             },
         }
@@ -702,7 +702,7 @@ class Test_ingest(unittest.TestCase):
                     "username": "guest",
                     "password": "guest",
                     "amqp_url": "127.0.0.1",
-                    "port": 5672,
+                    "use_tls": False,
                 }
             },
         }
@@ -837,7 +837,7 @@ class Test_mscape_validator(unittest.TestCase):
                     "username": "guest",
                     "password": "guest",
                     "amqp_url": "127.0.0.1",
-                    "port": 5672,
+                    "use_tls": False,
                 }
             },
         }
