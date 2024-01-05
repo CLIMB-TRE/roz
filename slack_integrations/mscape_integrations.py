@@ -56,13 +56,13 @@ while True:
         varys_client.acknowledge_message(new_artifact_message)
 
     public_result_message = varys_client.receive(
-        "inbound.results.mscape.public", queue_suffix="slack_integration", timeout=1
+        "inbound.results.mscapetest.public", queue_suffix="slack_integration", timeout=1
     )
 
     if public_result_message:
         in_dict = json.loads(public_result_message.body)
 
-        outcome = "Success" if in_dict["published"] else "Failure"
+        outcome = "Success" if in_dict.get("published") else "Failure"
 
         out_text = public_result_message_template.format(
             outcome, json.dumps(in_dict, indent=2)

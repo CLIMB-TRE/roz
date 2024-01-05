@@ -27,7 +27,7 @@ jobs:
     - name: Install Varys
       run: python3 -m pip install git+https://github.com/CLIMB-TRE/varys.git
     - name: Install Onyx-client
-      run: python3 -m pip install git+https://github.com/CLIMB-TRE/onyx-client.git
+      run: python3 -m pip install climb-onyx-client
     - name: Install Roz
       run: python3 -m pip install -e .
     - name: Test with pytest
@@ -39,7 +39,6 @@ jobs:
         name: s3-matcher-logfile-${{ matrix.python-version }}
         path: tests/s3_matcher.log
         retention-days: 5
-        if-no-files-found: error
       if: ${{ always() }}
     - name: 'Upload Test Messages Logfile'
       uses: actions/upload-artifact@v3
@@ -47,7 +46,6 @@ jobs:
         name: test-messages-logfile-${{ matrix.python-version }}
         path: tests/test_messages.log
         retention-days: 5
-        if-no-files-found: error
       if: ${{ always() }}
     - name: 'Upload Ingest Logfile'
       uses: actions/upload-artifact@v3
@@ -55,7 +53,6 @@ jobs:
         name: roz-ingest-logfile-${{ matrix.python-version }}
         path: tests/ingest.log
         retention-days: 5
-        if-no-files-found: error
       if: ${{ always() }}
     - name: 'Upload Mscape Validation Logfile'
       uses: actions/upload-artifact@v3
@@ -63,7 +60,6 @@ jobs:
         name: mscape-validation-logfile-${{ matrix.python-version }}
         path: tests/mscape_validation.log
         retention-days: 5
-        if-no-files-found: error
       if: ${{ always() }}
     - name: 'Upload Pathsafe Validation Logfile'
       uses: actions/upload-artifact@v3
@@ -71,5 +67,4 @@ jobs:
         name: pathsafe-validation-logfile-${{ matrix.python-version }}
         path: tests/pathsafe_validation.log
         retention-days: 5
-        if-no-files-found: error
       if: ${{ always() }}              

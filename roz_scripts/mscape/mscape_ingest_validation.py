@@ -12,18 +12,16 @@ import logging
 import argparse
 import multiprocessing as mp
 from collections import namedtuple
+import sys
 
 from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
-    get_credentials,
-    onyx_unsuppress,
-    onyx_submission,
+    get_s3_credentials,
+    csv_create,
     onyx_update,
 )
 from varys import varys
-
-from onyx import OnyxClient
 
 
 class worker_pool_handler:
@@ -34,10 +32,16 @@ class worker_pool_handler:
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
+        self._retry_log = {}
+
     def submit_job(self, message, args, ingest_pipe):
         self._log.info(
             f"Submitting job to the worker pool for UUID: {json.loads(message.body)['uuid']}"
         )
+
+        self._retry_log.setdefault(json.loads(message.body)["uuid"], 0)
+
+        self._retry_log[json.loads(message.body)["uuid"]] += 1
 
         self.worker_pool.apply_async(
             func=validate,
@@ -47,7 +51,18 @@ class worker_pool_handler:
         )
 
     def callback(self, validate_result):
-        success, payload, message = validate_result
+        success, alert, payload, message = validate_result
+
+        if alert:
+            self._log.error(
+                f"Alert flag set for UUID: {payload['uuid']}, manual intervention required"
+            )
+            self._varys_client.send(
+                message=payload,
+                exchange="restricted.mscape.announce",
+                queue_suffix="alert",
+            )
+
         if success:
             self._log.info(
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
@@ -55,25 +70,26 @@ class worker_pool_handler:
 
             self._varys_client.acknowledge_message(message)
 
-            new_artifact_payload = {
-                "publish_timestamp": time.time_ns(),
-                "cid": payload["cid"],
-                "site": payload["site"],
-                "platform": payload["platform"],
-                "match_uuid": payload["uuid"],
-            }
-
-            self._varys_client.send(
-                message=new_artifact_payload,
-                exchange="inbound.new_artifact.mscape",
-                queue_suffix="validator",
-            )
-
             self._varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.mscape.{payload['site']}",
+                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
                 queue_suffix="validator",
             )
+
+            if not payload["test_flag"]:
+                new_artifact_payload = {
+                    "publish_timestamp": time.time_ns(),
+                    "cid": payload["cid"],
+                    "site": payload["site"],
+                    "platform": payload["platform"],
+                    "match_uuid": payload["uuid"],
+                }
+
+                self._varys_client.send(
+                    message=new_artifact_payload,
+                    exchange="inbound.new_artifact.mscape",
+                    queue_suffix="validator",
+                )
 
         else:
             self._log.info(
@@ -81,10 +97,11 @@ class worker_pool_handler:
             )
 
             if payload["rerun"]:
-                if message.basic_deliver.redelivered:
+                if self._retry_log[payload["uuid"]] >= 3:
                     self._log.error(
-                        f"Message for UUID: {payload['uuid']} has been redelivered already, sending to dead letter queue"
+                        f"Message for UUID: {payload['uuid']} failed after {self._retry_log[payload['uuid']]} attempts, sending to dead letter queue"
                     )
+                    payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Validation failed for UUID: {payload['uuid']} unrecoverably"
                     )
@@ -97,7 +114,7 @@ class worker_pool_handler:
 
                     self._varys_client.send(
                         message=payload,
-                        exchange=f"inbound.results.mscape.{payload['site']}",
+                        exchange=f"inbound.results.{payload['project']}.{payload['site']}",
                         queue_suffix="validator",
                     )
 
@@ -113,7 +130,7 @@ class worker_pool_handler:
 
                 self._varys_client.send(
                     message=payload,
-                    exchange=f"inbound.results.mscape.{payload['site']}",
+                    exchange=f"inbound.results.{payload['project']}.{payload['site']}",
                     queue_suffix="validator",
                 )
 
@@ -134,7 +151,7 @@ def execute_validation_pipeline(
     payload: dict,
     args: argparse.Namespace,
     ingest_pipe: pipeline,
-) -> tuple[int, bool, str, str]:
+) -> tuple[int, str, str]:
     """Execute the validation pipeline for a given artifact
 
     Args:
@@ -144,7 +161,7 @@ def execute_validation_pipeline(
         ingest_pipe (pipeline): The instance of the ingest pipeline (see pipeline class)
 
     Returns:
-        tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
+        tuple[int, str, str]: Tuple containing the return code, stdout and stderr of the pipeline
     """
 
     parameters = {
@@ -184,16 +201,15 @@ def add_taxon_records(
     Returns:
         tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
     """
+
     nested_records = []
     binned_read_fail = False
+    alert = False
 
     with open(
-        os.path.join(result_path, "reads_by_taxa/reads_summary.json"), "rt"
+        os.path.join(result_path, "reads_by_taxa/reads_summary_combined.json"), "rt"
     ) as read_summary_fh:
         summary = json.load(read_summary_fh)
-
-        if not payload.get("ingest_errors"):
-            payload["ingest_errors"] = []
 
         for taxa in summary:
             taxon_dict = {
@@ -213,24 +229,28 @@ def add_taxon_records(
                     )
 
                     try:
+                        s3_bucket = "mscapetest-published-binned-reads"
+                        s3_key = f"{payload['cid']}/{payload['cid']}_{taxa['taxon']}_{i}.fastq.gz"
+                        s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
                         s3_client.upload_file(
                             fastq_path,
-                            "mscapetest-published-binned-reads",
-                            f"{payload['cid']}/{taxa['taxon']}_{i}.fastq.gz",
+                            s3_bucket,
+                            s3_key,
                         )
 
-                        taxon_dict[
-                            f"fastq_{i}"
-                        ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}_{i}.fastq.gz"
+                        taxon_dict[f"fastq_{i}"] = s3_uri
 
                     except Exception as add_taxon_record_exception:
                         log.error(
                             f"Failed to upload binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_taxon_record_exception}"
                         )
+                        payload.setdefault("ingest_errors", [])
                         payload["ingest_errors"].append(
                             f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
                         )
                         binned_read_fail = True
+                        alert = True
                         continue
 
             elif payload["platform"] == "ont":
@@ -239,28 +259,35 @@ def add_taxon_records(
                 )
 
                 try:
+                    s3_bucket = "mscapetest-published-binned-reads"
+                    s3_key = (
+                        f"{payload['cid']}/{payload['cid']}_{taxa['taxon']}.fastq.gz"
+                    )
+                    s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
                     s3_client.upload_file(
                         fastq_path,
-                        "mscapetest-published-binned-reads",
-                        f"{payload['cid']}/{taxa['taxon']}.fastq.gz",
+                        s3_bucket,
+                        s3_key,
                     )
 
-                    taxon_dict[
-                        f"fastq_1"
-                    ] = f"s3://mscapetest-published-binned-reads/{payload['cid']}/{taxa['taxon']}.fastq.gz"
+                    taxon_dict[f"fastq_1"] = s3_uri
 
                 except Exception as add_taxon_record_exception:
                     log.error(
                         f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_taxon_record_exception}"
                     )
+                    payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
                     )
                     binned_read_fail = True
+                    alert = True
                     continue
 
             else:
                 log.error(f"Unknown platform: {payload['platform']}")
+                payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
                     f"Unknown platform: {payload['platform']}"
                 )
@@ -270,14 +297,17 @@ def add_taxon_records(
             nested_records.append(taxon_dict)
 
     if not binned_read_fail:
-        update_fail, payload = onyx_update(
+        update_fail, update_alert, payload = onyx_update(
             payload=payload, fields={"taxa": nested_records}, log=log
         )
 
         if update_fail:
             binned_read_fail = True
 
-    return (binned_read_fail, payload)
+        if update_alert:
+            alert = True
+
+    return (binned_read_fail, alert, payload)
 
 
 def push_taxon_reports(
@@ -296,41 +326,49 @@ def push_taxon_reports(
     """
 
     taxon_report_fail = False
+    alert = False
 
     taxon_report_path = os.path.join(result_path, f"classifications")
+
     try:
         reports = os.listdir(taxon_report_path)
 
+        s3_bucket = "mscapetest-published-taxon-reports"
+
         for report in reports:
+            s3_key = f"{payload['cid']}/{payload['cid']}_{report}"
             # Add handling for Db in name etc
             s3_client.upload_file(
                 os.path.join(taxon_report_path, report),
-                "mscapetest-published-taxon-reports",
-                f"{payload['cid']}/{report}",
+                s3_bucket,
+                s3_key,
             )
 
     except Exception as push_taxon_report_exception:
         log.error(
             f"Failed to upload taxon classification to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {push_taxon_report_exception}"
         )
+        payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
             f"Failed to upload taxon classification to storage bucket"
         )
         taxon_report_fail = True
+        alert = True
 
     if not taxon_report_fail:
-        update_fail, payload = onyx_update(
+        update_fail, update_alert, payload = onyx_update(
             payload=payload,
-            fields={
-                "taxon_reports": f"s3://mscapetest-published-taxon-reports/{payload['cid']}/"
-            },
+            fields={"taxon_reports": f"s3://{s3_bucket}/{payload['cid']}/"},
             log=log,
         )
 
         if update_fail:
             taxon_report_fail = True
 
-    return (taxon_report_fail, payload)
+        if update_alert:
+            alert = True
+
+    return (taxon_report_fail, alert, payload)
 
 
 def push_report_file(
@@ -349,37 +387,48 @@ def push_report_file(
     """
 
     report_fail = False
+    alert = False
 
     report_path = os.path.join(result_path, f"{payload['uuid']}_report.html")
+
+    s3_bucket = "mscapetest-published-reports"
+
+    s3_key = f"{payload['cid']}_scylla_report.html"
+
+    s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
     try:
         # Add handling for Db in name etc
         s3_client.upload_file(
             report_path,
-            "mscapetest-published-reports",
-            f"{payload['cid']}_scylla_report.html",
+            s3_bucket,
+            s3_key,
         )
     except ClientError as push_report_file_exception:
         log.error(
             f"Failed to upload scylla report to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {push_report_file_exception}"
         )
+        payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
             f"Failed to upload scylla report to storage bucket"
         )
         report_fail = True
+        alert = True
 
     if not report_fail:
-        update_fail, payload = onyx_update(
+        update_fail, update_alert, payload = onyx_update(
             payload=payload,
-            fields={
-                "validation_report": f"s3://mscapetest-published-reports/{payload['cid']}_validation_report.html"
-            },
+            fields={"validation_report": s3_uri},
             log=log,
         )
 
         if update_fail:
             report_fail = True
 
-    return (report_fail, payload)
+        if update_alert:
+            alert = True
+
+    return (report_fail, alert, payload)
 
 
 def add_reads_record(
@@ -401,6 +450,9 @@ def add_reads_record(
     """
 
     raw_read_fail = False
+    alert = False
+
+    s3_bucket = "mscapetest-published-reads"
 
     if payload["platform"] == "illumina":
         for i in (1, 2):
@@ -409,68 +461,81 @@ def add_reads_record(
             )
 
             try:
+                s3_key = f"{payload['cid']}_{i}.fastq.gz"
+                s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
                 s3_client.upload_file(
                     fastq_path,
-                    "mscapetest-published-reads",
-                    f"{payload['cid']}_{i}.fastq.gz",
+                    s3_bucket,
+                    s3_key,
                 )
 
             except ClientError as add_reads_record_exception:
                 log.error(
                     f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_reads_record_exception}"
                 )
+                payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
                     f"Failed to upload reads to storage bucket"
                 )
                 raw_read_fail = True
+                alert = True
                 continue
 
         if not raw_read_fail:
-            update_fail, payload = onyx_update(
+            update_fail, update_alert, payload = onyx_update(
                 payload=payload,
                 fields={
-                    "fastq_1": f"s3://mscapetest-published-reads/{payload['cid']}_1.fastq.gz",
-                    "fastq_2": f"s3://mscapetest-published-reads/{payload['cid']}_2.fastq.gz",
+                    "fastq_1": f"s3://{s3_bucket}/{payload['cid']}_1.fastq.gz",
+                    "fastq_2": f"s3://{s3_bucket}/{payload['cid']}_2.fastq.gz",
                 },
                 log=log,
             )
 
             if update_fail:
                 raw_read_fail = True
+
+            if update_alert:
+                alert = True
 
     else:
         fastq_path = os.path.join(
             result_path, f"preprocess/{payload['uuid']}.fastp.fastq.gz"
         )
 
+        s3_key = f"{payload['cid']}.fastq.gz"
+
         try:
             s3_client.upload_file(
                 fastq_path,
-                "mscapetest-published-reads",
-                f"{payload['cid']}.fastq.gz",
+                s3_bucket,
+                s3_key,
             )
 
         except ClientError as add_reads_record_exception:
             log.error(
                 f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {add_reads_record_exception}"
             )
+            payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(f"Failed to upload reads to storage bucket")
 
             raw_read_fail = True
+            alert = True
 
         if not raw_read_fail:
-            update_fail, payload = onyx_update(
+            update_fail, update_alert, payload = onyx_update(
                 payload=payload,
-                fields={
-                    "fastq_1": f"s3://mscapetest-published-reads/{payload['cid']}.fastq.gz"
-                },
+                fields={"fastq_1": f"s3://{s3_bucket}/{s3_key}"},
                 log=log,
             )
 
             if update_fail:
                 raw_read_fail = True
 
-    return (raw_read_fail, payload)
+            if update_alert:
+                alert = True
+
+    return (raw_read_fail, alert, payload)
 
 
 def ret_0_parser(
@@ -509,25 +574,31 @@ def ret_0_parser(
         log.error(
             f"Could not open pipeline trace for UUID: {payload['uuid']} despite NXF exit code 0 due to error: {pipeline_trace_exception}"
         )
+        payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append("couldn't open nxf ingest pipeline trace")
+        payload["rerun"] = True
         ingest_fail = True
+        # Wait 120 seconds, hopefully transient errors don't last that long 🙃
+        time.sleep(120)
 
     for process, trace in trace_dict.items():
         if trace["exit"] != "0":
             if (
-                process.startswith("extract_paired_reads")
-                or process.startswith("extract_reads")
+                process.startswith("extract_taxa_reads")
+                or process.startswith("extract_taxa_paired_reads")
             ) and trace["exit"] == "2":
+                payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
                     "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
                 )
                 ingest_fail = True
             elif (
-                process.startswith("extract_paired_reads")
-                or process.startswith("extract_reads")
+                process.startswith("extract_taxa_reads")
+                or process.startswith("extract_taxa_paired_reads")
             ) and trace["exit"] == "3":
                 continue
             else:
+                payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
                     f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
                 )
@@ -540,8 +611,18 @@ def validate(
     message: namedtuple,
     args: argparse.Namespace,
     ingest_pipe: pipeline,
-):
-    s3_credentials = get_credentials()
+) -> tuple[bool, bool, dict, namedtuple]:
+    """Function to validate a single artifact and update the Onyx record accordingly
+
+    Args:
+        message (namedtuple): Varys message object for the current artifact
+        args (argparse.Namespace): Command line arguments object
+        ingest_pipe (pipeline): Instance of the ingest pipeline (see pipeline class)
+
+    Returns:
+        tuple[bool, bool, dict, namedtuple]: Tuple containing a bool indicating whether the validation was successful, a bool indicating whether to squawk in the alert channel, the updated payload dict and the Varys message object
+    """
+    s3_credentials = get_s3_credentials()
 
     s3_client = boto3.client(
         "s3",
@@ -554,23 +635,21 @@ def validate(
 
     to_validate = json.loads(message.body)
 
-    log.info(f"Started validation func for UUID: {to_validate['uuid']}")
-
     payload = copy.deepcopy(to_validate)
 
-    payload["rerun"] = False
+    payload.setdefault("rerun", False)
+
+    alert = False
 
     # This client is purely for Mscape, ignore all other messages
     if to_validate["project"] != "mscapetest":
         log.info(
             f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
         )
-        return (False, payload, message)
+        return (False, alert, payload, message)
 
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
-        return (False, payload, message)
-
-    log.info(f"Submitting ingest pipeline for UUID: {payload['uuid']}")
+        return (False, alert, payload, message)
 
     rc, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, ingest_pipe=ingest_pipe
@@ -578,18 +657,18 @@ def validate(
 
     if ingest_pipe.cmd:
         log.info(
-            f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
+            f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {' '.join(str(x) for x in ingest_pipe.cmd)}"
         )
 
     args.result_dir = Path(args.result_dir)
 
-    result_path = os.path.join(args.result_dir.resolve(), payload["uuid"])
+    result_path = Path(args.result_dir.resolve(), payload["uuid"])
 
     if not os.path.exists(result_path):
         os.makedirs(result_path)
 
-    with open(os.path.join(result_path, "nextflow.stdout"), "wt") as out_fh, open(
-        os.path.join(result_path, "nextflow.stderr"), "wt"
+    with open(Path(result_path, "nextflow.stdout"), "wt") as out_fh, open(
+        Path(result_path, "nextflow.stderr"), "wt"
     ) as err_fh:
         out_fh.write(stdout)
         err_fh.write(stderr)
@@ -600,7 +679,7 @@ def validate(
         )
         payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload, message)
+        return (False, alert, payload, message)
 
     ingest_fail, payload = ret_0_parser(
         log=log,
@@ -610,7 +689,7 @@ def validate(
 
     if ingest_fail:
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload, message)
+        return (False, alert, payload, message)
 
     if payload["test_flag"]:
         log.info(
@@ -618,53 +697,62 @@ def validate(
         )
         payload["test_ingest_result"] = True
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload, message)
+        return (True, alert, payload, message)
 
-    submission_fail, payload = onyx_submission(
-        log=log,
+    create_success, alert, payload = csv_create(
         payload=payload,
+        log=log,
+        test_submission=False,
     )
 
-    if submission_fail:
+    if not create_success:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload, message)
+        return (False, alert, payload, message)
+
+    payload["onyx_create_status"] = True
+    payload["created"] = True
 
     log.info(
         f"Uploading files to long-term storage buckets for CID: {payload['cid']} after sucessful Onyx submission"
     )
 
-    raw_read_fail, payload = add_reads_record(
+    raw_read_fail, reads_alert, payload = add_reads_record(
         payload=payload,
         s3_client=s3_client,
         result_path=result_path,
         log=log,
     )
 
-    binned_read_fail, payload = add_taxon_records(
+    binned_read_fail, taxa_alert, payload = add_taxon_records(
         payload=payload, result_path=result_path, log=log, s3_client=s3_client
     )
 
-    report_fail, payload = push_report_file(
+    report_fail, report_alert, payload = push_report_file(
         payload=payload, result_path=result_path, log=log, s3_client=s3_client
     )
 
-    taxon_report_fail, payload = push_taxon_reports(
+    taxon_report_fail, taxa_reports_alert, payload = push_taxon_reports(
         payload=payload, result_path=result_path, log=log, s3_client=s3_client
     )
+
+    if reads_alert or taxa_alert or report_alert or taxa_reports_alert:
+        alert = True
 
     if raw_read_fail or binned_read_fail or report_fail or taxon_report_fail:
         log.error(
             f"Failed to upload at least one file to long-term storage for CID: {payload['cid']}"
         )
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload, message)
+        return (False, alert, payload, message)
 
-    unsuppress_fail, payload = onyx_unsuppress(payload=payload, log=log)
+    unsuppress_fail, alert, payload = onyx_update(
+        payload=payload, log=log, fields={"suppressed": False}
+    )
 
     if unsuppress_fail:
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, payload, message)
+        return (False, alert, payload, message)
 
     payload["published"] = True
     log.info(
@@ -682,7 +770,15 @@ def validate(
             f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_rc}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
         )
 
-    return (True, payload, message)
+    return (True, alert, payload, message)
+
+    # except BaseException as e:
+    #     log.error(
+    #         f"Unhandled exception for UUID: {payload['uuid']}, with CID: {payload['cid']}, exception: {e}"
+    #     )
+    #     alert = True
+    #     payload["rerun"] = True
+    #     return (False, alert, payload, message)
 
 
 def run(args):
@@ -696,7 +792,8 @@ def run(args):
     )
 
     ingest_pipe = pipeline(
-        pipe="snowy-leopard/scylla",
+        pipe=args.ingest_pipeline,
+        branch=args.pipeline_branch,
         profile="docker",
         config=args.nxf_config,
         nxf_executable=args.nxf_executable,
@@ -724,13 +821,29 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--logfile", type=Path)
     parser.add_argument("--log_level", type=str, default="DEBUG")
+    parser.add_argument("--ingest_pipeline", type=str, default="snowy-leopard/scylla")
+    parser.add_argument("--pipeline_branch", type=str, default="main")
     parser.add_argument("--nxf_config")
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)
-    parser.add_argument("--pipeline_timeout", type=int, default=10800)
+    parser.add_argument(
+        "--pipeline_timeout", type=int, default=43200
+    )  # 12 hours, might not even be enough for larger datasets (e.g. promethion / HiSeq)
     args = parser.parse_args()
+
+    for i in (
+        "ONYX_DOMAIN",
+        "ONYX_USERNAME",
+        "ONYX_PASSWORD",
+        "VARYS_CFG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+    ):
+        if not os.getenv(i):
+            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            sys.exit(3)
 
     run(args)
 

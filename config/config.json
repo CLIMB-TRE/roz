@@ -6,85 +6,91 @@
     ],
     "configs": {
         "mscape": {
-            "file_naming": {
-                "identical": true,
-                "allowed_characters": "alphanumeric,_,-,."
-            },
-            "artifact_layout": "project.sample_name.run_name",
-            "files": [
-                ".1.fastq.gz",
-                ".2.fastq.gz",
-                ".csv"
-            ],
-            "file_specs": {
-                "illumina": {
-                    ".1.fastq.gz": {
-                        "sections": 6,
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip"
-                    },
-                    ".2.fastq.gz": {
-                        "sections": 6,
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip"
-                    },
-                    ".csv": {
-                        "sections": 4,
-                        "layout": "project.sample_id.run_name.ftype"
-                    },
-                    "match_size": 3,
-                    "files": [
-                        ".1.fastq.gz",
-                        ".2.fastq.gz",
-                        ".csv"
-                    ]
-                },
-                "ont": {
-                    ".fastq.gz": {
-                        "sections": 5,
-                        "layout": "project.sample_id.run_name.ftype.gzip"
-                    },
-                    ".csv": {
-                        "sections": 4,
-                        "layout": "project.sample_id.run_name.ftype"
-                    },
-                    "match_size": 2,
-                    "files": [
-                        ".ont.fastq.gz",
-                        ".csv"
-                    ]
-                }
-            }
-        },
-        "mscapetest": {
-            "file_naming": {
-                "identical": true,
-                "allowed_characters": "alphanumeric,_,-,."
-            },
             "artifact_layout": "project.sample_id.run_name",
             "files": [
                 ".1.fastq.gz",
                 ".2.fastq.gz",
                 ".csv"
             ],
+            "sites": [
+                "birm",
+                "public"
+            ],
+            "bucket_policies": {
+                "site_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "project_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "site_read": [
+                    "get",
+                    "list"
+                ],
+                "project_read": [
+                    "get",
+                    "list"
+                ],
+                "project_private": []
+            },
+            "site_buckets": {
+                "ingest": {
+                    "name_layout": "{project}-{site}-{platform}-{test_flag}",
+                    "policy": "site_ingest",
+                    "owner": "{site}"
+                }
+            },
+            "notification_bucket_configs": {
+                "ingest": {
+                    "rmq_exchange": "inbound.s3",
+                    "rmq_queue_env": "s3_matcher",
+                    "amqps": false
+                }
+            },
+            "project_buckets": {
+                "published_reads": {
+                    "name_layout": "{project}-published-reads",
+                    "policy": "project_private",
+                    "owner": "admin"
+                },
+                "published_binned_reads": {
+                    "name_layout": "{project}-published-binned-reads",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_taxon_reports": {
+                    "name_layout": "{project}-published-taxon-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_scylla_reports": {
+                    "name_layout": "{project}-published-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "ingest": {
+                    "name_layout": "{project}-public-{platform}-{test_flag}",
+                    "policy": "project_ingest",
+                    "owner": "admin"
+                }
+            },
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
-                        "sections": 6,
                         "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
                     ".2.fastq.gz": {
-                        "sections": 6,
                         "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
                     ".csv": {
-                        "sections": 5,
-                        "layout": "project.sample_id.run_name.platform.ftype"
-                    },
-                    "match_size": 3,
-                    "files": [
-                        ".1.fastq.gz",
-                        ".2.fastq.gz",
-                        ".csv"
-                    ]
+                        "layout": "project.sample_id.run_name.ftype"
+                    }
                 },
                 "ont": {
                     ".fastq.gz": {
@@ -92,14 +98,108 @@
                         "layout": "project.sample_id.run_name.ftype.gzip"
                     },
                     ".csv": {
-                        "sections": 5,
-                        "layout": "project.sample_id.run_name.platform.ftype"
+                        "sections": 4,
+                        "layout": "project.sample_id.run_name.ftype"
+                    }
+                }
+            }
+        },
+        "mscapetest": {
+            "artifact_layout": "project.sample_id.run_name",
+            "files": [
+                ".1.fastq.gz",
+                ".2.fastq.gz",
+                ".csv"
+            ],
+            "sites": [
+                "birm",
+                "public"
+            ],
+            "bucket_policies": {
+                "site_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "project_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "site_read": [
+                    "get",
+                    "list"
+                ],
+                "project_read": [
+                    "get",
+                    "list"
+                ],
+                "project_private": []
+            },
+            "site_buckets": {
+                "ingest": {
+                    "name_layout": "{project}-{site}-{platform}-{test_flag}",
+                    "policy": "site_ingest",
+                    "owner": "{site}"
+                }
+            },
+            "notification_bucket_configs": {
+                "ingest": {
+                    "rmq_exchange": "inbound.s3",
+                    "rmq_queue_env": "s3_matcher",
+                    "amqps": false
+                }
+            },
+            "project_buckets": {
+                "published_reads": {
+                    "name_layout": "{project}-published-reads",
+                    "policy": "project_private",
+                    "owner": "admin"
+                },
+                "published_binned_reads": {
+                    "name_layout": "{project}-published-binned-reads",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_taxon_reports": {
+                    "name_layout": "{project}-published-taxon-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_scylla_reports": {
+                    "name_layout": "{project}-published-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "ingest": {
+                    "name_layout": "{project}-public-{platform}-{test_flag}",
+                    "policy": "project_ingest",
+                    "owner": "admin"
+                }
+            },
+            "file_specs": {
+                "illumina": {
+                    ".1.fastq.gz": {
+                        "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
-                    "match_size": 2,
-                    "files": [
-                        ".fastq.gz",
-                        ".csv"
-                    ]
+                    ".2.fastq.gz": {
+                        "layout": "project.sample_id.run_name.direction.ftype.gzip"
+                    },
+                    ".csv": {
+                        "layout": "project.sample_id.run_name.ftype"
+                    }
+                },
+                "ont": {
+                    ".fastq.gz": {
+                        "sections": 5,
+                        "layout": "project.sample_id.run_name.ftype.gzip"
+                    },
+                    ".csv": {
+                        "sections": 4,
+                        "layout": "project.sample_id.run_name.ftype"
+                    }
                 }
             }
         },
@@ -114,6 +214,57 @@
                 ".2.fastq.gz",
                 ".csv"
             ],
+            "sites": [
+                "birm",
+                "public"
+            ],
+            "bucket_policies": {
+                "site_ingest": [
+                    "get",
+                    "put",
+                    "list",
+                    "delete"
+                ],
+                "site_read": [
+                    "get",
+                    "list"
+                ],
+                "project_read": [
+                    "get",
+                    "list"
+                ],
+                "project_private": []
+            },
+            "platform_buckets": {
+                "ingest": {
+                    "name_layout": "{project}-{site}-{platform}-{test_flag}",
+                    "policy": "site_ingest",
+                    "owner": "{site}"
+                }
+            },
+            "site_buckets": {},
+            "project_buckets": {
+                "published_reads": {
+                    "name_layout": "{project}-published-reads",
+                    "policy": "project_private",
+                    "owner": "admin"
+                },
+                "published_binned_reads": {
+                    "name_layout": "{project}-published-binned-reads",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_taxon_reports": {
+                    "name_layout": "{project}-published-taxon-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                },
+                "published_scylla_reports": {
+                    "name_layout": "{project}-published-reports",
+                    "policy": "project_read",
+                    "owner": "admin"
+                }
+            },
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
@@ -125,15 +276,9 @@
                         "layout": "project.sample_id.run_name.direction.ftype.gzip"
                     },
                     ".csv": {
-                        "sections": 5,
-                        "layout": "project.sample_id.run_name.platform.ftype"
-                    },
-                    "match_size": 3,
-                    "files": [
-                        ".1.fastq.gz",
-                        ".2.fastq.gz",
-                        ".csv"
-                    ]
+                        "sections": 4,
+                        "layout": "project.sample_id.run_name.ftype"
+                    }
                 }
             }
         }
