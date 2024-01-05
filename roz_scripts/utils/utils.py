@@ -38,7 +38,7 @@ class pipeline:
         config: Path,
         nxf_executable: Path,
         profile=None,
-        timeout=3600,
+        timeout=10800,
     ):
         """
         Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
