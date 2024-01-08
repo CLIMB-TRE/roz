@@ -247,6 +247,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
             )
             if not message:
                 timeout = True
+                break
 
             messages.append(
                 (
