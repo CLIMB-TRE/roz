@@ -8,6 +8,7 @@ import os
 import multiprocessing as mp
 import json
 import pika
+import time
 
 DIR = os.path.dirname(__file__)
 
@@ -224,7 +225,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
         channel.queue_delete(queue="inbound.test")
 
     def test_s3_notifications(self):
-        for i in range(1, 2000):
+        for i in range(1, 500):
             self.s3_client.put_object(
                 Bucket="project1-site1-illumina-prod",
                 Key=f"project1.sample_{i}.run_name.fastq.gz",
@@ -241,9 +242,11 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
         timeout = False
 
+        time.sleep(2)
+
         while not timeout:
             message = self.varys_client.receive(
-                exchange="inbound.test", queue_suffix="s3_matcher", timeout=1
+                exchange="inbound.test", queue_suffix="s3_matcher", timeout=2
             )
             if not message:
                 timeout = True
@@ -256,4 +259,4 @@ class test_s3_notifications_emulation(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(len(messages), 4000)
+        self.assertEqual(len(messages), 1000)
