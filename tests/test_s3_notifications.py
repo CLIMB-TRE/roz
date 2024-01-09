@@ -231,6 +231,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
         channel.queue_delete(queue="inbound.test")
 
     def test_s3_notifications(self):
+        time.sleep(5)
         for i in range(1, 500):
             self.s3_client.put_object(
                 Bucket="project1-site1-illumina-prod",
