@@ -209,7 +209,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="project1-site2-illumina-prod")
 
         self.s3_notifications = mp.Process(
-            target=s3_notifications.run, args=SimpleNamespace(sleep_interval=1)
+            target=s3_notifications.run, args=(SimpleNamespace(sleep_interval=1))
         )
 
     def tearDown(self) -> None:
