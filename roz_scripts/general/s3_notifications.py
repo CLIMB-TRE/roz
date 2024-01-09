@@ -160,10 +160,9 @@ def run(args):
 
                     for obj in objects:
                         last_modified = obj["LastModified"]
-                        if (
-                            start_timestamp <= last_modified <= end_timestamp
-                            and obj["ETag"] not in sent_etags[bucket_arn]
-                        ):
+                        if (start_timestamp <= last_modified <= end_timestamp) and obj[
+                            "ETag"
+                        ] not in sent_etags[bucket_arn]:
                             message = obj_to_message(obj)
                             log.info(
                                 f"Sending message for new object: {obj['Key']}: {message}"
@@ -186,9 +185,8 @@ def run(args):
                         for obj in objects:
                             last_modified = obj["LastModified"]
                             if (
-                                last_modified >= start_timestamp
-                                and obj["ETag"] not in sent_etags[bucket_arn]
-                            ):
+                                start_timestamp <= last_modified <= end_timestamp
+                            ) and obj["ETag"] not in sent_etags[bucket_arn]:
                                 message = obj_to_message(obj)
                                 varys_client.send(
                                     message=message,
@@ -197,7 +195,7 @@ def run(args):
                                 )
                                 sent_etags[bucket_arn].add(obj["ETag"])
 
-        start_timestamp = copy.deepcopy(end_timestamp)
+        start_timestamp = end_timestamp
 
 
 def main():
