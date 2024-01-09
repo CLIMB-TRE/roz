@@ -258,10 +258,12 @@ class test_s3_notifications_emulation(unittest.TestCase):
                 timeout = True
                 break
 
+            msg_data = json.loads(message.body)
+
             messages.append(
                 (
-                    message["Records"][0]["s3"]["bucket"]["name"],
-                    message["Records"][0]["s3"]["object"]["key"],
+                    msg_data["Records"][0]["s3"]["bucket"]["name"],
+                    msg_data["Records"][0]["s3"]["object"]["key"],
                 )
             )
 
