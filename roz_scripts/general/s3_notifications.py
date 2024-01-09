@@ -197,7 +197,7 @@ def run(args):
                                 )
                                 sent_etags[bucket_arn].add(obj["ETag"])
 
-        start_timestamp = end_timestamp
+        start_timestamp = copy.deepcopy(end_timestamp)
 
 
 def main():
