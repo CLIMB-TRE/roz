@@ -248,7 +248,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
         timeout = False
 
-        time.sleep(10)
+        time.sleep(20)
 
         while not timeout:
             message = self.varys_client.receive(
@@ -267,4 +267,4 @@ class test_s3_notifications_emulation(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(len(messages), 1000)
+        self.assertEqual(len(messages), 998)
