@@ -248,11 +248,11 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
         timeout = False
 
-        time.sleep(5)
+        time.sleep(10)
 
         while not timeout:
             message = self.varys_client.receive(
-                exchange="inbound.s3", queue_suffix="s3_matcher", timeout=5
+                exchange="inbound.s3", queue_suffix="s3_matcher", timeout=10
             )
             if not message:
                 timeout = True
