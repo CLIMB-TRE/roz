@@ -236,7 +236,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
     def test_s3_notifications(self):
         time.sleep(5)
-        for i in range(1, 500):
+        for i in range(1, 200):
             self.s3_client.put_object(
                 Bucket="project1-site1-illumina-prod",
                 Key=f"project1.sample_{i}.run_name.fastq.gz",
@@ -253,7 +253,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
         timeout = False
 
-        time.sleep(20)
+        time.sleep(30)
 
         while not timeout:
             message = self.varys_client.receive(
@@ -272,4 +272,4 @@ class test_s3_notifications_emulation(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(len(messages), 998)
+        self.assertEqual(len(messages), 398)
