@@ -72,11 +72,13 @@ def get_bucket_objects(s3_client: boto3.client, bucket_arn: str) -> list:
         for response in response_iterator:
             if "Contents" in response:
                 for obj in response["Contents"]:
+                    obj["Bucket"] = bucket_arn
+                    obj["BucketArn"] = f"arn:aws:s3:::{bucket_arn}"
                     objects.append(obj)
 
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchBucket":
-            return False
+            return []
 
         raise e
 
@@ -85,9 +87,7 @@ def get_bucket_objects(s3_client: boto3.client, bucket_arn: str) -> list:
 
 def obj_to_message(obj):
     message = copy.deepcopy(message_template)
-    message["Records"][0]["eventTime"] = obj["LastModified"].strftime(
-        "%Y-%m-%dT%H:%M:%S.%fZ"
-    )
+    message["Records"][0]["eventTime"] = obj["LastModified"]
     message["Records"][0]["userIdentity"]["principalId"] = obj["Owner"]["ID"]
     message["Records"][0]["requestParameters"]["sourceIPAddress"] = obj["Owner"][
         "DisplayName"
@@ -100,7 +100,6 @@ def obj_to_message(obj):
     message["Records"][0]["s3"]["object"]["key"] = obj["Key"]
     message["Records"][0]["s3"]["object"]["size"] = obj["Size"]
     message["Records"][0]["s3"]["object"]["eTag"] = obj["ETag"].replace('"', "")
-    message["Records"][0]["s3"]["object"]["versionId"] = obj["VersionId"]
     message["Records"][0]["s3"]["object"]["sequencer"] = obj["Owner"]["ID"]
     message["Records"][0]["eventId"] = obj["Owner"]["ID"]
     message["Records"][0]["opaqueData"] = obj["Owner"]["ID"]
@@ -140,7 +139,7 @@ def run(args):
 
     log = init_logger(
         name="s3_notifications",
-        logfile=os.getenv("S3_NOTIFICATIONS_LOG"),
+        log_path=os.getenv("S3_NOTIFICATIONS_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),
     )
 
@@ -158,9 +157,7 @@ def run(args):
                     sent_etags.setdefault(bucket_arn, set())
 
                     for obj in objects:
-                        last_modified = datetime.datetime.strptime(
-                            obj["LastModified"], "%Y-%m-%dT%H:%M:%S.%fZ"
-                        )
+                        last_modified = obj["LastModified"]
                         if (
                             start_timestamp <= last_modified <= end_timestamp
                             and obj["ETag"] not in sent_etags[bucket_arn]
@@ -182,11 +179,10 @@ def run(args):
                         objects = get_bucket_objects(
                             s3_client=s3_client, bucket_arn=bucket_arn
                         )
+                        sent_etags.setdefault(bucket_arn, set())
 
                         for obj in objects:
-                            last_modified = datetime.datetime.strptime(
-                                obj["LastModified"], "%Y-%m-%dT%H:%M:%S.%fZ"
-                            )
+                            last_modified = obj["LastModified"]
                             if (
                                 last_modified >= start_timestamp
                                 and obj["ETag"] not in sent_etags[bucket_arn]

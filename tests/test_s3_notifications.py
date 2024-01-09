@@ -31,6 +31,9 @@ class test_s3_notifications_emulation(unittest.TestCase):
         os.environ["UNIT_TESTING"] = "True"
 
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
+        os.environ["ROZ_CONFIG_JSON"] = ROZ_CONFIG_PATH
+        os.environ["S3_NOTIFICATIONS_LOG"] = TEST_MESSAGE_LOG_FILENAME
+        os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
 
         config = {
             "version": "0.1",
