@@ -145,12 +145,16 @@ def run(args):
         log_level=os.getenv("INGEST_LOG_LEVEL"),
     )
 
-    start_timestamp = datetime.datetime.now(datetime.timezone.utc)
+    start_timestamp = datetime.datetime.now(datetime.timezone.utc).replace(
+        microsecond=0
+    )
 
     while True:
         log.info(f"Sleeping for {args.sleep_interval} seconds")
         time.sleep(args.sleep_interval)
-        end_timestamp = datetime.datetime.now(datetime.timezone.utc)
+        end_timestamp = datetime.datetime.now(datetime.timezone.utc).replace(
+            microsecond=0
+        )
         log.info(
             f"Checking for new objects between {start_timestamp} and {end_timestamp}"
         )
