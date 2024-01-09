@@ -202,7 +202,7 @@ def run(args):
                                     varys_client.send(
                                         message=message,
                                         exchange="inbound.s3",
-                                        queue_suffix="ingest",
+                                        queue_suffix="s3_matcher",
                                     )
                                     sent_etags[bucket_arn].add(obj["ETag"])
                                 else:

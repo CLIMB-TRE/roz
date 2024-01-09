@@ -240,13 +240,13 @@ class test_s3_notifications_emulation(unittest.TestCase):
             self.s3_client.put_object(
                 Bucket="project1-site1-illumina-prod",
                 Key=f"project1.sample_{i}.run_name.fastq.gz",
-                Body=f"{i}",
+                Body=f"project1-site1-illumina-prod_{i}",
             )
 
             self.s3_client.put_object(
                 Bucket="project1-site2-illumina-prod",
                 Key=f"project1.sample_{i}.run_name.fastq.gz",
-                Body=f"{i}",
+                Body=f"project1-site2-illumina-prod_{i}",
             )
 
         messages = []
