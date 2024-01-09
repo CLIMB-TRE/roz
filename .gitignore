@@ -3,4 +3,6 @@ build*
 dist*
 *__pycache__*
 */fake_*
-test.log
+*.log
+*roz_config.json
+*varys_cfg.json

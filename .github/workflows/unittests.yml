@@ -1,6 +1,6 @@
 name: Roz integration test
 
-on: [ push, pull_request ]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -14,57 +14,58 @@ jobs:
         image: rabbitmq
         ports:
           - 5672:5672
+          - 5671:5671
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install pytest moto[server]
-    - name: Install Varys
-      run: python3 -m pip install git+https://github.com/CLIMB-TRE/varys.git
-    - name: Install Onyx-client
-      run: python3 -m pip install climb-onyx-client
-    - name: Install Roz
-      run: python3 -m pip install -e .
-    - name: Test with pytest
-      run: |
-        pytest tests/
-    - name: 'Upload S3 Matcher Logfile'
-      uses: actions/upload-artifact@v3
-      with:
-        name: s3-matcher-logfile-${{ matrix.python-version }}
-        path: tests/s3_matcher.log
-        retention-days: 5
-      if: ${{ always() }}
-    - name: 'Upload Test Messages Logfile'
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-messages-logfile-${{ matrix.python-version }}
-        path: tests/test_messages.log
-        retention-days: 5
-      if: ${{ always() }}
-    - name: 'Upload Ingest Logfile'
-      uses: actions/upload-artifact@v3
-      with:
-        name: roz-ingest-logfile-${{ matrix.python-version }}
-        path: tests/ingest.log
-        retention-days: 5
-      if: ${{ always() }}
-    - name: 'Upload Mscape Validation Logfile'
-      uses: actions/upload-artifact@v3
-      with:
-        name: mscape-validation-logfile-${{ matrix.python-version }}
-        path: tests/mscape_validation.log
-        retention-days: 5
-      if: ${{ always() }}
-    - name: 'Upload Pathsafe Validation Logfile'
-      uses: actions/upload-artifact@v3
-      with:
-        name: pathsafe-validation-logfile-${{ matrix.python-version }}
-        path: tests/pathsafe_validation.log
-        retention-days: 5
-      if: ${{ always() }}              
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest moto[server]
+      - name: Install Varys
+        run: python3 -m pip install git+https://github.com/CLIMB-TRE/varys.git
+      - name: Install Onyx-client
+        run: python3 -m pip install climb-onyx-client
+      - name: Install Roz
+        run: python3 -m pip install -e .
+      - name: Test with pytest
+        run: |
+          pytest tests/
+      - name: "Upload S3 Matcher Logfile"
+        uses: actions/upload-artifact@v3
+        with:
+          name: s3-matcher-logfile-${{ matrix.python-version }}
+          path: tests/s3_matcher.log
+          retention-days: 5
+        if: ${{ always() }}
+      - name: "Upload Test Messages Logfile"
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-messages-logfile-${{ matrix.python-version }}
+          path: tests/test_messages.log
+          retention-days: 5
+        if: ${{ always() }}
+      - name: "Upload Ingest Logfile"
+        uses: actions/upload-artifact@v3
+        with:
+          name: roz-ingest-logfile-${{ matrix.python-version }}
+          path: tests/ingest.log
+          retention-days: 5
+        if: ${{ always() }}
+      - name: "Upload Mscape Validation Logfile"
+        uses: actions/upload-artifact@v3
+        with:
+          name: mscape-validation-logfile-${{ matrix.python-version }}
+          path: tests/mscape_validation.log
+          retention-days: 5
+        if: ${{ always() }}
+      - name: "Upload Pathsafe Validation Logfile"
+        uses: actions/upload-artifact@v3
+        with:
+          name: pathsafe-validation-logfile-${{ matrix.python-version }}
+          path: tests/pathsafe_validation.log
+          retention-days: 5
+        if: ${{ always() }}
