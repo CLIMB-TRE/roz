@@ -87,7 +87,9 @@ def get_bucket_objects(s3_client: boto3.client, bucket_arn: str) -> list:
 
 def obj_to_message(obj):
     message = copy.deepcopy(message_template)
-    message["Records"][0]["eventTime"] = obj["LastModified"]
+    message["Records"][0]["eventTime"] = obj["LastModified"].strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     message["Records"][0]["userIdentity"]["principalId"] = obj["Owner"]["ID"]
     message["Records"][0]["requestParameters"]["sourceIPAddress"] = obj["Owner"][
         "DisplayName"
