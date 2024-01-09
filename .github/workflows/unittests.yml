@@ -69,3 +69,10 @@ jobs:
           path: tests/pathsafe_validation.log
           retention-days: 5
         if: ${{ always() }}
+      - name: "Upload RabbitMQ Logfile"
+        uses: actions/upload-artifact@v3
+        with:
+          name: rabbit-logfile-${{ matrix.python-version }}
+          path: /var/logs/rabbitmq/rabbit@*.log
+          retention-days: 5
+        if: ${{ always() }}
