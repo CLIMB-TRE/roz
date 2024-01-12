@@ -6,7 +6,8 @@ on:
     branches: [main]
     types:
       - completed
-
+  release:
+    types: [published]
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -19,8 +20,8 @@ jobs:
           flavor: |
             latest=true
           tags: |
-            type=sha
             type=semver,pattern={{version}}
+            type=sha
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up QEMU
