@@ -16,6 +16,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: quay.io/biowilko/roz
+          flavor: |
+            latest=true
+          tags: |
+            type=sha
+            type=semver,pattern={{version}}
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up QEMU
