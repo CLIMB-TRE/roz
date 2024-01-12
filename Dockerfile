@@ -1,5 +1,7 @@
 FROM python:3.12-alpine
 
+COPY * ./roz/
+
 RUN apk add --no-cache wget \
     git \
     openjdk21-jre-headless \
@@ -21,7 +23,9 @@ RUN pip3 install git+https://github.com/CLIMB-TRE/varys.git
 
 RUN pip3 install climb-onyx-client
 
-RUN pip3 install .
+RUN pip3 install ./roz
+
+RUN rm -rf /roz
 
 ENV PATH=/opt/bin:$PATH
 
