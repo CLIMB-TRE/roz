@@ -1,4 +1,4 @@
-name: Roz integration test
+name: roz_unit_tests
 
 on: [push, pull_request]
 
