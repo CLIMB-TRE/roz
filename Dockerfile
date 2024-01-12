@@ -1,6 +1,6 @@
 FROM python:3.12-alpine
 
-COPY * ./roz/
+COPY . ./roz/
 
 RUN apk add --no-cache wget \
     git \
