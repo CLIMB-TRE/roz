@@ -2,7 +2,8 @@ FROM python:3.12-alpine
 
 RUN apk add --no-cache wget \
     git \
-    default-jre
+    openjdk21-jre-headless \
+    bash
 
 RUN wget --directory-prefix /opt/bin/ https://github.com/nextflow-io/nextflow/releases/download/v23.10.0/nextflow 
 
