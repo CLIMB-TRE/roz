@@ -28,4 +28,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: biowilko/roz:latest
+          tags: quay.io/biowilko/roz:latest
