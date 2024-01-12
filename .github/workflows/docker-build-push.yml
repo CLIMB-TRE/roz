@@ -11,6 +11,11 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: quay.io/biowilko/roz
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up QEMU
@@ -29,4 +34,5 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: quay.io/biowilko/roz:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
