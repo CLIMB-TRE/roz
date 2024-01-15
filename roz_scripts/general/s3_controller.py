@@ -1057,8 +1057,10 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
 
         for (bucket, bucket_arn), bucket_audit in buckets["project_buckets"].items():
             for audit_site, audit_results in bucket_audit.items():
-                audit_site_role = config_dict["configs"][project]["sites"][audit_site]
                 try:
+                    audit_site_role = config_dict["configs"][project]["sites"][
+                        audit_site
+                    ]
                     permission_set = config_dict["configs"][project]["project_buckets"][
                         bucket
                     ]["policy"][audit_site_role]
