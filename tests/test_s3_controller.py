@@ -31,7 +31,10 @@ fake_roz_cfg_dict = {
             "site_buckets": {
                 "ingest": {
                     "name_layout": "{project}-{site}-{platform}-{test_flag}",
-                    "policy": "site_ingest",
+                    "policy": {
+                        "analysis": "site_ingest",
+                        "uploader": "site_ingest",
+                    },
                 }
             },
             "project_buckets": {
@@ -88,7 +91,10 @@ fake_roz_cfg_dict = {
             "site_buckets": {
                 "ingest": {
                     "name_layout": "{project}-{site}-{platform}-{test_flag}",
-                    "policy": "site_ingest",
+                    "policy": {
+                        "analysis": "site_ingest",
+                        "uploader": "site_ingest",
+                    },
                 }
             },
             "project_buckets": {
