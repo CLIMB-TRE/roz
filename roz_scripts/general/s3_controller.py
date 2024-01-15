@@ -672,8 +672,9 @@ def generate_project_policy(
 
     Args:
         bucket_name (str): The name of the bucket
+        bucket_arn (str): The ARN of the bucket
         project (str): The project the bucket belongs to
-        config_dict (dict): The config file as a dictionary
+        config_dict (dict): Dict created from the config JSON
         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
 
     Returns:
@@ -709,7 +710,9 @@ def generate_project_policy(
 
     policy["Statement"].append(admin_bucket_statement)
 
-    for site in config_dict["configs"][project]["sites"]:
+    for site, role in config_dict["configs"][project]["sites"].items():
+        if role == "uploader":  # Perhaps make this more configurable in future
+            continue
         # Add the site statement
         site_obj_statement = copy.deepcopy(statement_template)
 
