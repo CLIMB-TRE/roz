@@ -209,21 +209,21 @@
           "name_layout": "{project}-published-assemblies",
           "policy": { "analysis": "project_read" },
           "owner": "admin"
-        },
-        "file_specs": {
-          "illumina": {
-            ".1.fastq.gz": {
-              "sections": 6,
-              "layout": "project.sample_id.run_name.direction.ftype.gzip"
-            },
-            ".2.fastq.gz": {
-              "sections": 6,
-              "layout": "project.sample_id.run_name.direction.ftype.gzip"
-            },
-            ".csv": {
-              "sections": 4,
-              "layout": "project.sample_id.run_name.ftype"
-            }
+        }
+      },
+      "file_specs": {
+        "illumina": {
+          ".1.fastq.gz": {
+            "sections": 6,
+            "layout": "project.sample_id.run_name.direction.ftype.gzip"
+          },
+          ".2.fastq.gz": {
+            "sections": 6,
+            "layout": "project.sample_id.run_name.direction.ftype.gzip"
+          },
+          ".csv": {
+            "sections": 4,
+            "layout": "project.sample_id.run_name.ftype"
           }
         }
       }
