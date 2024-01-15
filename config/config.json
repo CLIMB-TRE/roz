@@ -5,7 +5,11 @@
     "mscape": {
       "artifact_layout": "project.sample_id.run_name",
       "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-      "sites": { "birm": "admin", "public": "analysis", "ukhsa": "analysis" },
+      "sites": {
+        "birm": "analysis",
+        "public": "analysis",
+        "ukhsa": "analysis"
+      },
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
         "project_ingest": ["get", "put", "list", "delete"],
@@ -16,7 +20,10 @@
       "site_buckets": {
         "ingest": {
           "name_layout": "{project}-{site}-{platform}-{test_flag}",
-          "policy": "site_ingest",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
           "owner": "{site}"
         }
       },
@@ -30,27 +37,27 @@
       "project_buckets": {
         "published_reads": {
           "name_layout": "{project}-published-reads",
-          "policy": "project_private",
+          "policy": { "analysis": "project_private" },
           "owner": "admin"
         },
         "published_binned_reads": {
           "name_layout": "{project}-published-binned-reads",
-          "policy": "project_read",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         },
         "published_taxon_reports": {
           "name_layout": "{project}-published-taxon-reports",
-          "policy": "project_read",
+          "policy": { "analysis": "project_ingest" },
           "owner": "admin"
         },
         "published_scylla_reports": {
           "name_layout": "{project}-published-reports",
-          "policy": "project_read",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
-          "policy": "project_ingest",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         }
       },
@@ -81,7 +88,11 @@
     "mscapetest": {
       "artifact_layout": "project.sample_id.run_name",
       "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-      "sites": { "birm": "admin", "public": "analysis", "ukhsa": "analysis" },
+      "sites": {
+        "birm": "admin",
+        "public": "analysis",
+        "ukhsa": "analysis"
+      },
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
         "project_ingest": ["get", "put", "list", "delete"],
@@ -92,7 +103,10 @@
       "site_buckets": {
         "ingest": {
           "name_layout": "{project}-{site}-{platform}-{test_flag}",
-          "policy": "site_ingest",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
           "owner": "{site}"
         }
       },
@@ -106,27 +120,27 @@
       "project_buckets": {
         "published_reads": {
           "name_layout": "{project}-published-reads",
-          "policy": "project_private",
+          "policy": { "analysis": "project_private" },
           "owner": "admin"
         },
         "published_binned_reads": {
           "name_layout": "{project}-published-binned-reads",
-          "policy": "project_read",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         },
         "published_taxon_reports": {
           "name_layout": "{project}-published-taxon-reports",
-          "policy": "project_read",
+          "policy": { "analysis": "project_ingest" },
           "owner": "admin"
         },
         "published_scylla_reports": {
           "name_layout": "{project}-published-reports",
-          "policy": "project_read",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
-          "policy": "project_ingest",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         }
       },
@@ -175,26 +189,25 @@
           "owner": "{site}"
         }
       },
-      "site_buckets": {},
+      "site_buckets": {
+        "ingest": {
+          "name_layout": "{project}-{site}-{platform}-{test_flag}",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
+        }
+      },
       "project_buckets": {
         "published_reads": {
           "name_layout": "{project}-published-reads",
-          "policy": "project_private",
+          "policy": {},
           "owner": "admin"
         },
-        "published_binned_reads": {
-          "name_layout": "{project}-published-binned-reads",
-          "policy": "project_read",
-          "owner": "admin"
-        },
-        "published_taxon_reports": {
-          "name_layout": "{project}-published-taxon-reports",
-          "policy": "project_read",
-          "owner": "admin"
-        },
-        "published_scylla_reports": {
-          "name_layout": "{project}-published-reports",
-          "policy": "project_read",
+        "published_assemblies": {
+          "name_layout": "{project}-published-assemblies",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         }
       },

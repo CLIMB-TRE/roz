@@ -21,7 +21,7 @@ fake_roz_cfg_dict = {
         "project1": {
             "artifact_layout": "project.sample_name.run_name",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["site1", "site2"],
+            "sites": {"site1": "analysis", "site2": "uploader"},
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -31,17 +31,20 @@ fake_roz_cfg_dict = {
             "site_buckets": {
                 "ingest": {
                     "name_layout": "{project}-{site}-{platform}-{test_flag}",
-                    "policy": "site_ingest",
+                    "policy": {
+                        "analysis": "site_ingest",
+                        "uploader": "site_ingest",
+                    },
                 }
             },
             "project_buckets": {
                 "fake_files": {
                     "name_layout": "{project}-fake-files",
-                    "policy": "project_private",
+                    "policy": {"analysis": "project_read", "uploader": "project_read"},
                 },
                 "fake_files_2": {
                     "name_layout": "{project}-fake-files-2",
-                    "policy": "project_read",
+                    "policy": {},
                 },
             },
             "file_specs": {
@@ -78,7 +81,7 @@ fake_roz_cfg_dict = {
         "project2": {
             "artifact_layout": "project.sample_id.run_name",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["site1", "site2"],
+            "sites": {"site1": "analysis", "site2": "analysis"},
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -88,17 +91,23 @@ fake_roz_cfg_dict = {
             "site_buckets": {
                 "ingest": {
                     "name_layout": "{project}-{site}-{platform}-{test_flag}",
-                    "policy": "site_ingest",
+                    "policy": {
+                        "analysis": "site_ingest",
+                        "uploader": "site_ingest",
+                    },
                 }
             },
             "project_buckets": {
                 "fake_files": {
                     "name_layout": "{project}-fake-files",
-                    "policy": "project_private",
+                    "policy": {
+                        "analysis": "project_read",
+                        "uploader": "project_read",
+                    },
                 },
                 "fake_files_2": {
                     "name_layout": "{project}-fake-files-2",
-                    "policy": "project_read",
+                    "policy": {},
                 },
             },
             "file_specs": {

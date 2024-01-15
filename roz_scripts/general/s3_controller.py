@@ -594,6 +594,8 @@ def generate_site_policy(
     """
     policy = copy.deepcopy(policy_template)
 
+    site_role = config_dict["configs"][project]["sites"][site]
+
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
@@ -633,10 +635,12 @@ def generate_site_policy(
     site_bucket_statement["Principal"]["AWS"] = [
         f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
     ]
-
-    permission_set = config_dict["configs"][project]["site_buckets"][bucket_name][
-        "policy"
-    ]
+    try:
+        permission_set = config_dict["configs"][project]["site_buckets"][bucket_name][
+            "policy"
+        ][site_role]
+    except KeyError:
+        policy
 
     correct_perms = config_dict["configs"][project]["bucket_policies"][permission_set]
 
@@ -711,8 +715,14 @@ def generate_project_policy(
     policy["Statement"].append(admin_bucket_statement)
 
     for site, role in config_dict["configs"][project]["sites"].items():
-        if role == "uploader":  # Perhaps make this more configurable in future
+        if (
+            role
+            not in config_dict["configs"][project]["project_buckets"][bucket_name][
+                "policy"
+            ]
+        ):
             continue
+
         # Add the site statement
         site_obj_statement = copy.deepcopy(statement_template)
 
@@ -1006,15 +1016,19 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
         for site, site_buckets in buckets["site_buckets"].items():
             for (bucket, bucket_arn), bucket_audit in site_buckets.items():
                 for audit_site, audit_results in bucket_audit.items():
-                    if audit_site == site:
-                        permission_set = config_dict["configs"][project][
-                            "site_buckets"
-                        ][bucket]["policy"]
+                    try:
+                        site_role = config_dict["configs"][project]["sites"][audit_site]
+                        if audit_site == site:
+                            permission_set = config_dict["configs"][project][
+                                "site_buckets"
+                            ][bucket]["policy"][site_role]
 
-                        correct_perms = config_dict["configs"][project][
-                            "bucket_policies"
-                        ][permission_set]
-                    else:
+                            correct_perms = config_dict["configs"][project][
+                                "bucket_policies"
+                            ][permission_set]
+                        else:
+                            correct_perms = []
+                    except KeyError:
                         correct_perms = []
 
                     for permission, result in audit_results.items():
@@ -1043,13 +1057,19 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
 
         for (bucket, bucket_arn), bucket_audit in buckets["project_buckets"].items():
             for audit_site, audit_results in bucket_audit.items():
-                permission_set = config_dict["configs"][project]["project_buckets"][
-                    bucket
-                ]["policy"]
+                try:
+                    audit_site_role = config_dict["configs"][project]["sites"][
+                        audit_site
+                    ]
+                    permission_set = config_dict["configs"][project]["project_buckets"][
+                        bucket
+                    ]["policy"][audit_site_role]
 
-                correct_perms = config_dict["configs"][project]["bucket_policies"][
-                    permission_set
-                ]
+                    correct_perms = config_dict["configs"][project]["bucket_policies"][
+                        permission_set
+                    ]
+                except KeyError:
+                    correct_perms = []
 
                 for permission, result in audit_results.items():
                     if result:
