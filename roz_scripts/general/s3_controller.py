@@ -1016,16 +1016,19 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
         for site, site_buckets in buckets["site_buckets"].items():
             for (bucket, bucket_arn), bucket_audit in site_buckets.items():
                 for audit_site, audit_results in bucket_audit.items():
-                    site_role = config_dict["configs"][project]["sites"][audit_site]
-                    if audit_site == site:
-                        permission_set = config_dict["configs"][project][
-                            "site_buckets"
-                        ][bucket]["policy"][site_role]
+                    try:
+                        site_role = config_dict["configs"][project]["sites"][audit_site]
+                        if audit_site == site:
+                            permission_set = config_dict["configs"][project][
+                                "site_buckets"
+                            ][bucket]["policy"][site_role]
 
-                        correct_perms = config_dict["configs"][project][
-                            "bucket_policies"
-                        ][permission_set]
-                    else:
+                            correct_perms = config_dict["configs"][project][
+                                "bucket_policies"
+                            ][permission_set]
+                        else:
+                            correct_perms = []
+                    except KeyError:
                         correct_perms = []
 
                     for permission, result in audit_results.items():
