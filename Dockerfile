@@ -1,8 +1,11 @@
 FROM python:3.12-alpine
 
+COPY . ./roz/
+
 RUN apk add --no-cache wget \
     git \
-    default-jre
+    openjdk21-jre-headless \
+    bash
 
 RUN wget --directory-prefix /opt/bin/ https://github.com/nextflow-io/nextflow/releases/download/v23.10.0/nextflow 
 
@@ -16,12 +19,13 @@ RUN mkdir /.nextflow \
 
 RUN chown -R jovyan:jovyan /.nextflow
 
-ADD "https://api.github.com/repos/CLIMB-TRE/varys/commits?per_page=1" latest_varys_commit
 RUN pip3 install git+https://github.com/CLIMB-TRE/varys.git
 
 RUN pip3 install climb-onyx-client
 
-RUN pip3 install .
+RUN pip3 install ./roz
+
+RUN rm -rf /roz
 
 ENV PATH=/opt/bin:$PATH
 
