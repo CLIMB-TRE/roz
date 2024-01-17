@@ -1,10 +1,10 @@
 # roz
-CLIMB-pathogens S3 ingest solution and officious bureaucrat.
+CLIMB-TRE S3 ingest solution and officious bureaucrat.
 
 
 # TODO
-* Add SSL support before the users get access
-* Fix add credentials func in s3_config
+* ~~Add SSL support before the users get access~~
+* ~~Fix add credentials func in s3_config~~
 
 # Stuff I need to remember
 

@@ -20,21 +20,21 @@ example_match = {
     "site": "birm",
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
-    "artifact": "mscapetest.sample-test.run-test",
+    "artifact": "mscape.sample-test.run-test",
     "sample_id": "sample-test",
-    "run_name": "run-test",
-    "project": "mscapetest",
+    "run_id": "run-test",
+    "project": "mscape",
     "platform": "ont",
     "files": {
         ".fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.fastq.gz",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "mscapetest.sample-test.run-test.fastq.gz",
+            "key": "mscape.sample-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.csv",
+            "key": "mscape.sample-test.run-test.csv",
         },
     },
     "test_flag": False,
@@ -60,8 +60,7 @@ class test_ingest(unittest.TestCase):
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
         os.environ["MOTO_S3_CUSTOM_ENDPOINTS"] = "https://s3.climb.ac.uk"
         os.environ["ONYX_DOMAIN"] = "testing"
-        os.environ["ONYX_USERNAME"] = "testing"
-        os.environ["ONYX_PASSWORD"] = "testing"
+        os.environ["ONYX_TOKEN"] = "testing"
 
         self.mock_s3 = moto.mock_s3()
         self.mock_s3.start()
@@ -70,7 +69,7 @@ class test_ingest(unittest.TestCase):
 
         self.log = init_logger("test", "test.log", "DEBUG")
 
-        self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
+        self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
 
     def tearDown(self):
         self.mock_s3.stop()
@@ -78,13 +77,13 @@ class test_ingest(unittest.TestCase):
 
     def test_csv_create(self):
         self.s3_client.put_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
             Body=b"test",
         )
         resp = self.s3_client.head_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
         )
 
         example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
@@ -100,11 +99,13 @@ class test_ingest(unittest.TestCase):
 
             self.assertTrue(success)
             self.assertFalse(alert)
-            self.assertNotIn("cid", payload.keys())
+            self.assertNotIn("climb_id", payload.keys())
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "cid": "test_cid"
+                "climb_id": "test_climb_id",
+                "sample_id": "test_sample_id",
+                "run_id": "test_run_id",
             }
 
             success, alert, payload = csv_create(
@@ -115,7 +116,7 @@ class test_ingest(unittest.TestCase):
 
             self.assertTrue(success)
             self.assertFalse(alert)
-            self.assertEqual("test_cid", payload["cid"])
+            self.assertEqual("test_climb_id", payload["climb_id"])
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
@@ -221,13 +222,13 @@ class test_ingest(unittest.TestCase):
 
     def test_csv_field_checks(self):
         self.s3_client.put_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
-            Body=b"sample_id,run_name\nsample-test,run-test",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+            Body=b"sample_id,run_id\nsample-test,run-test",
         )
         resp = self.s3_client.head_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
         )
 
         example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
@@ -238,13 +239,13 @@ class test_ingest(unittest.TestCase):
         self.assertFalse(alert)
 
         self.s3_client.put_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
-            Body=b"sample_id,run_name\nsample-yeet,run-yeet",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+            Body=b"sample_id,run_id\nsample-yeet,run-yeet",
         )
         resp = self.s3_client.head_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
         )
 
         example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
@@ -259,5 +260,5 @@ class test_ingest(unittest.TestCase):
         )
         self.assertIn(
             "Field does not match filename.",
-            payload["onyx_test_create_errors"]["run_name"],
+            payload["onyx_test_create_errors"]["run_id"],
         )

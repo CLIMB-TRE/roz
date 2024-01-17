@@ -9,6 +9,7 @@ from pathlib import Path
 
 import mappy as mp
 
+
 def expand_int_ranges(range_string):
     r = []
     for i in range_string.split(","):
@@ -21,11 +22,11 @@ def expand_int_ranges(range_string):
 
 
 def validate_dehumanised(config, env_vars, bam_path, minimap_preset):
-
     # Check if indexed compound ref to requested preset exists in $ROZ_REF_ROOT and create it if not
     if not os.path.exists(f"{env_vars.idx_ref_dir}/{minimap_preset}.mmi"):
         mp.Aligner(
-            fn_idx_in=env_vars.compound_ref_path, fn_idx_out=f"{env_vars.idx_ref_dir}/{minimap_preset}.mmi"
+            fn_idx_in=env_vars.compound_ref_path,
+            fn_idx_out=f"{env_vars.idx_ref_dir}/{minimap_preset}.mmi",
         )
 
     # Dump BAM reads to fastq file for mapping
@@ -53,7 +54,7 @@ def validate_dehumanised(config, env_vars, bam_path, minimap_preset):
                 best_hits_dict[pathogen] += 1
             else:
                 best_hits_dict["human"] += 1
-    
+
     human_proportion = best_hits_dict["human"] / best_hits_dict["total"]
 
     os.system(f"rm -f {env_vars.temp_dir}/{fastq_name}")
@@ -62,22 +63,25 @@ def validate_dehumanised(config, env_vars, bam_path, minimap_preset):
     else:
         return True, human_proportion
 
+
 def validate_datetime(date_string):
     try:
-        if date_string != datetime.strptime(date_string, "%Y-%m-%d").strftime('%Y-%m-%d'):
+        if date_string != datetime.strptime(date_string, "%Y-%m-%d").strftime(
+            "%Y-%m-%d"
+        ):
             raise ValueError
         return True
     except ValueError:
         return False
+
 
 def validate_month(date_string):
     try:
-        if date_string != datetime.strptime(date_string, "%Y-%m").strftime('%Y-%m'):
+        if date_string != datetime.strptime(date_string, "%Y-%m").strftime("%Y-%m"):
             raise ValueError
         return True
     except ValueError:
         return False
-
 
 
 def expand_character_ranges(character_range_string):
@@ -166,7 +170,7 @@ class csv_validator:
                     "text": f"The CSV field 'csv_template_version' does not appear to be an integer, CSV validation halted at this point so this list of errors may be inexhaustive",
                 }
             )
-            return False            
+            return False
 
         # Ensure that CSV contains enough headings
         if any(key == None for key in csv_data.keys()):
@@ -215,11 +219,11 @@ class csv_validator:
                 }
             )
 
-        if filename_splits[1] != csv_data["run_name"]:
+        if filename_splits[1] != csv_data["run_id"]:
             self.errors.append(
                 {
                     "type": "format",
-                    "text": "The 'run_name' section of the filename disagrees with the CSV metadata",
+                    "text": "The 'run_id'' section of the filename disagrees with the CSV metadata",
                 }
             )
 
@@ -239,7 +243,10 @@ class csv_validator:
         for field, type in self.config.get("field_datatypes").items():
             try:
                 if type == "choice":
-                    if csv_data[field].upper() not in self.config["field_choices"][field]:
+                    if (
+                        csv_data[field].upper()
+                        not in self.config["field_choices"][field]
+                    ):
                         choices_string = ", ".join(
                             str(choice)
                             for choice in self.config["field_choices"][field]
@@ -330,7 +337,10 @@ class fasta_validator:
 
         if len(fasta.seq) == 0:
             self.errors.append(
-                {"type": "content", "text": "The fasta does not contain a sequence",}
+                {
+                    "type": "content",
+                    "text": "The fasta does not contain a sequence",
+                }
             )
             return False
 
@@ -358,7 +368,10 @@ class fasta_validator:
                 self.config["header_allowed_characters"] + ",>"
             )
 
-            if any(character.upper() not in allowed_characters for character in str(fasta.id)):
+            if any(
+                character.upper() not in allowed_characters
+                for character in str(fasta.id)
+            ):
                 self.errors.append(
                     {
                         "type": "content",
@@ -379,7 +392,6 @@ class fasta_validator:
         filename_splits = self.fasta_path.name.split(".")
         header_splits = fasta.id.split(".")
 
-
         try:
             if filename_splits[0] != header_splits[1]:
                 self.errors.append(
@@ -392,16 +404,16 @@ class fasta_validator:
                 self.errors.append(
                     {
                         "type": "format",
-                        "text": "The 'run_name' section of the filename disagrees with the Fasta header",
+                        "text": "The 'run_id'' section of the filename disagrees with the Fasta header",
                     }
                 )
         except IndexError:
             self.errors.append(
-                    {
-                        "type": "format",
-                        "text": "The Fasta header appears to be malformed, ensure it is in the format: '>[site_code].[sample_id].[run_name]'",
-                    }
-                )
+                {
+                    "type": "format",
+                    "text": "The Fasta header appears to be malformed, ensure it is in the format: '>[site_code].[sample_id].[run_id]'",
+                }
+            )
 
         if len(self.errors) == 0:
             validation_result = True
@@ -425,7 +437,7 @@ class bam_validator:
         if self.config.get("size_limit_gb"):
             bam_size = os.path.getsize(self.bam_path)
 
-            if bam_size > self.config["size_limit_gb"] * (10 ** 9):
+            if bam_size > self.config["size_limit_gb"] * (10**9):
                 self.errors.append(
                     {
                         "type": "content",
@@ -447,7 +459,11 @@ class bam_validator:
 
         with pysam.AlignmentFile(self.bam_path, "rb") as bam_fh:
             # TODO: check behaviour of "rb" for samfiles
-            if any(True for ref in bam_fh.references if ref not in self.config.get("allowed_refs")):
+            if any(
+                True
+                for ref in bam_fh.references
+                if ref not in self.config.get("allowed_refs")
+            ):
                 allowed_ref_string = ", ".join(
                     str(ref) for ref in self.config.get("allowed_refs")
                 )
@@ -482,7 +498,12 @@ class bam_validator:
                 )
 
         if self.config.get("check_dehumanised"):
-            result, human_proportion = validate_dehumanised(self.config, self.env_vars, self.bam_path, self.config.get("mapping_presets")[self.platform])
+            result, human_proportion = validate_dehumanised(
+                self.config,
+                self.env_vars,
+                self.bam_path,
+                self.config.get("mapping_presets")[self.platform],
+            )
 
             if not result:
                 self.errors.append(
@@ -522,4 +543,3 @@ class triplet_validation:
                     "text": "The files included within the triplet do not appear to match",
                 }
             )
-

@@ -288,8 +288,8 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
         x["parsed_fname"]["sample_id"] for x in artifact_dict["files"].values()
     )
 
-    (run_name,) = set(
-        x["parsed_fname"]["run_name"] for x in artifact_dict["files"].values()
+    (run_id,) = set(
+        x["parsed_fname"]["run_id"] for x in artifact_dict["files"].values()
     )
 
     payload = {
@@ -299,7 +299,7 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
         "match_timestamp": ts,
         "artifact": artifact,
         "sample_id": sample_id,
-        "run_name": run_name,
+        "run_id": run_id,
         "project": project,
         "platform": platform,
         "files": artifact_dict["files"],

@@ -116,7 +116,7 @@ def main():
                                 uploaders=payload["uploaders"],
                                 artifact=payload["artifact"],
                                 sample_id=payload["sample_id"],
-                                run_name=payload["run_name"],
+                                run_id=payload["run_id"],
                                 files=payload["files"],
                                 local_paths=payload["local_paths"],
                                 payload=payload,
@@ -148,7 +148,7 @@ def main():
                                 uploaders=payload["uploaders"],
                                 artifact=payload["artifact"],
                                 sample_id=payload["sample_id"],
-                                run_name=payload["run_name"],
+                                run_id=payload["run_id"],
                                 files=payload["files"],
                                 local_paths=payload["local_paths"],
                                 onyx_test_status_code=payload["onyx_test_status_code"],
@@ -182,7 +182,7 @@ def main():
                                 project=payload["project"],
                                 artifact=payload["artifact"],
                                 sample_id=payload["sample_id"],
-                                run_name=payload["run_name"],
+                                run_id=payload["run_id"],
                                 files=payload["files"],
                                 local_paths=payload["local_paths"],
                                 onyx_status_code=payload["onyx_test_status_code"],
@@ -210,7 +210,7 @@ def main():
                     try:
                         session.add(
                             inbound_artifacts_table(
-                                cid=payload["cid"],
+                                climb_id=payload["climb_id"],
                                 timestamp=payload["ingest_timestamp"],
                                 created=payload["created"],
                                 ingested=payload["ingested"],

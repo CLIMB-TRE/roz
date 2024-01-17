@@ -10,8 +10,7 @@ from roz_scripts.utils.utils import init_logger, csv_create, csv_field_checks
 def main():
     for i in (
         "ONYX_DOMAIN",
-        "ONYX_USERNAME",
-        "ONYX_PASSWORD",
+        "ONYX_TOKEN",
         "ROZ_INGEST_LOG",
         "INGEST_LOG_LEVEL",
         "VARYS_CFG",

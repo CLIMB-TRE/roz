@@ -350,7 +350,7 @@ def generate_payload(
         "match_timestamp": ts,
         "artifact": artifact,
         "sample_id": parsed_fname["sample_id"],
-        "run_name": parsed_fname["run_name"],
+        "run_id": parsed_fname["run_id"],
         "project": project,
         "platform": platform,
         "files": files,
