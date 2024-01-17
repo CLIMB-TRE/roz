@@ -918,6 +918,10 @@ class Test_mscape_validator(unittest.TestCase):
                 "run_id": "run-test",
             }
 
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+                ()
+            )
+
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
             classifications_path = os.path.join(result_path, "classifications")
@@ -1088,6 +1092,7 @@ class Test_mscape_validator(unittest.TestCase):
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(read_fraction_path, exist_ok=True)
 
             open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
             open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
@@ -1219,6 +1224,10 @@ class Test_mscape_validator(unittest.TestCase):
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
                 "data": {"climb_id": "test_climb_id"}
             }
+
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+                ()
+            )
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
@@ -1390,7 +1399,9 @@ class Test_mscape_validator(unittest.TestCase):
             #     )
             # )
 
-            mock_client.return_value.__enter__.return_value.filter.return_value = iter()
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+                ()
+            )
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
