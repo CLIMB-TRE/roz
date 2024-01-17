@@ -404,9 +404,9 @@ def add_classifier_calls(
         )
 
         with open(classifier_calls_path, "rt") as classifier_calls_fh:
-            classifier_calls = json.load(classifier_calls_fh)
+            kraken_report_dict = json.load(classifier_calls_fh)
 
-        for data in classifier_calls.values():
+        for data in kraken_report_dict.values():
             data["taxon_id"] = data.pop("taxid")
             data["human_readable"] = data.pop("name")
             data["count_direct"] = data.pop("count")
