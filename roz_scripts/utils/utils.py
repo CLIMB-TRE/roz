@@ -366,9 +366,11 @@ def ensure_file_unseen(
         reconnect_count = 0
         while reconnect_count <= 3:
             try:
-                response = client.filter(
-                    project=payload["project"],
-                    fields={f"{etag_field}__iexact": etag},
+                response = list(
+                    client.filter(
+                        project=payload["project"],
+                        fields={f"{etag_field}__iexact": etag},
+                    )
                 )
 
                 if response["total"] == 0:

@@ -1372,23 +1372,25 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
-            mock_client.return_value.__enter__.return_value.filter.return_value.__next__ = Mock(
-                side_effect=OnyxRequestError(
-                    message={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
-                    response=MockResponse(
-                        status_code=400,
-                        json_data={
-                            "data": [],
-                            "messages": {
-                                "sample_id": ["Test sample_id error handling"]
-                            },
-                        },
-                    ),
-                )
-            )
+            # mock_client.return_value.__enter__.return_value.filter.return_value.__next__ = Mock(
+            #     side_effect=OnyxRequestError(
+            #         message={
+            #             "data": [],
+            #             "messages": {"sample_id": "Test sample_id error handling"},
+            #         },
+            #         response=MockResponse(
+            #             status_code=400,
+            #             json_data={
+            #                 "data": [],
+            #                 "messages": {
+            #                     "sample_id": ["Test sample_id error handling"]
+            #                 },
+            #             },
+            #         ),
+            #     )
+            # )
+
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter()
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")

@@ -103,7 +103,9 @@ class test_ingest(unittest.TestCase):
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "climb_id": "test_climb_id"
+                "climb_id": "test_climb_id",
+                "sample_id": "test_sample_id",
+                "run_id": "test_run_id",
             }
 
             success, alert, payload = csv_create(
