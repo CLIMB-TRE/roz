@@ -54,7 +54,7 @@ class worker_pool_handler:
 
             new_artifact_payload = {
                 "publish_timestamp": time.time_ns(),
-                "cid": payload["cid"],
+                "climb_id": payload["climb_id"],
                 "site": payload["site"],
                 "platform": payload["platform"],
                 "match_uuid": payload["uuid"],
@@ -155,21 +155,21 @@ def assembly_to_s3(
         s3_client.upload_file(
             assembly_path,
             "pathsafetest-published-assembly",
-            f"{payload['cid']}.assembly.fasta",
+            f"{payload['climb_id']}.assembly.fasta",
         )
 
         payload["assembly_presigned_url"] = s3_client.generate_presigned_url(
             "get_object",
             Params={
                 "Bucket": "pathsafetest-published-assembly",
-                "Key": f"{payload['cid']}.assembly.fasta",
+                "Key": f"{payload['climb_id']}.assembly.fasta",
             },
             ExpiresIn=86400,
         )
 
     except ClientError as e:
         log.error(
-            f"Failed to upload assembly to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['cid']} due to client error: {e}"
+            f"Failed to upload assembly to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {e}"
         )
         payload["ingest_errors"].append(f"Failed to upload assembly to storage bucket")
         s3_fail = True
@@ -178,7 +178,7 @@ def assembly_to_s3(
         update_fail, payload = onyx_update(
             payload=payload,
             fields={
-                "assembly": f"s3://pathsafetest-published-assembly/{payload['cid']}.assembly.fasta",
+                "assembly": f"s3://pathsafetest-published-assembly/{payload['climb_id']}.assembly.fasta",
             },
             log=log,
         )
@@ -207,11 +207,11 @@ def pathogenwatch_submission(
     with OnyxClient(env_password=True) as client:
         record = client.get(
             "pathsafetest",
-            payload["cid"],
+            payload["climb_id"],
             scope=["admin"],
         )
 
-        ignore_fields = ["suppressed", "sample_id", "run_name"]
+        ignore_fields = ["suppressed", "sample_id", "run_id"]
 
         fields = {k: v for k, v in record.items() if v and k not in ignore_fields}
 
@@ -229,7 +229,7 @@ def pathogenwatch_submission(
 
         if r.status_code != 201:
             log.error(
-                f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['cid']} due to error: {r.text}"
+                f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {r.text}"
             )
             payload["ingest_errors"].append(
                 f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
@@ -484,7 +484,7 @@ def run(args):
         "artifact": "",
         "project": "",
         "ingest_timestamp": "",
-        "cid": False,
+        "climb_id": False,
         "site": "",
         "created": False,
         "published": False,

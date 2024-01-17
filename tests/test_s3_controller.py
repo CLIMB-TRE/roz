@@ -19,7 +19,7 @@ fake_roz_cfg_dict = {
     "pathogen_configs": ["project1", "project2"],
     "configs": {
         "project1": {
-            "artifact_layout": "project.sample_name.run_name",
+            "artifact_layout": "project.sample_name.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": {"site1": "analysis", "site2": "uploader"},
             "bucket_policies": {
@@ -51,15 +51,15 @@ fake_roz_cfg_dict = {
                 "illumina": {
                     ".1.fastq.gz": {
                         "sections": 6,
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".2.fastq.gz": {
                         "sections": 6,
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".csv": {
                         "sections": 4,
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                     "match_size": 3,
                     "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
@@ -67,11 +67,11 @@ fake_roz_cfg_dict = {
                 "ont": {
                     ".fastq.gz": {
                         "sections": 5,
-                        "layout": "project.sample_id.run_name.ftype.gzip",
+                        "layout": "project.sample_id.run_id.ftype.gzip",
                     },
                     ".csv": {
                         "sections": 4,
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                     "match_size": 2,
                     "files": [".ont.fastq.gz", ".csv"],
@@ -79,7 +79,7 @@ fake_roz_cfg_dict = {
             },
         },
         "project2": {
-            "artifact_layout": "project.sample_id.run_name",
+            "artifact_layout": "project.sample_id.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": {"site1": "analysis", "site2": "analysis"},
             "bucket_policies": {
@@ -114,15 +114,15 @@ fake_roz_cfg_dict = {
                 "illumina": {
                     ".1.fastq.gz": {
                         "sections": 6,
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".2.fastq.gz": {
                         "sections": 6,
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".csv": {
                         "sections": 4,
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                     "match_size": 3,
                     "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
@@ -130,11 +130,11 @@ fake_roz_cfg_dict = {
                 "ont": {
                     ".fastq.gz": {
                         "sections": 5,
-                        "layout": "project.sample_id.run_name.ftype.gzip",
+                        "layout": "project.sample_id.run_id.ftype.gzip",
                     },
                     ".csv": {
                         "sections": 4,
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                     "match_size": 2,
                     "files": [".fastq.gz", ".csv"],
@@ -142,11 +142,11 @@ fake_roz_cfg_dict = {
                 "pacbio": {
                     ".fastq.gz": {
                         "sections": 5,
-                        "layout": "project.sample_id.run_name.ftype.gzip",
+                        "layout": "project.sample_id.run_id.ftype.gzip",
                     },
                     ".csv": {
                         "sections": 4,
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                     "match_size": 2,
                     "files": [".fastq.gz", ".csv"],

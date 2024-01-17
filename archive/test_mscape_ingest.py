@@ -57,7 +57,7 @@ class onyx_update_tests(TestCase):
             )
 
             mock_logger = MagicMock()
-            payload = {"cid": "test_cid", "onyx_errors": []}
+            payload = {"climb_id": "test_climb_id", "onyx_errors": []}
             fields = {"field_name": "field_value"}
 
             update_fail, payload = roz_scripts.mscape_ingest_validation.onyx_update(
@@ -67,12 +67,12 @@ class onyx_update_tests(TestCase):
         self.assertFalse(update_fail)
         mock_logger.error.assert_not_called()
         mock_logger.info.assert_called_with(
-            "Successfully updated Onyx record for CID: test_cid"
+            "Successfully updated Onyx record for CLIMB-ID: test_climb_id"
         )
 
     def test_onyx_update_failure(self):
         with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
-            payload = {"cid": "test_cid", "onyx_errors": {}}
+            payload = {"climb_id": "test_climb_id", "onyx_errors": {}}
             fields = {"field_name": "field_value"}
 
             mock_client.return_value.__enter__.return_value._update.return_value = (
@@ -93,12 +93,12 @@ class onyx_update_tests(TestCase):
             self.assertIn("field_name", payload["onyx_errors"])
             self.assertEqual(payload["onyx_errors"]["field_name"], ["Error message"])
             mock_logger.error.assert_called_with(
-                "Failed to update Onyx record for CID: test_cid with status code: 400"
+                "Failed to update Onyx record for CID: test_climb_id with status code: 400"
             )
 
     def test_onyx_update_client_error(self):
         with patch("roz_scripts.mscape_ingest_validation.OnyxClient") as mock_client:
-            payload = {"cid": "test_cid", "onyx_errors": {}}
+            payload = {"climb_id": "test_climb_id", "onyx_errors": {}}
             fields = {"field_name": "field_value"}
 
             mock_logger = MagicMock()
@@ -108,7 +108,7 @@ class onyx_update_tests(TestCase):
             )
 
             mock_logger = MagicMock()
-            payload = {"cid": "test_cid", "onyx_errors": {}}
+            payload = {"climb_id": "test_climb_id", "onyx_errors": {}}
             fields = {"field_name": "field_value"}
 
             update_fail, payload = roz_scripts.mscape_ingest_validation.onyx_update(
@@ -122,7 +122,7 @@ class onyx_update_tests(TestCase):
                 ["Unhandled client error TEST EXCEPTION"],
             )
             mock_logger.error.assert_called_once_with(
-                "Failed to update Onyx record for CID: test_cid with unhandled onyx client error: TEST EXCEPTION"
+                "Failed to update Onyx record for CID: test_climb_id with unhandled onyx client error: TEST EXCEPTION"
             )
 
 
@@ -182,7 +182,7 @@ class test_onyx_submission(TestCase):
             patch("roz_scripts.mscape_ingest_validation.s3_to_fh") as mock_s3_to_fh,
         ):
             mock_client.return_value.__enter__.return_value.csv_create.return_value.__next__.return_value = MockResponse(
-                status_code=201, json_data={"data": {"cid": "test_cid"}}
+                status_code=201, json_data={"data": {"climb_id": "test_climb_id"}}
             )
             mock_s3_to_fh.return_value = MagicMock()
 
@@ -206,7 +206,7 @@ class test_onyx_submission(TestCase):
             self.assertFalse(submission_fail)
             self.assertTrue(payload["onyx_create_status"])
             self.assertTrue(payload["created"])
-            self.assertEqual(payload["cid"], "test_cid")
+            self.assertEqual(payload["climb_id"], "test_climb_id")
 
             mock_logger.error.assert_not_called()
 
@@ -216,7 +216,7 @@ class test_onyx_submission(TestCase):
                         "Received match for artifact: test_artifact, now attempting to create record in Onyx"
                     ),
                     call(
-                        "Successful create for UUID: test_uuid which has been assigned CID: test_cid"
+                        "Successful create for UUID: test_uuid which has been assigned CID: test_climb_id"
                     ),
                 ]
             )
@@ -252,7 +252,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(
                 payload["onyx_errors"]["onyx_client_errors"],
                 ["200 response status on onyx create (should be 201)"],
@@ -293,7 +293,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(
                 payload["onyx_errors"]["onyx_client_errors"],
                 ["Onyx internal server error"],
@@ -333,7 +333,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(
                 payload["onyx_errors"]["onyx_client_errors"],
                 ["Project test_project does not exist"],
@@ -372,7 +372,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(
                 payload["onyx_errors"]["onyx_client_errors"],
                 ["Permission error on Onyx create"],
@@ -411,7 +411,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(
                 payload["onyx_errors"]["onyx_client_errors"],
                 ["Incorrect Onyx credentials"],
@@ -451,7 +451,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(payload["onyx_errors"]["field_name"], ["Error message"])
             mock_logger.error.assert_called_once_with(
                 "Onyx create for UUID: test_uuid failed due to a bad request"
@@ -488,7 +488,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(
                 payload["onyx_errors"]["onyx_client_errors"],
                 ["Unhandled response status code 69 from Onyx create"],
@@ -527,7 +527,7 @@ class test_onyx_submission(TestCase):
             self.assertTrue(submission_fail)
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["created"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertEqual(
                 payload["onyx_errors"]["onyx_client_errors"],
                 ["Unhandled client error TEST EXCEPTION"],
@@ -543,7 +543,11 @@ class test_add_records(TestCase):
 
         mock_s3_client = MockS3Client()
 
-        payload = {"platform": "illumina", "cid": "test_cid", "uuid": "test_uuid"}
+        payload = {
+            "platform": "illumina",
+            "climb_id": "test_climb_id",
+            "uuid": "test_uuid",
+        }
         result_path = "/path/to/result"
         read_summary = {
             "taxon": "1",
@@ -562,12 +566,12 @@ class test_add_records(TestCase):
         nested_record = {
             "taxon_id": "1",
             "human_readable": "Saiyan",
-            "n_reads": "10",
+            "n_reads": "10",climb_id
             "avg_quality": "9001",
             "mean_len": "150",
             "tax_level": "S",
-            "reads_1": "s3://mscapetest-published-binned-reads/test_cid/1_1.fastq.gz",
-            "reads_2": "s3://mscapetest-published-binned-reads/test_cid/1_2.fastq.gz",
+            "reads_1": "s3://mscape-published-binned-reads/test_climb_id/1_1.fastq.gz",
+            "reads_2": "s3://mscape-published-binned-reads/test_climb_id/1_2.fastq.gz",
         }
 
         with patch(
@@ -592,13 +596,13 @@ class test_add_records(TestCase):
 
         assert (
             "/path/to/result/reads_by_taxa/1_1.fastq.gz",
-            "mscapetest-published-binned-reads",
-            "test_cid/1_1.fastq.gz",
+            "mscape-published-binned-reads",
+            "test_climb_id/1_1.fastq.gz",
         ) in mock_s3_client.uploaded_files
         assert (
             "/path/to/result/reads_by_taxa/1_2.fastq.gz",
-            "mscapetest-published-binned-reads",
-            "test_cid/1_2.fastq.gz",
+            "mscape-published-binned-reads",
+            "test_climb_id/1_2.fastq.gz",
         ) in mock_s3_client.uploaded_files
 
     def test_add_taxon_records_ont(self):
@@ -606,7 +610,7 @@ class test_add_records(TestCase):
 
         mock_s3_client = MockS3Client()
 
-        payload = {"platform": "ont", "cid": "test_cid", "uuid": "test_uuid"}
+        payload = {"platform": "ont", "climb_id": "test_climb_id", "uuid": "test_uuid"}
         result_path = "/path/to/result"
         read_summary = {
             "taxon": "1",
@@ -629,7 +633,7 @@ class test_add_records(TestCase):
             "avg_quality": "9001",
             "mean_len": "150",
             "tax_level": "S",
-            "reads_1": "s3://mscapetest-published-binned-reads/test_cid/1.fastq.gz",
+            "reads_1": "s3://mscape-published-binned-reads/test_climb_id/1.fastq.gz",
         }
 
         with patch(
@@ -654,8 +658,8 @@ class test_add_records(TestCase):
 
         assert (
             "/path/to/result/reads_by_taxa/1.fastq.gz",
-            "mscapetest-published-binned-reads",
-            "test_cid/1.fastq.gz",
+            "mscape-published-binned-reads",
+            "test_climb_id/1.fastq.gz",
         ) in mock_s3_client.uploaded_files
 
     def test_add_taxon_records_unrecognised_platform(self):
@@ -663,7 +667,7 @@ class test_add_records(TestCase):
 
         mock_s3_client = MockS3Client()
 
-        payload = {"platform": "test", "cid": "test_cid", "uuid": "test_uuid"}
+        payload = {"platform": "test", "climb_id": "test_climb_id", "uuid": "test_uuid"}
         result_path = "/path/to/result"
         read_summary = {
             "taxon": "1",
@@ -686,7 +690,7 @@ class test_add_records(TestCase):
             "avg_quality": "9001",
             "mean_len": "150",
             "tax_level": "S",
-            "reads_1": "s3://mscapetest-published-binned-reads/test_cid/1.fastq.gz",
+            "reads_1": "s3://mscape-published-binned-reads/test_climb_id/1.fastq.gz",
         }
 
         with patch(
@@ -715,9 +719,9 @@ class test_report_file(TestCase):
         mock_logger = Mock(spec=logging.Logger)
         mock_s3_client = MockS3Client()
 
-        payload = {"uuid": "test_uuid", "cid": "test_cid", "ingest_errors": []}
+        payload = {"uuid": "test_uuid", "climb_id": "test_climb_id", "ingest_errors": []}
 
-        s3_bucket_name = "mscapetest-published-reports"
+        s3_bucket_name = "mscape-published-reports"
         mock_s3_client.upload_file = Mock()
 
         with patch("os.path.exists", return_value=True), patch(
@@ -736,7 +740,7 @@ class test_report_file(TestCase):
         assert mock_s3_client.uploaded_files[0] == (
             "/path/to/result/test_uuid_report.html",
             s3_bucket_name,
-            "test_cid_report.html",
+            "test_climb_id_report.html",
         )
         mock_s3_client.upload_file.assert_called_once()
         assert mock_logger.error.not_called
@@ -745,7 +749,7 @@ class test_report_file(TestCase):
         mock_logger = Mock(spec=logging.Logger)
         mock_s3_client = MockS3Client()
 
-        payload = {"uuid": "test_uuid", "cid": "test_cid", "ingest_errors": []}
+        payload = {"uuid": "test_uuid", "climb_id": "test_climb_id", "ingest_errors": []}
 
         mock_s3_client.upload_file = Mock(
             side_effect=ClientError(
@@ -771,7 +775,7 @@ class test_report_file(TestCase):
         mock_logger = Mock(spec=logging.Logger)
         mock_s3_client = MockS3Client()
 
-        payload = {"uuid": "test_uuid", "cid": "test_cid", "ingest_errors": []}
+        payload = {"uuid": "test_uuid", "climb_id": "test_climb_id", "ingest_errors": []}
 
         mock_s3_client.upload_file = Mock()
 
@@ -800,11 +804,11 @@ def test_add_reads_record_illumina():
     payload = {
         "platform": "illumina",
         "uuid": "test_uuid",
-        "cid": "test_cid",
+        "climb_id": "test_climb_id",
         "ingest_errors": [],
     }
 
-    s3_bucket_name = "mscapetest-published-reads"
+    s3_bucket_name = "mscape-published-reads"
     mock_s3_client.upload_file = Mock()
 
     with patch("os.path.exists", return_value=True):
@@ -820,13 +824,13 @@ def test_add_reads_record_illumina():
         == "/path/to/result/preprocess/test_uuid_1.fastp.fastq.gz"
     )
     assert mock_s3_client.uploaded_files[0][1] == s3_bucket_name
-    assert mock_s3_client.uploaded_files[0][2] == "test_cid_1.fastq.gz"
+    assert mock_s3_client.uploaded_files[0][2] == "test_climb_id_1.fastq.gz"
     assert (
         mock_s3_client.uploaded_files[1][0]
         == "/path/to/result/preprocess/test_uuid_2.fastp.fastq.gz"
     )
     assert mock_s3_client.uploaded_files[1][1] == s3_bucket_name
-    assert mock_s3_client.uploaded_files[1][2] == "test_cid_2.fastq.gz"
+    assert mock_s3_client.uploaded_files[1][2] == "test_climb_id_2.fastq.gz"
 
 
 def test_add_reads_record_illumina_upload_failure():
@@ -836,7 +840,7 @@ def test_add_reads_record_illumina_upload_failure():
     payload = {
         "platform": "illumina",
         "uuid": "test_uuid",
-        "cid": "test_cid",
+        "climb_id": "test_climb_id",
         "ingest_errors": [],
     }
 
@@ -865,11 +869,11 @@ def test_add_reads_record_non_illumina():
     payload = {
         "platform": "other_platform",
         "uuid": "test_uuid",
-        "cid": "test_cid",
+        "climb_id": "test_climb_id",
         "ingest_errors": [],
     }
 
-    s3_bucket_name = "mscapetest-published-reads"
+    s3_bucket_name = "mscape-published-reads"
     mock_s3_client.upload_file = Mock()
 
     with patch("os.path.exists", return_value=True):
@@ -885,7 +889,7 @@ def test_add_reads_record_non_illumina():
         == "/path/to/result/preprocess/test_uuid.fastp.fastq.gz"
     )
     assert mock_s3_client.uploaded_files[0][1] == s3_bucket_name
-    assert mock_s3_client.uploaded_files[0][2] == "test_cid.fastq.gz"
+    assert mock_s3_client.uploaded_files[0][2] == "test_climb_id.fastq.gz"
 
 
 def test_add_reads_record_non_illumina_upload_failure():
@@ -895,7 +899,7 @@ def test_add_reads_record_non_illumina_upload_failure():
     payload = {
         "platform": "other_platform",
         "uuid": "test_uuid",
-        "cid": "test_cid",
+        "climb_id": "test_climb_id",
         "ingest_errors": [],
     }
 

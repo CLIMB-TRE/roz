@@ -17,7 +17,7 @@ fake_roz_cfg_dict = {
     "pathogen_configs": ["project1", "project2"],
     "configs": {
         "project1": {
-            "artifact_layout": "project.sample_id.run_name",
+            "artifact_layout": "project.sample_id.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": ["site1", "site2"],
             "bucket_policies": {
@@ -45,27 +45,27 @@ fake_roz_cfg_dict = {
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".2.fastq.gz": {
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                 },
                 "ont": {
                     ".fastq.gz": {
-                        "layout": "project.sample_id.run_name.ftype.gzip",
+                        "layout": "project.sample_id.run_id.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                 },
             },
         },
         "project2": {
-            "artifact_layout": "project.sample_id.run_name",
+            "artifact_layout": "project.sample_id.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": ["site1", "site2"],
             "bucket_policies": {
@@ -93,29 +93,29 @@ fake_roz_cfg_dict = {
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".2.fastq.gz": {
-                        "layout": "project.sample_id.run_name.direction.ftype.gzip",
+                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                 },
                 "ont": {
                     ".fastq.gz": {
-                        "layout": "project.sample_id.run_name.ftype.gzip",
+                        "layout": "project.sample_id.run_id.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                 },
                 "pacbio": {
                     ".fastq.gz": {
-                        "layout": "project.sample_id.run_name.ftype.gzip",
+                        "layout": "project.sample_id.run_id.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_name.ftype",
+                        "layout": "project.sample_id.run_id.ftype",
                     },
                 },
             },
@@ -263,7 +263,7 @@ class test_s3_matcher(unittest.TestCase):
 
         self.assertEqual(parsed_key["project"], "project1")
         self.assertEqual(parsed_key["sample_id"], "sample1")
-        self.assertEqual(parsed_key["run_name"], "run1")
+        self.assertEqual(parsed_key["run_id"], "run1")
         self.assertEqual(parsed_key["direction"], "1")
         self.assertEqual(parsed_key["ftype"], "fastq")
         self.assertEqual(parsed_key["gzip"], "gz")
@@ -285,11 +285,11 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(parsed_key)
 
     def test_generate_artifact(self):
-        artifact_layout = "project.sample_id.run_name"
+        artifact_layout = "project.sample_id.run_id"
         parsed_key = {
             "project": "project1",
             "sample_id": "sample1",
-            "run_name": "run1",
+            "run_id": "run1",
             "direction": "1",
             "ftype": "fastq",
             "gzip": "gz",
@@ -302,7 +302,7 @@ class test_s3_matcher(unittest.TestCase):
         parsed_key = {
             "project": "project1",
             "sample_id": "sample1",
-            "run_name": "run1",
+            "run_id": "run1",
             "ftype": "csv",
         }
 
@@ -310,7 +310,7 @@ class test_s3_matcher(unittest.TestCase):
 
         self.assertEqual(artifact, "project1.sample1.run1")
 
-        parsed_key = {"sample_id": "sample1", "run_name": "run1", "ftype": "csv"}
+        parsed_key = {"sample_id": "sample1", "run_id": "run1", "ftype": "csv"}
 
         artifact = s3_matcher.generate_artifact(parsed_key, artifact_layout)
 
@@ -346,7 +346,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "direction": "1",
                             "ftype": "fastq",
                             "gzip": "gz",
@@ -360,7 +360,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "ftype": "csv",
                         },
                     },
@@ -377,7 +377,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "ftype": "fastq",
                             "gzip": "gz",
                         },
@@ -390,7 +390,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "ftype": "csv",
                         },
                     },
@@ -422,7 +422,7 @@ class test_s3_matcher(unittest.TestCase):
             "parsed_fname": {
                 "project": "project1",
                 "sample_id": "sample1",
-                "run_name": "run1",
+                "run_id": "run1",
                 "direction": "2",
                 "ftype": "fastq",
                 "gzip": "gz",
@@ -562,7 +562,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "direction": "1",
                             "ftype": "fastq",
                             "gzip": "gz",
@@ -576,7 +576,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "direction": "2",
                             "ftype": "fastq",
                             "gzip": "gz",
@@ -590,7 +590,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "ftype": "csv",
                         },
                     },
@@ -608,7 +608,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertEqual(payload["project"], "project1")
         self.assertEqual(payload["site"], "site1")
         self.assertEqual(payload["platform"], "illumina")
-        self.assertEqual(payload["run_name"], "run1")
+        self.assertEqual(payload["run_id"], "run1")
         self.assertEqual(payload["sample_id"], "sample1")
         self.assertEqual(payload["files"], existing_object_dict[index_tuple]["files"])
         self.assertEqual(payload["uploaders"], ["bryn-site1"])
@@ -633,7 +633,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "direction": "1",
                             "ftype": "fastq",
                             "gzip": "gz",
@@ -647,7 +647,7 @@ class test_s3_matcher(unittest.TestCase):
                         "parsed_fname": {
                             "project": "project1",
                             "sample_id": "sample1",
-                            "run_name": "run1",
+                            "run_id": "run1",
                             "ftype": "csv",
                         },
                     },
@@ -834,7 +834,7 @@ class test_s3_matcher(unittest.TestCase):
                 "parsed_fname": {
                     "project": "project1",
                     "sample_id": "sample1",
-                    "run_name": "run2",
+                    "run_id": "run2",
                     "ftype": "csv",
                 },
             },

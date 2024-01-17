@@ -41,7 +41,6 @@ with open(args.config) as conf_fh:
 template_version = config["version"]
 
 for i in range(1, args.number + 1):
-
     out_data = {}
 
     # site = out_data["site"] = "BIRM"
@@ -49,8 +48,8 @@ for i in range(1, args.number + 1):
     # samp_id = out_data["sample_id"] = text_gen(
     #     range_to_len(config["configs"][args.pathogen_code]["sample_id"])
     # )
-    # run_name = out_data["run_name"] = text_gen(
-    #     range_to_len(config["configs"][args.pathogen_code]["run_name"])
+    # run_id = out_data["run_id"] = text_gen(
+    #     range_to_len(config["configs"][args.pathogen_code]["run_id"])
     # )
 
     n_opt_fields = random.randint(
@@ -69,16 +68,17 @@ for i in range(1, args.number + 1):
             out_data[field] = template_version
             continue
         elif field == "pathogen_code":
-            out_data[field] = args. pathogen_code
+            out_data[field] = args.pathogen_code
             continue
 
         ftype = config["configs"][args.pathogen_code]["csv"]["field_datatypes"][field]
 
-
         if ftype == "text":
             out_data[field] = text_gen(
                 range_to_len(
-                    config["configs"][args.pathogen_code]["csv"]["character_limits"][field]
+                    config["configs"][args.pathogen_code]["csv"]["character_limits"][
+                        field
+                    ]
                 )
             )
 
@@ -90,11 +90,11 @@ for i in range(1, args.number + 1):
         elif ftype == "month":
             out_data[field] = month_gen()
 
-    out_path = f"{args.outdir}/{out_data['sample_id']}.{out_data['run_name']}"
+    out_path = f"{args.outdir}/{out_data['sample_id']}.{out_data['run_id'']}"
 
     with open(args.fasta, "rt") as fasta_fh:
         fasta = SeqIO.read(fasta_fh, "fasta")
-        fasta.id = f"{out_data['site']}.{out_data['sample_id']}.{out_data['run_name']}"
+        fasta.id = f"{out_data['site']}.{out_data['sample_id']}.{out_data['run_id'']}"
         SeqIO.write(fasta, out_path + ".fasta", "fasta")
 
     shutil.copy(args.bam, out_path + ".bam")

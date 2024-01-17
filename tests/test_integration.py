@@ -60,13 +60,13 @@ example_csv_msg = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscapetest-birm-ont-prod",
+                    "name": "mscape-birm-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscapetest-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
-                    "key": "mscapetest.sample-test.run-test.csv",
+                    "key": "mscape.sample-test.run-test.csv",
                     "size": 275,
                     "eTag": "7022ea6a3adb39323b5039c1d6587d08",
                     "versionId": "",
@@ -102,13 +102,13 @@ example_csv_msg_2 = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscapetest-birm-ont-prod",
+                    "name": "mscape-birm-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscapetest-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
-                    "key": "mscapetest.sample-test.run-test.csv",
+                    "key": "mscape.sample-test.run-test.csv",
                     "size": 275,
                     "eTag": "29d33a6a67446891caf00d228b954ba7",
                     "versionId": "",
@@ -144,13 +144,13 @@ example_fastq_msg = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscapetest-birm-ont-prod",
+                    "name": "mscape-birm-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscapetest-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
-                    "key": "mscapetest.sample-test.run-test.fastq.gz",
+                    "key": "mscape.sample-test.run-test.fastq.gz",
                     "size": 123123123,
                     "eTag": "179d94f8cd22896c2a80a9a7c98463d2-21",
                     "versionId": "",
@@ -186,13 +186,13 @@ incorrect_fastq_msg = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscapetest-birm-ont-prod",
+                    "name": "mscape-birm-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscapetest-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
-                    "key": "mscapetest.sample-test-2.run-test.fastq.gz",
+                    "key": "mscape.sample-test-2.run-test.fastq.gz",
                     "size": 123123123,
                     "eTag": "179d94f8cd22896c2a80a9a7c98463d2-21",
                     "versionId": "",
@@ -216,21 +216,21 @@ example_match_message = {
     "site": "birm",
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
-    "artifact": "mscapetest.sample-test.run-test",
+    "artifact": "mscape.sample-test.run-test",
     "sample_id": "sample-test",
-    "run_name": "run-test",
-    "project": "mscapetest",
+    "run_id": "run-test",
+    "project": "mscape",
     "platform": "ont",
     "files": {
         ".fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.fastq.gz",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "mscapetest.sample-test.run-test.fastq.gz",
+            "key": "mscapeple-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.csv",
+            "key": "mscape.sample-test.run-test.csv",
         },
     },
     "test_flag": False,
@@ -242,21 +242,21 @@ example_mismatch_match_message = {
     "site": "birm",
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
-    "artifact": "mscapetest.sample-test-2.run-test-2",
+    "artifact": "mscape.sample-test-2.run-test-2",
     "sample_id": "sample-test-2",
-    "run_name": "run-test-2",
-    "project": "mscapetest",
+    "run_id": "run-test-2",
+    "project": "mscape
     "platform": "ont",
     "files": {
         ".fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test-2.run-test-2.fastq.gz",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test-2.run-test-2.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "mscapetest.sample-test-2.run-test-2.fastq.gz",
+            "key": "mscape.sample-test-2.run-test-2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.csv",
+            "key": "mscape.sample-test.run-test.csv",
         },
     },
     "test_flag": False,
@@ -264,27 +264,27 @@ example_mismatch_match_message = {
 
 example_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "mscapetest.sample-test.run-test",
+    "artifact": "mscape.sample-test.run-test",
     "sample_id": "sample-test",
-    "run_name": "run-test",
-    "project": "mscapetest",
+    "run_id": "run-test",
+    "project": "mscape",
     "uploaders": ["mscape-testuser"],
     "platform": "ont",
     "ingest_timestamp": 1694780451766213337,
-    "cid": False,
+    "climb_id": False,
     "site": "birm",
     "created": False,
     "ingested": False,
     "files": {
         ".fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.fastq.gz",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "mscapetest.sample-test.run-test.fastq.gz",
+            "key": "mscape.sample-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.csv",
+            "key": "mscape.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -303,12 +303,12 @@ example_pathsafe_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
     "artifact": "pathsafetest.sample-test.run-test",
     "sample_id": "sample-test",
-    "run_name": "run-test",
+    "run_id": "run-test",
     "project": "pathsafetest",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
     "ingest_timestamp": 1694780451766213337,
-    "cid": False,
+    "climb_id": False,
     "site": "birm",
     "created": False,
     "ingested": False,
@@ -345,12 +345,12 @@ example_pathsafe_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
     "artifact": "pathsafetest.sample-test.run-test",
     "sample_id": "sample-test",
-    "run_name": "run-test",
+    "run_id": "run-test",
     "project": "pathsafetest",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
     "ingest_timestamp": 1694780451766213337,
-    "cid": False,
+    "climb_id": False,
     "site": "birm",
     "created": False,
     "ingested": False,
@@ -385,27 +385,27 @@ example_pathsafe_test_validator_message = {
 
 example_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "mscapetest.sample-test.run-test",
+    "artifact": "mscape.sample-test.run-test",
     "sample_id": "sample-test",
-    "run_name": "run-test",
-    "project": "mscapetest",
+    "run_id": "run-test",
+    "project": "mscape",
     "uploaders": ["mscape-testuser"],
     "platform": "ont",
     "ingest_timestamp": 1694780451766213337,
-    "cid": False,
+    "climb_id": False,
     "site": "birm",
     "created": False,
     "ingested": False,
     "files": {
         ".fastq.gz": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.fastq.gz",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "mscapetest.sample-test.run-test.fastq.gz",
+            "key": "mscape.sample-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscapetest-birm-ont-prod/mscapetest.sample-test.run-test.csv",
+            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "mscapetest.sample-test.run-test.csv",
+            "key": "mscape.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -576,19 +576,19 @@ class Test_S3_matcher(unittest.TestCase):
         message_dict = json.loads(message.body)
 
         self.assertEqual(message_dict["sample_id"], "sample-test")
-        self.assertEqual(message_dict["artifact"], "mscapetest.sample-test.run-test")
-        self.assertEqual(message_dict["run_name"], "run-test")
-        self.assertEqual(message_dict["project"], "mscapetest")
+        self.assertEqual(message_dict["artifact"], "mscape.sample-test.run-test")
+        self.assertEqual(message_dict["run_id"], "run-test")
+        self.assertEqual(message_dict["project"], "mscape")
         self.assertEqual(message_dict["platform"], "ont")
         self.assertEqual(message_dict["site"], "birm")
         self.assertEqual(message_dict["uploaders"], ["testuser"])
         self.assertEqual(
             message_dict["files"][".csv"]["key"],
-            "mscapetest.sample-test.run-test.csv",
+            "mscape.sample-test.run-test.csv",
         )
         self.assertEqual(
             message_dict["files"][".fastq.gz"]["key"],
-            "mscapetest.sample-test.run-test.fastq.gz",
+            "mscape.sample-test.run-test.fastq.gz",
         )
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
@@ -638,19 +638,19 @@ class Test_S3_matcher(unittest.TestCase):
         message_dict = json.loads(message_2.body)
 
         self.assertEqual(message_dict["sample_id"], "sample-test")
-        self.assertEqual(message_dict["artifact"], "mscapetest.sample-test.run-test")
-        self.assertEqual(message_dict["run_name"], "run-test")
-        self.assertEqual(message_dict["project"], "mscapetest")
+        self.assertEqual(message_dict["artifact"], "mscape.sample-test.run-test")
+        self.assertEqual(message_dict["run_id"], "run-test")
+        self.assertEqual(message_dict["project"], "mscape")
         self.assertEqual(message_dict["platform"], "ont")
         self.assertEqual(message_dict["site"], "birm")
         self.assertEqual(message_dict["uploaders"], ["testuser"])
         self.assertEqual(
             message_dict["files"][".csv"]["key"],
-            "mscapetest.sample-test.run-test.csv",
+            "mscape.sample-test.run-test.csv",
         )
         self.assertEqual(
             message_dict["files"][".fastq.gz"]["key"],
-            "mscapetest.sample-test.run-test.fastq.gz",
+            "mscape.sample-test.run-test.fastq.gz",
         )
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
@@ -672,21 +672,21 @@ class Test_ingest(unittest.TestCase):
         os.environ["UNIT_TESTING"] = "True"
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
-        self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
+        self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("sample_id,run_name,project,platform,site\n")
-            f.write("sample-test,run-test,mscapetest,ont,birm")
+            f.write("sample_id,run_id,project,platform,site\n")
+            f.write("sample-test,run-test,mscape,ont,birm")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
-            "mscapetest-birm-ont-prod",
-            "mscapetest.sample-test.run-test.csv",
+            "mscape-birm-ont-prod",
+            "mscape.sample-test.run-test.csv",
         )
 
         resp = self.s3_client.head_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
         )
 
         csv_etag = resp["ETag"].replace('"', "").replace('"', "")
@@ -736,7 +736,7 @@ class Test_ingest(unittest.TestCase):
         os.remove(TEST_CSV_FILENAME)
 
         channel.queue_delete(queue="inbound.matched")
-        channel.queue_delete(queue="inbound.to_validate.mscapetest")
+        channel.queue_delete(queue="inbound.to_validate.mscape")
 
         connection.close()
         time.sleep(1)
@@ -757,7 +757,7 @@ class Test_ingest(unittest.TestCase):
             )
 
             message = self.varys_client.receive(
-                exchange="inbound.to_validate.mscapetest",
+                exchange="inbound.to_validate.mscape",
                 queue_suffix="ingest",
                 timeout=10,
             )
@@ -768,20 +768,20 @@ class Test_ingest(unittest.TestCase):
 
             self.assertEqual(message_dict["sample_id"], "sample-test")
             self.assertEqual(
-                message_dict["artifact"], "mscapetest.sample-test.run-test"
+                message_dict["artifact"], "mscape.sample-test.run-test"
             )
-            self.assertEqual(message_dict["run_name"], "run-test")
-            self.assertEqual(message_dict["project"], "mscapetest")
+            self.assertEqual(message_dict["run_id"], "run-test")
+            self.assertEqual(message_dict["project"], "mscape")
             self.assertEqual(message_dict["platform"], "ont")
             self.assertEqual(message_dict["site"], "birm")
             self.assertEqual(message_dict["uploaders"], ["testuser"])
             self.assertEqual(
                 message_dict["files"][".csv"]["key"],
-                "mscapetest.sample-test.run-test.csv",
+                "mscape.sample-test.run-test.csv",
             )
             self.assertTrue(message_dict["validate"])
             self.assertTrue(message_dict["onyx_test_create_status"])
-            self.assertNotIn("cid", message_dict.keys())
+            self.assertNotIn("climb_id", message_dict.keys())
             self.assertFalse(message_dict["test_flag"])
             self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
@@ -803,25 +803,25 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["UNIT_TESTING"] = "True"
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
-        self.s3_client.create_bucket(Bucket="mscapetest-birm-ont-prod")
-        self.s3_client.create_bucket(Bucket="mscapetest-published-reads")
-        self.s3_client.create_bucket(Bucket="mscapetest-published-reports")
-        self.s3_client.create_bucket(Bucket="mscapetest-published-taxon-reports")
-        self.s3_client.create_bucket(Bucket="mscapetest-published-binned-reads")
+        self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
+        self.s3_client.create_bucket(Bucket="mscape-published-reads")
+        self.s3_client.create_bucket(Bucket="mscape-published-reports")
+        self.s3_client.create_bucket(Bucket="mscape-published-taxon-reports")
+        self.s3_client.create_bucket(Bucket="mscape-published-binned-reads")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("sample_id,run_name,project,platform,site\n")
-            f.write("sample-test,run-test,mscapetest,ont,birm")
+            f.write("sample_id,run_id,project,platform,site\n")
+            f.write("sample-test,run-test,mscape,ont,birm")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
-            "mscapetest-birm-ont-prod",
-            "mscapetest.sample-test.run-test.csv",
+            "mscape-birm-ont-prod",
+            "mscape.sample-test.run-test.csv",
         )
 
         resp = self.s3_client.head_object(
-            Bucket="mscapetest-birm-ont-prod",
-            Key="mscapetest.sample-test.run-test.csv",
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
         )
 
         self.log = utils.init_logger(
@@ -866,7 +866,7 @@ class Test_mscape_validator(unittest.TestCase):
         )
         channel = connection.channel()
 
-        channel.queue_delete(queue="inbound.to_validate.mscapetest")
+        channel.queue_delete(queue="inbound.to_validate.mscape")
         channel.queue_delete(queue="inbound.new_artifact.mscape")
         channel.queue_delete(queue="inbound.results.mscape.birm")
 
@@ -899,7 +899,7 @@ class Test_mscape_validator(unittest.TestCase):
             mock_client.return_value.__enter__.return_value.update.return_value = {}
 
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "cid": "test_cid"
+                "climb_id": "test_climb_id"
             }
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
@@ -975,46 +975,46 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
             self.assertEqual(
                 payload["artifact"],
-                "mscapetest.sample-test.run-test",
+                "mscape.sample-test.run-test",
             )
-            self.assertEqual(payload["project"], "mscapetest")
+            self.assertEqual(payload["project"], "mscape")
             self.assertEqual(payload["site"], "birm")
             self.assertEqual(payload["platform"], "ont")
-            self.assertEqual(payload["cid"], "test_cid")
+            self.assertEqual(payload["climb_id"], "test_climb_id")
             self.assertEqual(payload["created"], True)
             self.assertEqual(payload["published"], True)
             self.assertEqual(payload["onyx_create_status"], True)
             self.assertEqual(payload["test_flag"], False)
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reads"
+                Bucket="mscape-published-reads"
             )
             self.assertEqual(
-                published_reads_contents["Contents"][0]["Key"], "test_cid.fastq.gz"
+                published_reads_contents["Contents"][0]["Key"], "test_climb_id.fastq.gz"
             )
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reports"
+                Bucket="mscape-published-reports"
             )
             self.assertEqual(
                 published_reports_contents["Contents"][0]["Key"],
-                "test_cid_scylla_report.html",
+                "test_climb_id_scylla_report.html",
             )
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-taxon-reports"
+                Bucket="mscape-published-taxon-reports"
             )
             self.assertEqual(
                 published_taxon_reports_contents["Contents"][0]["Key"],
-                "test_cid/test_cid_PlusPF.kraken_report.txt",
+                "test_climb_id/test_climb_id_PlusPF.kraken_report.txt",
             )
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-binned-reads"
+                Bucket="mscape-published-binned-reads"
             )
             self.assertEqual(
                 published_binned_reads_contents["Contents"][0]["Key"],
-                "test_cid/test_cid_286.fastq.gz",
+                "test_climb_id/test_climb_id_286.fastq.gz",
             )
 
     def test_too_much_human(self):
@@ -1114,25 +1114,25 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["created"])
             self.assertFalse(payload["ingested"])
             self.assertFalse(payload["onyx_create_status"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reads"
+                Bucket="mscape-published-reads"
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reports"
+                Bucket="mscape-published-reports"
             )
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-taxon-reports"
+                Bucket="mscape-published-taxon-reports"
             )
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-binned-reads"
+                Bucket="mscape-published-binned-reads"
             )
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
@@ -1157,7 +1157,7 @@ class Test_mscape_validator(unittest.TestCase):
             mock_client.return_value.__enter__.return_value.update.return_value = {}
 
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "data": {"cid": "test_cid"}
+                "data": {"climb_id": "test_climb_id"}
             }
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
@@ -1234,27 +1234,27 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["created"])
             self.assertFalse(payload["ingested"])
             self.assertFalse(payload["onyx_create_status"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertTrue(payload["test_ingest_result"])
             self.assertFalse(payload["ingest_errors"])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reads"
+                Bucket="mscape-published-reads"
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reports"
+                Bucket="mscape-published-reports"
             )
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-taxon-reports"
+                Bucket="mscape-published-taxon-reports"
             )
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-binned-reads"
+                Bucket="mscape-published-binned-reads"
             )
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
@@ -1402,7 +1402,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["created"])
             self.assertFalse(payload["ingested"])
             self.assertFalse(payload["onyx_create_status"])
-            self.assertFalse(payload["cid"])
+            self.assertFalse(payload["climb_id"])
             self.assertFalse(payload["test_ingest_result"])
 
             self.assertIn(
@@ -1412,22 +1412,22 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["onyx_create_status"])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reads"
+                Bucket="mscape-published-reads"
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-reports"
+                Bucket="mscape-published-reports"
             )
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-taxon-reports"
+                Bucket="mscape-published-taxon-reports"
             )
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscapetest-published-binned-reads"
+                Bucket="mscape-published-binned-reads"
             )
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
@@ -1450,7 +1450,7 @@ class Test_mscape_validator(unittest.TestCase):
 #         self.s3_client.create_bucket(Bucket="pathsafetest-published-assembly")
 
 #         with open(TEST_CSV_FILENAME, "w") as f:
-#             f.write("sample_id,run_name,project,platform,site\n")
+#             f.write("sample_id,run_id,project,platform,site\n")
 #             f.write("sample-test,run-test,pathsafetest,ont,birm")
 
 #         self.s3_client.upload_file(
@@ -1547,7 +1547,7 @@ class Test_mscape_validator(unittest.TestCase):
 #             )
 
 #             mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-#                 status_code=201, json_data={"data": {"cid": "test_cid"}}
+#                 status_code=201, json_data={"data": {"climb_id": "test_climb_id"}}
 #             )
 
 #             mock_local_client.return_value.__enter__.return_value.get.return_value = {
@@ -1616,7 +1616,7 @@ class Test_mscape_validator(unittest.TestCase):
 #             self.assertEqual(payload["project"], "pathsafetest")
 #             self.assertEqual(payload["site"], "birm")
 #             self.assertEqual(payload["platform"], "illumina")
-#             self.assertEqual(payload["cid"], "test_cid")
+#             self.assertEqual(payload["climb_id"], "test_climb_id")
 #             self.assertEqual(payload["created"], True)
 #             self.assertEqual(payload["ingested"], True)
 #             self.assertEqual(payload["onyx_test_status_code"], 201)
@@ -1631,7 +1631,7 @@ class Test_mscape_validator(unittest.TestCase):
 #             )
 #             self.assertEqual(
 #                 published_reads_contents["Contents"][0]["Key"],
-#                 "test_cid.assembly.fasta",
+#                 "test_climb_id.assembly.fasta",
 #             )
 
 #             resp = requests.get(payload["assembly_presigned_url"])
@@ -1670,7 +1670,7 @@ class Test_mscape_validator(unittest.TestCase):
 #             )
 
 #             mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-#                 status_code=201, json_data={"data": {"cid": "test_cid"}}
+#                 status_code=201, json_data={"data": {"climb_id": "test_climb_id"}}
 #             )
 
 #             mock_local_client.return_value.__enter__.return_value.get.return_value = {
@@ -1736,7 +1736,7 @@ class Test_mscape_validator(unittest.TestCase):
 #             self.assertFalse(payload["created"])
 #             self.assertFalse(payload["ingested"])
 #             self.assertFalse(payload["onyx_create_status"])
-#             self.assertFalse(payload["cid"])
+#             self.assertFalse(payload["climb_id"])
 #             self.assertTrue(payload["test_ingest_result"])
 #             self.assertFalse(payload["ingest_errors"])
 
@@ -1843,7 +1843,7 @@ class Test_mscape_validator(unittest.TestCase):
 #             self.assertFalse(payload["created"])
 #             self.assertFalse(payload["ingested"])
 #             self.assertFalse(payload["onyx_create_status"])
-#             self.assertFalse(payload["cid"])
+#             self.assertFalse(payload["climb_id"])
 #             self.assertFalse(payload["test_ingest_result"])
 
 #             self.assertIn(

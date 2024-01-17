@@ -31,7 +31,7 @@ class inbound_matched_table(SQLModel, table=True):
 
     sample_id: str = Field(index=True)
 
-    run_name: str = Field(index=True)
+    run_id: str = Field(index=True)
 
     files: str = Field()
 
@@ -57,7 +57,7 @@ class inbound_to_validate_table(SQLModel, table=True):
 
     sample_id: str = Field(index=True)
 
-    run_name: str = Field(index=True)
+    run_id: str = Field(index=True)
 
     files: str = Field()
 
@@ -89,7 +89,7 @@ class inbound_validated_table(SQLModel, table=True):
 
     sample_id: str = Field(index=True)
 
-    run_name: str = Field(index=True)
+    run_id: str = Field(index=True)
 
     files: str = Field()
 
@@ -113,7 +113,7 @@ class inbound_artifacts_table(SQLModel, table=True):
 
     uuid: str = Field(index=True)
 
-    cid: str = Field(index=True)
+    climb_id: str = Field(index=True)
 
     timestamp: int = Field(index=True)
 

@@ -8,7 +8,7 @@ def main():
     with open(sys.argv[1], "w") as testdata:
         fieldnames = [
             "sample_id",
-            "run_name",
+            "run_id",
             "biosample_source_id",
             "sample_site",
             "sample_type",
@@ -27,7 +27,7 @@ def main():
             writer.writerow(
                 {
                     "sample_id": f"sample-{secrets.token_hex(3)}",
-                    "run_name": f"run-{random.randint(1, 5)}",
+                    "run_id": f"run-{random.randint(1, 5)}",
                     "biosample_source_id": f"source-{secrets.token_hex(5).upper()}",
                     "sample_site": random.choice(
                         [
