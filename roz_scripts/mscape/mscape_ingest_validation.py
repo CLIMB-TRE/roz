@@ -470,7 +470,7 @@ def push_report_file(
             s3_bucket,
             s3_key,
         )
-    except ClientError as push_report_file_exception:
+    except (ClientError, FileNotFoundError) as push_report_file_exception:
         log.error(
             f"Failed to upload scylla report to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {push_report_file_exception}"
         )
@@ -536,7 +536,7 @@ def add_reads_record(
                     s3_key,
                 )
 
-            except ClientError as add_reads_record_exception:
+            except (ClientError, FileNotFoundError) as add_reads_record_exception:
                 log.error(
                     f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_reads_record_exception}"
                 )
@@ -578,7 +578,7 @@ def add_reads_record(
                 s3_key,
             )
 
-        except ClientError as add_reads_record_exception:
+        except (ClientError, FileNotFoundError) as add_reads_record_exception:
             log.error(
                 f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_reads_record_exception}"
             )
@@ -633,7 +633,6 @@ def read_fraction_upload(
         for i in (1, 2):
             fastq_path = os.path.join(
                 result_path,
-                payload["uuid"],
                 "read_fractions",
                 f"{fraction_prefix}_{i}.fastq.gz",
             )
@@ -648,7 +647,7 @@ def read_fraction_upload(
                     s3_key,
                 )
 
-            except ClientError as add_read_fraction_exception:
+            except (ClientError, FileNotFoundError) as add_read_fraction_exception:
                 log.error(
                     f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CLIMB-ID: {payload['climb_id']} due to client error: {add_read_fraction_exception}"
                 )
@@ -679,7 +678,6 @@ def read_fraction_upload(
     else:
         fastq_path = os.path.join(
             result_path,
-            payload["uuid"],
             "read_fractions",
             f"{fraction_prefix}.fastq.gz",
         )
@@ -695,7 +693,7 @@ def read_fraction_upload(
                 s3_key,
             )
 
-        except ClientError as add_read_fraction_exception:
+        except (ClientError, FileNotFoundError) as add_read_fraction_exception:
             log.error(
                 f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_read_fraction_exception}"
             )
