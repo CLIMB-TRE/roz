@@ -51,7 +51,7 @@ with open(sys.argv[1]) as manifest_fh:
 
         if row["sequencing_protocol"] == "ILLUMINA":
             with open(
-                f"mscape.{row['sample_id']}.{row['run_id'']}.illumina.csv", "wt"
+                f"mscape.{row['sample_id']}.{row['run_id']}.illumina.csv", "wt"
             ) as csv_fh:
                 writer = csv.DictWriter(csv_fh, fieldnames=out_cols.keys())
                 writer.writeheader()
@@ -68,29 +68,29 @@ with open(sys.argv[1]) as manifest_fh:
 
             local_path_1, response_1 = urllib.request.urlretrieve(
                 f"ftp://{fastq_1}",
-                f"{os.getcwd()}/mscape.{row['sample_id']}.{row['run_id'']}.1.fastq.gz",
+                f"{os.getcwd()}/mscape.{row['sample_id']}.{row['run_id']}.1.fastq.gz",
             )
             local_path_2, response_2 = urllib.request.urlretrieve(
                 f"ftp://{fastq_2}",
-                f"{os.getcwd()}/mscape.{row['sample_id']}.{row['run_id'']}.2.fastq.gz",
+                f"{os.getcwd()}/mscape.{row['sample_id']}.{row['run_id']}.2.fastq.gz",
             )
 
             s3_client.upload_file(
                 local_path_1,
                 "mscape-public-illumina-prod",
-                f"mscape.{row['sample_id']}.{row['run_id'']}.1.fastq.gz",
+                f"mscape.{row['sample_id']}.{row['run_id']}.1.fastq.gz",
             )
 
             s3_client.upload_file(
                 local_path_2,
                 "mscape-public-illumina-prod",
-                f"mscape.{row['sample_id']}.{row['run_id'']}.2.fastq.gz",
+                f"mscape.{row['sample_id']}.{row['run_id']}.2.fastq.gz",
             )
 
             s3_client.upload_file(
-                f"mscape.{row['sample_id']}.{row['run_id'']}.illumina.csv",
+                f"mscape.{row['sample_id']}.{row['run_id']}.illumina.csv",
                 "mscape-public-illumina-prod",
-                f"mscape.{row['sample_id']}.{row['run_id'']}.illumina.csv",
+                f"mscape.{row['sample_id']}.{row['run_id']}.illumina.csv",
             )
 
             # os.remove(local_path_1)
@@ -101,7 +101,7 @@ with open(sys.argv[1]) as manifest_fh:
 
         elif row["sequencing_protocol"] == "OXFORD NANOPORE":
             with open(
-                f"mscape.{row['sample_id']}.{row['run_id'']}.ont.csv", "wt"
+                f"mscape.{row['sample_id']}.{row['run_id']}.ont.csv", "wt"
             ) as csv_fh:
                 writer = csv.DictWriter(csv_fh, fieldnames=out_cols.keys())
                 writer.writeheader()
@@ -109,19 +109,19 @@ with open(sys.argv[1]) as manifest_fh:
 
             local_path, response = urllib.request.urlretrieve(
                 f"ftp://{row['submitted_ftp']}",
-                f"{os.getcwd()}/mscape.{row['sample_id']}.{row['run_id'']}.fastq.gz",
+                f"{os.getcwd()}/mscape.{row['sample_id']}.{row['run_id']}.fastq.gz",
             )
 
             s3_client.upload_file(
                 local_path_1,
                 "mscape-public-ont-prod",
-                f"mscape.{row['sample_id']}.{row['run_id'']}.fastq.gz",
+                f"mscape.{row['sample_id']}.{row['run_id']}.fastq.gz",
             )
 
             s3_client.upload_file(
-                f"mscape.{row['sample_id']}.{row['run_id'']}.ont.csv",
+                f"mscape.{row['sample_id']}.{row['run_id']}.ont.csv",
                 "mscape-public-ont-prod",
-                f"mscape.{row['sample_id']}.{row['run_id'']}.ont.csv",
+                f"mscape.{row['sample_id']}.{row['run_id']}.ont.csv",
             )
 
             # os.remove(local_path_1)

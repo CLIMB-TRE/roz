@@ -245,7 +245,7 @@ example_mismatch_match_message = {
     "artifact": "mscape.sample-test-2.run-test-2",
     "sample_id": "sample-test-2",
     "run_id": "run-test-2",
-    "project": "mscape
+    "project": "mscape",
     "platform": "ont",
     "files": {
         ".fastq.gz": {
@@ -767,9 +767,7 @@ class Test_ingest(unittest.TestCase):
             message_dict = json.loads(message.body)
 
             self.assertEqual(message_dict["sample_id"], "sample-test")
-            self.assertEqual(
-                message_dict["artifact"], "mscape.sample-test.run-test"
-            )
+            self.assertEqual(message_dict["artifact"], "mscape.sample-test.run-test")
             self.assertEqual(message_dict["run_id"], "run-test")
             self.assertEqual(message_dict["project"], "mscape")
             self.assertEqual(message_dict["platform"], "ont")
