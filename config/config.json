@@ -8,8 +8,8 @@
       "sites": {
         "birm": "analysis",
         "public": "analysis",
-        "ukhsa": "analysis",
         "gstt": "uploader"
+        "ukhsa": "analysis"
       },
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
@@ -46,7 +46,7 @@
           "policy": { "analysis": "project_read" },
           "owner": "admin"
         },
-        "pusblished-read-fractions": {
+        "published-read-fractions": {
           "name_layout": "{project}-published-read-fractions",
           "policy": { "analysis": "project_read" },
           "owner": "admin"
