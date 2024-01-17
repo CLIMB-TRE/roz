@@ -1085,8 +1085,7 @@ def main():
 
     for i in (
         "ONYX_DOMAIN",
-        "ONYX_USERNAME",
-        "ONYX_PASSWORD",
+        "ONYX_TOKEN",
         "VARYS_CFG",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
