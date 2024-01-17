@@ -60,8 +60,7 @@ class test_ingest(unittest.TestCase):
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
         os.environ["MOTO_S3_CUSTOM_ENDPOINTS"] = "https://s3.climb.ac.uk"
         os.environ["ONYX_DOMAIN"] = "testing"
-        os.environ["ONYX_USERNAME"] = "testing"
-        os.environ["ONYX_PASSWORD"] = "testing"
+        os.environ["ONYX_TOKEN"] = "testing"
 
         self.mock_s3 = moto.mock_s3()
         self.mock_s3.start()

@@ -866,6 +866,7 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
         os.environ["ONYX_DOMAIN"] = "domain"
+        os.environ["ONYX_TOKEN"] = "testing"
 
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
