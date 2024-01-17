@@ -867,15 +867,15 @@ def validate(
             payload=payload,
         )
 
-    if not fastq_1_unseen or not fastq_2_unseen:
-        log.info(
-            f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
-        )
-        payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append(
-            f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
-        )
-        return (False, alert, payload, message)
+        if not fastq_1_unseen or not fastq_2_unseen:
+            log.info(
+                f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
+            )
+            return (False, alert, payload, message)
 
     rc, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, ingest_pipe=ingest_pipe
