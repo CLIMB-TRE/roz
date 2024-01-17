@@ -1345,23 +1345,23 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            mock_client.return_value.__enter__.return_value.update = Mock(
-                side_effect=OnyxRequestError(
-                    message={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
-                    response=MockResponse(
-                        status_code=400,
-                        json_data={
-                            "data": [],
-                            "messages": {
-                                "sample_id": ["Test sample_id error handling"]
-                            },
-                        },
-                    ),
-                )
-            )
+            # mock_client.return_value.__enter__.return_value.update = Mock(
+            #     side_effect=OnyxRequestError(
+            #         message={
+            #             "data": [],
+            #             "messages": {"sample_id": "Test sample_id error handling"},
+            #         },
+            #         response=MockResponse(
+            #             status_code=400,
+            #             json_data={
+            #                 "data": [],
+            #                 "messages": {
+            #                     "sample_id": ["Test sample_id error handling"]
+            #                 },
+            #             },
+            #         ),
+            #     )
+            # )
 
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(

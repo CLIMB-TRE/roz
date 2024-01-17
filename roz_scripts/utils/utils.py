@@ -373,7 +373,7 @@ def ensure_file_unseen(
                     )
                 )
 
-                if response["total"] == 0:
+                if len(response) == 0:
                     return (True, False, payload)
                 else:
                     return (False, False, payload)
