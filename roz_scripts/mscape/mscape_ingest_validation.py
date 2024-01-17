@@ -400,7 +400,7 @@ def add_classifier_calls(
         classifier_calls_path = os.path.join(
             result_path,
             "classifications",
-            f"{pipe_params['database_set']}.kraken_report.json",
+            f"{pipe_params['database_set']}.kraken_report.txt",
         )
 
         with open(classifier_calls_path, "rt") as classifier_calls_fh:
@@ -700,7 +700,9 @@ def read_fraction_upload(
                 f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_read_fraction_exception}"
             )
             payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(f"Failed to upload reads to storage bucket")
+            payload["ingest_errors"].append(
+                f"Failed to upload read fraction: {fraction_prefix} to storage bucket"
+            )
 
             read_fraction_fail = True
             alert = True
