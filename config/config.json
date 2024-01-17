@@ -8,8 +8,8 @@
       "sites": {
         "birm": "analysis",
         "public": "analysis",
+        "ukhsa": "analysis",
         "gstt": "uploader"
-        "ukhsa": "analysis"
       },
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
