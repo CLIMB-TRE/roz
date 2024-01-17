@@ -486,6 +486,22 @@ example_reads_summary = [
     }
 ]
 
+example_params = {
+    "database_set": "PlusPF",
+}
+
+example_k2_out = {
+    "0": {
+        "percentage": 3.36,
+        "count": 50615,
+        "count_descendants": 50615,
+        "raw_rank": "U",
+        "rank": "U",
+        "name": "unclassified",
+        "taxid": "0",
+    }
+}
+
 
 class MockResponse:
     def __init__(self, status_code, json_data=None, ok=True):
@@ -666,9 +682,7 @@ class Test_ingest(unittest.TestCase):
         os.environ["AWS_SESSION_TOKEN"] = "testing"
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
         os.environ["ONYX_DOMAIN"] = "testing"
-        os.environ["ONYX_USERNAME"] = "testing"
-        os.environ["ONYX_PASSWORD"] = "testing"
-
+        os.environ["ONYX_TOKEN"] = "testing"
         os.environ["UNIT_TESTING"] = "True"
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
@@ -806,6 +820,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-published-reports")
         self.s3_client.create_bucket(Bucket="mscape-published-taxon-reports")
         self.s3_client.create_bucket(Bucket="mscape-published-binned-reads")
+        self.s3_client.create_bucket(Bucket="mscape-published-read-fractions")
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("sample_id,run_id,project,platform,site\n")
@@ -897,7 +912,9 @@ class Test_mscape_validator(unittest.TestCase):
             mock_client.return_value.__enter__.return_value.update.return_value = {}
 
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "climb_id": "test_climb_id"
+                "climb_id": "test_climb_id",
+                "sample_id": "sample-test",
+                "run_id": "run-test",
             }
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
@@ -905,11 +922,13 @@ class Test_mscape_validator(unittest.TestCase):
             classifications_path = os.path.join(result_path, "classifications")
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            read_fraction_path = os.path.join(result_path, "read_fractions")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(read_fraction_path, exist_ok=True)
 
             open(
                 os.path.join(
@@ -917,6 +936,12 @@ class Test_mscape_validator(unittest.TestCase):
                     f"{example_validator_message['uuid']}.fastp.fastq.gz",
                 ),
                 "w",
+            ).close()
+            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "viral_and_unclassified.fastq.gz"), "w"
             ).close()
             open(
                 os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
@@ -937,6 +962,20 @@ class Test_mscape_validator(unittest.TestCase):
                 "w",
             ) as f:
                 f.write(example_execution_trace)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"params_{example_validator_message['uuid']}.log",
+                ),
+                "w",
+            ) as f:
+                f.write(json.dumps(example_params))
+
+            with open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ) as f:
+                f.write(json.dumps(example_k2_out))
 
             with open(
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
@@ -1042,11 +1081,19 @@ class Test_mscape_validator(unittest.TestCase):
             classifications_path = os.path.join(result_path, "classifications")
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            read_fraction_path = os.path.join(result_path, "read_fractions")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
+
+            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "viral_and_unclassified.fastq.gz"), "w"
+            ).close()
 
             open(
                 os.path.join(
@@ -1073,6 +1120,20 @@ class Test_mscape_validator(unittest.TestCase):
                 "w",
             ) as f:
                 f.write(example_execution_trace_human)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"params_{example_validator_message['uuid']}.log",
+                ),
+                "w",
+            ) as f:
+                f.write(json.dumps(example_params))
+
+            with open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ) as f:
+                f.write(json.dumps(example_k2_out))
 
             with open(
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
