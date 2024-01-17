@@ -842,6 +842,16 @@ def validate(
             payload=payload,
         )
 
+        if not fastq_unseen:
+            log.info(
+                f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                f"Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
+            )
+            return (False, alert, payload, message)
+
     elif to_validate["platform"] == "illumina":
         fastq_1_unseen, alert, payload = ensure_file_unseen(
             etag_field="fastq_1_etag",
@@ -857,13 +867,13 @@ def validate(
             payload=payload,
         )
 
-    if not fastq_unseen or not fastq_1_unseen or not fastq_2_unseen:
+    if not fastq_1_unseen or not fastq_2_unseen:
         log.info(
             f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
         )
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
-            f"Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
+            f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
         )
         return (False, alert, payload, message)
 
@@ -928,6 +938,27 @@ def validate(
 
     payload["onyx_create_status"] = True
     payload["created"] = True
+
+    if payload["platform"] == "illumina":
+        etag_fail, alert, payload = onyx_update(
+            payload=payload,
+            log=log,
+            fields={
+                "fastq_1_etag": payload["files"][".1.fastq.gz"]["etag"],
+                "fastq_2_etag": payload["files"][".2.fastq.gz"]["etag"],
+            },
+        )
+
+    elif payload["platform"] == "ont":
+        etag_fail, alert, payload = onyx_update(
+            payload=payload,
+            log=log,
+            fields={"fastq_1_etag": payload["files"][".fastq.gz"]["etag"]},
+        )
+
+    if etag_fail:
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
 
     log.info(
         f"Uploading files to long-term storage buckets for CID: {payload['climb_id']} after sucessful Onyx submission"
