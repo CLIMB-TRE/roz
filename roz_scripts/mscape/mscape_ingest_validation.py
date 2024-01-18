@@ -173,7 +173,8 @@ def execute_validation_pipeline(
         "max_human_reads_before_rejection": "10000",
         "k2_host": args.k2_host,  # Parameterise this and deal with DNS stuff
         "k2_port": "8080",
-        "db": "/shared/public/db/kraken2/k2_pluspf",
+        "db": os.getenv("SCYLLA_K2_DB"),
+        "taxonomy": os.getenv("SCYLLA_TAXONOMY"),
     }
 
     if payload["platform"] == "ont":
@@ -1120,6 +1121,8 @@ def main():
         "VARYS_CFG",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "SCYLLA_K2_DB",
+        "SCYLLA_TAXONOMY",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
