@@ -400,7 +400,7 @@ def add_classifier_calls(
         classifier_calls_path = os.path.join(
             result_path,
             "classifications",
-            f"{pipe_params['database_set']}.kraken_report.txt",
+            f"{pipe_params['database_set']}.kraken_report.json",
         )
 
         with open(classifier_calls_path, "rt") as classifier_calls_fh:
@@ -484,7 +484,7 @@ def push_report_file(
     if not report_fail:
         update_fail, update_alert, payload = onyx_update(
             payload=payload,
-            fields={"validation_report": s3_uri},
+            fields={"ingest_report": s3_uri},
             log=log,
         )
 

@@ -978,7 +978,7 @@ class Test_mscape_validator(unittest.TestCase):
                 f.write(json.dumps(example_params))
 
             with open(
-                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+                os.path.join(classifications_path, "PlusPF.kraken_report.json"), "w"
             ) as f:
                 f.write(json.dumps(example_k2_out))
 
@@ -1137,7 +1137,7 @@ class Test_mscape_validator(unittest.TestCase):
                 f.write(json.dumps(example_params))
 
             with open(
-                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+                os.path.join(classifications_path, "PlusPF.kraken_report.json"), "w"
             ) as f:
                 f.write(json.dumps(example_k2_out))
 
