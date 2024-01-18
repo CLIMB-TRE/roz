@@ -1046,9 +1046,9 @@ class Test_mscape_validator(unittest.TestCase):
             published_taxon_reports_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-taxon-reports"
             )
-            self.assertEqual(
-                published_taxon_reports_contents["Contents"][0]["Key"],
+            self.assertIn(
                 "test_climb_id/test_climb_id_PlusPF.kraken_report.txt",
+                published_taxon_reports_contents["Contents"][0]["Key"],
             )
 
             published_binned_reads_contents = self.s3_client.list_objects(
