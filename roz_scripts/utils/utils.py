@@ -30,6 +30,10 @@ __s3_creds = namedtuple(
 )
 
 
+class EtagMismatchError(Exception):
+    pass
+
+
 class pipeline:
     def __init__(
         self,
@@ -269,6 +273,22 @@ def csv_create(
                     for field, messages in e.response.json()["messages"].items():
                         payload["onyx_create_errors"].setdefault(field, [])
                         payload["onyx_create_errors"][field].extend(messages)
+
+                return (False, False, payload)
+
+            except EtagMismatchError as e:
+                log.error(
+                    f"CSV appears to have been modified after upload for artifact: {payload['artifact']}"
+                )
+
+                if test_submission:
+                    payload.setdefault("onyx_test_create_errors", {})
+                    payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
+                else:
+                    payload.setdefault("onyx_create_errors", {})
+                    payload["onyx_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
 
                 return (False, False, payload)
 
@@ -631,6 +651,8 @@ def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
     file_obj = s3_client.get_object(Bucket=bucket, Key=key)
 
     if file_obj["ETag"].replace('"', "") != eTag:
-        raise Exception("ETag mismatch, CSV has been modified since upload")
+        raise EtagMismatchError(
+            "ETag mismatch, CSV appears to have been modified between upload and parsing"
+        )
 
     return StringIO(file_obj["Body"].read().decode("utf-8-sig"))
