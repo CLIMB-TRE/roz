@@ -169,7 +169,7 @@ def run(args):
                     for obj in objects:
                         last_modified = obj["LastModified"]
                         if start_timestamp <= last_modified <= end_timestamp:
-                            if obj["ETag"] not in sent_etags[bucket_arn]:
+                            if (obj["Key"], obj["ETag"]) not in sent_etags[bucket_arn]:
                                 log.info(f"New object: {obj['Key']}")
 
                                 message = obj_to_message(obj)
@@ -181,7 +181,7 @@ def run(args):
                                     exchange="inbound.s3",
                                     queue_suffix="ingest",
                                 )
-                                sent_etags[bucket_arn].add(obj["ETag"])
+                                sent_etags[bucket_arn].add((obj["Key"], obj["ETag"]))
                             else:
                                 log.info(f"Object already sent: {obj['Key']}")
 
@@ -196,7 +196,9 @@ def run(args):
                         for obj in objects:
                             last_modified = obj["LastModified"]
                             if start_timestamp <= last_modified <= end_timestamp:
-                                if obj["ETag"] not in sent_etags[bucket_arn]:
+                                if (obj["Key"], obj["ETag"]) not in sent_etags[
+                                    bucket_arn
+                                ]:
                                     log.info(f"New object: {obj['Key']}")
                                     message = obj_to_message(obj)
                                     varys_client.send(
@@ -204,7 +206,9 @@ def run(args):
                                         exchange="inbound.s3",
                                         queue_suffix="s3_matcher",
                                     )
-                                    sent_etags[bucket_arn].add(obj["ETag"])
+                                    sent_etags[bucket_arn].add(
+                                        (obj["Key"], obj["ETag"])
+                                    )
                                 else:
                                     log.info(f"Object already sent: {obj['Key']}")
 

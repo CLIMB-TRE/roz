@@ -19,7 +19,7 @@ RUN mkdir /.nextflow \
 
 RUN chown -R jovyan:jovyan /.nextflow
 
-RUN pip3 install git+https://github.com/CLIMB-TRE/varys.git
+RUN pip3 install varys-client
 
 RUN pip3 install climb-onyx-client
 

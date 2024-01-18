@@ -1393,10 +1393,11 @@ def audit_bucket_messaging(
 
 
 def run(args):
-    for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS"]:
-        if env_var not in os.environ.keys():
-            print(f"Environment variable {env_var} not set", file=sys.stderr)
-            sys.exit(1)
+    if args.setup_messaging:
+        for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS"]:
+            if env_var not in os.environ.keys():
+                print(f"Environment variable {env_var} not set", file=sys.stderr)
+                sys.exit(1)
 
     with open(args.config, "r") as f:
         config_dict = json.load(f)
@@ -1411,6 +1412,7 @@ def run(args):
         config_map=config_map,
         dry_run=args.dry_run,
     )
+    to_fix = {"site_buckets": False, "project_buckets": False}
 
     if not args.dry_run:
         audit_dict = audit_all_buckets(
