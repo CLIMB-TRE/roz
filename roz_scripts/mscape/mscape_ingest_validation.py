@@ -1087,7 +1087,7 @@ def run(args):
     try:
         while True:
             message = varys_client.receive(
-                exchange="inbound.to_validate.", queue_suffix="validator"
+                exchange="inbound.to_validate.mscape", queue_suffix="validator"
             )
 
             worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
