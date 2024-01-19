@@ -126,9 +126,13 @@ class pipeline:
         """
 
         try:
-            pipeline_id = (
-                stdout.split("\n")[3].split(" ")[2].replace("[", "").replace("]", "")
-            )
+            pipeline_id = None
+            for line in stdout.split("\n"):
+                if line.startswith("Launching"):
+                    pipeline_id = line.split(" ")[2].replace("[", "").replace("]", "")
+
+            if not pipeline_id:
+                raise ValueError("Could not find pipeline ID in stdout")
 
             cmd = [self.nxf_executable, "clean", "-f", pipeline_id]
 
