@@ -82,6 +82,8 @@ class worker_pool_handler:
                 new_artifact_payload = {
                     "publish_timestamp": time.time_ns(),
                     "climb_id": payload["climb_id"],
+                    "sample_id": payload["climb_sample_id"],
+                    "run_id": payload["climb_run_id"],
                     "site": payload["site"],
                     "platform": payload["platform"],
                     "match_uuid": payload["uuid"],
