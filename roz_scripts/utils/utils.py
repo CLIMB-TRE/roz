@@ -193,7 +193,7 @@ def csv_create(
                         payload["files"][".csv"]["etag"],
                     ),  # I don't like having a hardcoded metadata file name like this but hypothetically we should always have a metadata CSV
                     test=test_submission,
-                    fields={"site": payload["site"]},
+                    fields={"site": payload["site"], "suppressed": True},
                     multiline=False,
                 )
 
