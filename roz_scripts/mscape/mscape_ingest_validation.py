@@ -426,7 +426,7 @@ def add_classifier_calls(
         alert = True
 
     if not classifier_calls_fail:
-        for batch in batched(classifier_calls, 3000):
+        for batch in batched(classifier_calls, 100):
             update_fail, update_alert, payload = onyx_update(
                 payload=payload,
                 fields={"classifier_calls": batch},
