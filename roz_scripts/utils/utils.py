@@ -426,7 +426,7 @@ def ensure_file_unseen(
 
             except OnyxClientError as e:
                 log.error(
-                    f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
+                    f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
@@ -435,7 +435,7 @@ def ensure_file_unseen(
 
             except OnyxRequestError as e:
                 log.error(
-                    f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
+                    f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
                 for field, messages in e.response.json()["messages"].items():

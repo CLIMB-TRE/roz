@@ -221,7 +221,7 @@ def add_taxon_records(
                 "n_reads": taxa["qc_metrics"]["num_reads"],
                 "avg_quality": taxa["qc_metrics"]["avg_qual"],
                 "mean_len": taxa["qc_metrics"]["mean_len"],
-                "tax_level": taxa["tax_level"],
+                "rank": taxa["tax_level"],
             }
 
             if payload["platform"] == "illumina":
