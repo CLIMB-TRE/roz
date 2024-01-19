@@ -507,7 +507,7 @@ def onyx_update(
 
             except OnyxClientError as e:
                 log.error(
-                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
+                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_update_errors", {})
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
@@ -517,7 +517,7 @@ def onyx_update(
 
             except OnyxRequestError as e:
                 log.error(
-                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
+                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
 
                 payload.setdefault("onyx_update_errors", {})
