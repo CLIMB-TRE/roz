@@ -150,13 +150,9 @@ def run(args):
     )
 
     while True:
-        log.info(f"Sleeping for {args.sleep_interval} seconds")
         time.sleep(args.sleep_interval)
         end_timestamp = datetime.datetime.now(datetime.timezone.utc).replace(
             microsecond=0
-        )
-        log.info(
-            f"Checking for new objects between {start_timestamp} and {end_timestamp}"
         )
         for project, project_config in config_map.items():
             for bucket, bucket_arn in project_config["project_buckets"]:

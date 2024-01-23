@@ -393,7 +393,7 @@ def ensure_file_unseen(
                 response = list(
                     client.filter(
                         project=payload["project"],
-                        fields={f"{etag_field}__iexact": etag, "suppressed": False},
+                        fields={f"{etag_field}__iexact": etag},
                     )
                 )
 
