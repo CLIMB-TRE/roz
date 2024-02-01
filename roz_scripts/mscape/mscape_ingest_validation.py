@@ -168,6 +168,14 @@ def execute_validation_pipeline(
         tuple[int, str, str]: Tuple containing the return code, stdout and stderr of the pipeline
     """
 
+    k2_db_path = os.path.join(
+        os.getenv("SCYLLA_K2_DB_PATH"), os.getenv("SCYLLA_K2_DB_DATE")
+    )
+
+    taxonomy_path = os.path.join(
+        os.getenv("SCYLLA_TAXONOMY"), os.getenv("SCYLLA_TAXONOMY_DATE")
+    )
+
     parameters = {
         "outdir": args.result_dir,
         "unique_id": payload["uuid"],
@@ -175,8 +183,8 @@ def execute_validation_pipeline(
         "max_human_reads_before_rejection": "10000",
         "k2_host": args.k2_host,  # Parameterise this and deal with DNS stuff
         "k2_port": "8080",
-        "db": os.getenv("SCYLLA_K2_DB"),
-        "taxonomy": os.getenv("SCYLLA_TAXONOMY"),
+        "db": k2_db_path,
+        "taxonomy": taxonomy_path,
     }
 
     if payload["platform"] == "ont":
@@ -982,6 +990,19 @@ def validate(
         payload=payload, result_path=result_path, log=log
     )
 
+    # Consider making this a little more versatile in future
+    classifier_metadata_fail, classifier_metadata_alert, payload = onyx_update(
+        payload=payload,
+        fields={
+            "classifier": "kraken2",
+            "classifier_version": "2.1.2",
+            "classifier_db": os.getenv("SCYLLA_K2_DB_PATH").split("/")[-1],
+            "classifier_db_date": os.getenv("SCYLLA_K2_DB_DATE"),
+            "ncbi_taxonomy_date": os.getenv("SCYLLA_TAXONOMY_DATE"),
+        },
+        log=log,
+    )
+
     fraction_fail_outer = False
 
     for fraction in ("dehumanised", "unclassified", "viral_and_unclassified", "viral"):
@@ -1013,6 +1034,7 @@ def validate(
         or report_alert
         or taxa_reports_alert
         or classifier_alert
+        or classifier_metadata_alert
     ):
         alert = True
 
@@ -1023,9 +1045,10 @@ def validate(
         or taxon_report_fail
         or fraction_fail_outer
         or classifier_calls_fail
+        or classifier_metadata_fail
     ):
         log.error(
-            f"Failed to upload at least one file to long-term storage for CID: {payload['climb_id']}"
+            f"Failed to upload files to S3 or update Onyx for CID: {payload['climb_id']} with match UUID: {payload['uuid']}"
         )
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
@@ -1114,7 +1137,7 @@ def main():
     parser.add_argument("--n_workers", type=int, default=5)
     parser.add_argument(
         "--pipeline_timeout", type=int, default=43200
-    )  # 12 hours, might not even be enough for larger datasets (e.g. promethion / HiSeq)
+    )  # 12 hours, might not even be enough for larger datasets (e.g. promethion / N*Seq)
     args = parser.parse_args()
 
     for i in (
@@ -1123,8 +1146,10 @@ def main():
         "VARYS_CFG",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
-        "SCYLLA_K2_DB",
-        "SCYLLA_TAXONOMY",
+        "SCYLLA_K2_DB_PATH",
+        "SCYLLA_K2_DB_DATE",
+        "SCYLLA_TAXONOMY_PATH",
+        "SCYLLA_TAXONOMY_DATE",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
