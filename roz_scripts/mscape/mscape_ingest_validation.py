@@ -991,12 +991,17 @@ def validate(
     )
 
     # Consider making this a little more versatile in future
+
+    classifier_splits = os.getenv("SCYLLA_K2_DB_PATH").split("/")
+    non_empty = [x for x in classifier_splits if x != ""]
+    classifier_db = non_empty[-1]
+
     classifier_metadata_fail, classifier_metadata_alert, payload = onyx_update(
         payload=payload,
         fields={
             "classifier": "kraken2",
             "classifier_version": "2.1.2",
-            "classifier_db": os.getenv("SCYLLA_K2_DB_PATH").split("/")[-1],
+            "classifier_db": classifier_db,
             "classifier_db_date": os.getenv("SCYLLA_K2_DB_DATE"),
             "ncbi_taxonomy_date": os.getenv("SCYLLA_TAXONOMY_DATE"),
         },
