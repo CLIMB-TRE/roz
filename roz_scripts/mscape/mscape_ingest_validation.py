@@ -173,7 +173,7 @@ def execute_validation_pipeline(
     )
 
     taxonomy_path = os.path.join(
-        os.getenv("SCYLLA_TAXONOMY"), os.getenv("SCYLLA_TAXONOMY_DATE")
+        os.getenv("SCYLLA_TAXONOMY_PATH"), os.getenv("SCYLLA_TAXONOMY_DATE")
     )
 
     parameters = {

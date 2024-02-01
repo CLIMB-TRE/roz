@@ -811,6 +811,10 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["ONYX_DOMAIN"] = "testing"
         os.environ["ONYX_USERNAME"] = "testing"
         os.environ["ONYX_PASSWORD"] = "testing"
+        os.environ["SCYLLA_K2_DB_PATH"] = "/test/path/pluspf"
+        os.environ["SCYLLA_K2_DB_DATE"] = "2024-01-01"
+        os.environ["SCYLLA_TAXONOMY_PATH"] = "/test/path/taxonomy"
+        os.environ["SCYLLA_TAXONOMY_DATE"] = "2024-01-01"
 
         os.environ["UNIT_TESTING"] = "True"
 
