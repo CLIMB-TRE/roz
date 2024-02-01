@@ -347,6 +347,12 @@ def push_taxon_reports(
         s3_bucket = "mscape-published-taxon-reports"
 
         for report in reports:
+            # Skip directories and hidden files just incase
+            if os.path.isdir(
+                os.path.join(taxon_report_path, report)
+            ) or report.startswith("."):
+                continue
+
             s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{report}"
             # Add handling for Db in name etc
             s3_client.upload_file(
