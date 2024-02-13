@@ -1331,21 +1331,25 @@ class Test_mscape_validator(unittest.TestCase):
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reads"
             )
+            print(published_reads_contents)
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reports"
             )
+            print(published_reports_contents)
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-taxon-reports"
             )
+            print(published_taxon_reports_contents)
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-binned-reads"
             )
+            print(published_binned_reads_contents)
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
     def test_onyx_fail(self):
@@ -1384,21 +1388,11 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
-            # mock_client.return_value.__enter__.return_value.filter.return_value = iter(
-            #     ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
-            # )
-            mock_client.return_value.__enter__.return_value.identify = Mock(
-                side_effect=OnyxRequestError(
-                    message={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
-                    response=MockResponse(
-                        status_code=404,
-                        json_data={},
-                    ),
-                )
-            )
+            mock_client.return_value.__enter__.return_value.filter.side_effect = [
+                iter(()),
+                iter(({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)),
+            ]
+            mock_client.return_value.__enter__.return_value.identify = {}
 
             mock_client.return_value.__enter__.return_value.filter.return_value = iter(
                 ()
