@@ -1,10 +1,85 @@
 import os
 import sys
 import json
+import time
 
 import varys
 
-from roz_scripts.utils.utils import init_logger, csv_create, csv_field_checks
+from onyx import OnyxClient
+from onyx.exceptions import (
+    OnyxRequestError,
+    OnyxConnectionError,
+    OnyxServerError,
+    OnyxConfigError,
+    OnyxClientError,
+)
+
+from roz_scripts.utils.utils import (
+    init_logger,
+    csv_create,
+    csv_field_checks,
+    get_onyx_credentials,
+)
+
+
+# def identify_run_disagreements(payload, log):
+#     onyx_config = get_onyx_credentials()
+
+#     with OnyxClient(config=onyx_config) as client:
+#         while reconnect_count <= 3:
+#             try:
+#                 run = client.identify(
+#                     project=payload["project"], field="run_id", value=payload["run_id"]
+#                 )
+
+#             except OnyxConnectionError as e:
+#                 if reconnect_count < 3:
+#                     reconnect_count += 1
+#                     log.error(
+#                         f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 3 seconds"
+#                     )
+#                     time.sleep(3)
+#                     continue
+
+#                 else:
+#                     log.error(
+#                         f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
+#                     )
+#                     payload.setdefault("onyx_errors", {})
+#                     payload["onyx_errors"].setdefault("onyx_errors", [])
+#                     payload["onyx_errors"]["onyx_errors"].append(str(e))
+
+#                     return (False, True, payload)
+
+#             except (OnyxServerError, OnyxConfigError) as e:
+#                 log.error(f"Unhandled Onyx error: {e}")
+#                 payload.setdefault("onyx_errors", {})
+#                 payload["onyx_errors"].setdefault("onyx_errors", [])
+#                 payload["onyx_errors"]["onyx_errors"].append(e)
+#                 return (False, True, payload)
+
+#             except OnyxClientError as e:
+#                 log.error(
+#                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+#                 )
+#                 payload.setdefault("onyx_errors", {})
+#                 payload["onyx_errors"].setdefault("onyx_errors", [])
+#                 payload["onyx_errors"]["onyx_errors"].append(str(e))
+#                 return (False, True, payload)
+
+#             except OnyxRequestError as e:
+#                 log.error(
+#                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+#                 )
+#                 payload.setdefault("onyx_errors", {})
+#                 for field, messages in e.response.json()["messages"].items():
+#                     payload["onyx_errors"].setdefault(field, [])
+#                     payload["onyx_errors"][field].extend(messages)
+#                 return (False, True, payload)
+
+#             except Exception as e:
+#                 log.error(f"Unhandled error: {e}")
+#                 return (False, True, payload)
 
 
 def main():
