@@ -43,7 +43,7 @@ class test_utils(unittest.TestCase):
         os.environ["MOTO_S3_CUSTOM_ENDPOINTS"] = "https://s3.climb.ac.uk"
         os.environ["ONYX_DOMAIN"] = "testing"
         os.environ["ONYX_TOKEN"] = "testing"
-        del os.environ["UNIT_TESTING"]
+        # del os.environ["UNIT_TESTING"]
 
         self.mock_s3 = moto.mock_s3()
         self.mock_s3.start()
