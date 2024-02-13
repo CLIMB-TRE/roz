@@ -105,6 +105,7 @@ class test_utils(unittest.TestCase):
                 log=self.log,
                 test_submission=True,
             )
+            print(payload)
 
             self.assertTrue(success)
             self.assertFalse(alert)
@@ -122,6 +123,7 @@ class test_utils(unittest.TestCase):
                 log=self.log,
                 test_submission=False,
             )
+            print(payload)
 
             self.assertTrue(success)
             self.assertFalse(alert)
@@ -153,6 +155,7 @@ class test_utils(unittest.TestCase):
             success, alert, payload = csv_create(
                 payload=example_match, log=self.log, test_submission=False
             )
+            print(payload)
 
             self.assertFalse(success)
             self.assertFalse(alert)
@@ -184,6 +187,8 @@ class test_utils(unittest.TestCase):
                 payload=example_match, log=self.log, test_submission=False
             )
 
+            print(payload)
+
             self.assertTrue(success)
             self.assertFalse(alert)
 
@@ -199,6 +204,7 @@ class test_utils(unittest.TestCase):
                 log=self.log,
                 test_submission=True,
             )
+            print(payload)
 
             self.assertFalse(success)
             self.assertFalse(alert)
@@ -249,6 +255,7 @@ class test_utils(unittest.TestCase):
                 log=self.log,
                 test_submission=True,
             )
+            print(payload)
 
             self.assertFalse(success)
             self.assertTrue(alert)
@@ -271,6 +278,7 @@ class test_utils(unittest.TestCase):
                 log=self.log,
                 test_submission=True,
             )
+            print(payload)
 
             self.assertFalse(success)
             self.assertTrue(alert)
@@ -304,6 +312,8 @@ class test_utils(unittest.TestCase):
 
         success, alert, payload = csv_field_checks(payload=example_match)
 
+        print(payload)
+
         self.assertTrue(success)
         self.assertFalse(alert)
 
@@ -320,6 +330,8 @@ class test_utils(unittest.TestCase):
         example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
 
         success, alert, payload = csv_field_checks(payload=example_match)
+
+        print(payload)
 
         self.assertFalse(success)
         self.assertFalse(alert)
@@ -341,6 +353,7 @@ class test_utils(unittest.TestCase):
             published, alert, payload = check_artifact_published(
                 payload=example_match, log=self.log
             )
+            print(payload)
 
             self.assertFalse(published)
             self.assertFalse(alert)
@@ -354,6 +367,7 @@ class test_utils(unittest.TestCase):
             published, alert, payload = check_artifact_published(
                 payload=example_match, log=self.log
             )
+            print(payload)
 
             self.assertFalse(published)
             self.assertFalse(alert)
@@ -367,6 +381,7 @@ class test_utils(unittest.TestCase):
             published, alert, payload = check_artifact_published(
                 payload=example_match, log=self.log
             )
+            print(payload)
 
             self.assertTrue(published)
             self.assertFalse(alert)
@@ -384,6 +399,7 @@ class test_utils(unittest.TestCase):
             success, alert, payload = onyx_identify(
                 payload=example_payload, log=self.log, identity_field="sample_id"
             )
+            print(payload)
 
             self.assertTrue(success)
             self.assertFalse(alert)
@@ -408,6 +424,8 @@ class test_utils(unittest.TestCase):
             success, alert, payload = onyx_identify(
                 payload=example_payload, log=self.log, identity_field="sample_id"
             )
+
+            print(payload)
 
             self.assertFalse(success)
             self.assertFalse(alert)
@@ -460,6 +478,8 @@ class test_utils(unittest.TestCase):
                 identifier="sample_id",
                 fields_to_reconcile=["adm1_country", "adm2_region", "study_centre_id"],
             )
+
+            print(payload)
 
             self.assertTrue(success)
             self.assertFalse(alert)
