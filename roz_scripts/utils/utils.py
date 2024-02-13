@@ -272,6 +272,9 @@ def csv_create(
                     for field, messages in e.response.json()["messages"].items():
                         payload["onyx_test_create_errors"].setdefault(field, [])
                         payload["onyx_test_create_errors"][field].extend(messages)
+
+                    return (False, False, payload)
+
                 else:
                     artifact_published, alert, payload = check_artifact_published(
                         payload=payload, log=log
@@ -381,6 +384,12 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
 
 
 def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
+    if identity_field not in ("sample_id", "run_id"):
+        log.error(
+            f"Invalid identity field: {identity_field}. Must be one of 'sample_id' or 'run_id'"
+        )
+        return (False, True, payload)
+
     onyx_config = get_onyx_credentials()
 
     with OnyxClient(config=onyx_config) as client:
@@ -455,25 +464,35 @@ def onyx_reconcile(
     identify_success, alert, payload = onyx_identify(payload, identifier, log)
 
     if not identify_success:
+        log.info(f"Failed to identify {identifier} for artifact: {payload['artifact']}")
         return (True, alert, payload)
+
+    if alert:
+        return (False, True, payload)
+
+    log.info(
+        f"Successfully identified {identifier} for artifact: {payload['artifact']}"
+    )
 
     with OnyxClient(config=get_onyx_credentials()) as client:
         reconnect_count = 0
         while reconnect_count <= 3:
             try:
-                response = client.filter(
-                    payload["project"],
-                    fields={identifier: payload[f"climb_{identifier}"]},
+                response = list(
+                    client.filter(
+                        payload["project"],
+                        fields={identifier: payload[f"climb_{identifier}"]},
+                    )
                 )
 
                 if len(response) == 0:
                     log.error(
-                        f"Failed to find record in Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
+                        f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
                     )
                     payload.setdefault("onyx_errors", {})
                     payload["onyx_errors"].setdefault("onyx_errors", [])
                     payload["onyx_errors"]["onyx_errors"].append(
-                        f"Failed to find record in Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
+                        f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
                     )
                     return (False, True, payload)
 
@@ -497,9 +516,9 @@ def onyx_reconcile(
                         fields_of_concern.append(field)
 
                 if fields_of_concern:
-                    payload.setdefault("onyx_reconcile_errors", {})
-                    payload["onyx_reconcile_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_reconcile_errors"]["onyx_errors"].append(
+                    payload.setdefault("onyx_errors", {})
+                    payload["onyx_errors"].setdefault("reconcile_errors", [])
+                    payload["onyx_errors"]["reconcile_errors"].append(
                         f"Onyx records for {identifier}: {payload[f'climb_{identifier}']} disagree for the following fields: {', '.join(fields_of_concern)}"
                     )
                     return (False, False, payload)
@@ -528,8 +547,8 @@ def onyx_reconcile(
             except (OnyxServerError, OnyxConfigError) as e:
                 log.error(f"Unhandled Onyx error: {e}")
                 payload.setdefault("onyx_reconcile_errors", {})
-                payload["onyx_reconcile_errors"].setdefault("onyx_errors", [])
-                payload["onyx_reconcile_errors"]["onyx_errors"].append(e)
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(e)
                 return (False, True, payload)
 
             except OnyxClientError as e:
@@ -537,27 +556,27 @@ def onyx_reconcile(
                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_reconcile_errors", {})
-                payload["onyx_reconcile_errors"].setdefault("onyx_errors", [])
-                payload["onyx_reconcile_errors"]["onyx_errors"].append(str(e))
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(str(e))
                 return (False, True, payload)
 
             except EtagMismatchError as e:
                 log.error(
                     f"CSV appears to have been modified after upload for artifact: {payload['artifact']}"
                 )
-                payload.setdefault("onyx_reconcile_errors", {})
-                payload["onyx_reconcile_errors"].setdefault("onyx_errors", [])
-                payload["onyx_reconcile_errors"]["onyx_errors"].append(str(e))
+                payload.setdefault("onyx_errors", {})
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(str(e))
                 return (False, False, payload)
 
             except OnyxRequestError as e:
                 log.error(
                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
-                payload.setdefault("onyx_reconcile_errors", {})
+                payload.setdefault("onyx_errors", {})
                 for field, messages in e.response.json()["messages"].items():
-                    payload["onyx_reconcile_errors"].setdefault(field, [])
-                    payload["onyx_reconcile_errors"][field].extend(messages)
+                    payload["onyx_errors"].setdefault(field, [])
+                    payload["onyx_errors"][field].extend(messages)
                 return (False, True, payload)
 
             except Exception as e:
@@ -565,9 +584,9 @@ def onyx_reconcile(
                 return (False, True, payload)
 
     # This should never be reached
-    payload.setdefault("onyx_reconcile_errors", {})
-    payload["onyx_reconcile_errors"].setdefault("onyx_errors", [])
-    payload["onyx_reconcile_errors"]["onyx_errors"].append(
+    payload.setdefault("onyx_errors", {})
+    payload["onyx_errors"].setdefault("reconcile_errors", [])
+    payload["onyx_errors"]["reconcile_errors"].append(
         "End of onyx_reconcile func reached, this should never happen!"
     )
     return (False, True, payload)
