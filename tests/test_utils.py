@@ -50,7 +50,10 @@ class test_utils(unittest.TestCase):
 
         self.s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk")
 
-        self.log = init_logger("test", "test_utils.log", "DEBUG")
+        DIR = os.path.dirname(__file__)
+
+        TEST_UTILS_LOG_FILENAME = os.path.join(DIR, "test_messages.log")
+        self.log = init_logger("test", TEST_UTILS_LOG_FILENAME, "DEBUG")
 
         self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
 
