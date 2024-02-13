@@ -922,6 +922,19 @@ class Test_mscape_validator(unittest.TestCase):
                 "run_id": "run-test",
             }
 
+            mock_client.return_value.__enter__.return_value.identify = Mock(
+                side_effect=OnyxRequestError(
+                    message={
+                        "data": [],
+                        "messages": {"sample_id": "Test sample_id error handling"},
+                    },
+                    response=MockResponse(
+                        status_code=404,
+                        json_data={},
+                    ),
+                )
+            )
+
             mock_client.return_value.__enter__.return_value.filter.return_value = iter(
                 ()
             )
@@ -1188,21 +1201,25 @@ class Test_mscape_validator(unittest.TestCase):
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reads"
             )
+            print(published_reads_contents)
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reports"
             )
+            print(published_reports_contents)
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-taxon-reports"
             )
+            print(published_taxon_reports_contents)
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-binned-reads"
             )
+            print(published_binned_reads_contents)
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
     def test_successful_test(self):
@@ -1349,24 +1366,6 @@ class Test_mscape_validator(unittest.TestCase):
             )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
-            # mock_client.return_value.__enter__.return_value.update = Mock(
-            #     side_effect=OnyxRequestError(
-            #         message={
-            #             "data": [],
-            #             "messages": {"sample_id": "Test sample_id error handling"},
-            #         },
-            #         response=MockResponse(
-            #             status_code=400,
-            #             json_data={
-            #                 "data": [],
-            #                 "messages": {
-            #                     "sample_id": ["Test sample_id error handling"]
-            #                 },
-            #             },
-            #         ),
-            #     )
-            # )
-
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
                     message={
@@ -1385,27 +1384,13 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
-            # mock_client.return_value.__enter__.return_value.filter.return_value.__next__ = Mock(
-            #     side_effect=OnyxRequestError(
-            #         message={
-            #             "data": [],
-            #             "messages": {"sample_id": "Test sample_id error handling"},
-            #         },
-            #         response=MockResponse(
-            #             status_code=400,
-            #             json_data={
-            #                 "data": [],
-            #                 "messages": {
-            #                     "sample_id": ["Test sample_id error handling"]
-            #                 },
-            #             },
-            #         ),
-            #     )
-            # )
-
             mock_client.return_value.__enter__.return_value.filter.return_value = iter(
-                ()
+                ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
             )
+
+            # mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+            #     ()
+            # )
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
