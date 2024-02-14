@@ -905,6 +905,8 @@ def get_s3_credentials(
     except FileNotFoundError:
         pass
 
+    print(os.environ)
+
     if not os.getenv("UNIT_TESTING"):
         endpoint = "https://s3.climb.ac.uk"
     else:
