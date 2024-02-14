@@ -13,6 +13,7 @@ from roz_scripts.utils.utils import (
     check_artifact_published,
     onyx_identify,
     onyx_reconcile,
+    get_s3_credentials,
 )
 
 import moto
@@ -100,6 +101,8 @@ class test_utils(unittest.TestCase):
             Bucket="mscape-birm-ont-prod",
             Key="mscape.sample-test.run-test.csv",
         )
+
+        print(get_s3_credentials())
 
         example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
 
