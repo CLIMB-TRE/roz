@@ -935,6 +935,7 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
 
+    print(payload)
     if payload["test_flag"]:
         log.info(
             f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
@@ -944,7 +945,6 @@ def validate(
         return (True, alert, payload, message)
 
     # Spot if metadata disagrees anywhere, don't act on it yet though
-
     sample_reconcile_success, alert, payload = onyx_reconcile(
         payload=payload,
         identifier="sample_id",
