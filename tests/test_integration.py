@@ -1398,12 +1398,17 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
-            mock_client.return_value.__enter__.return_value.filter.return_value.side_effect = [
-                iter(()),
-                iter(({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)),
-                iter(({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)),
-                iter(({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)),
-            ]
+            mock_client.return_value.__enter__.return_value.filter.return_value = Mock(
+                side_effect=[
+                    iter(()),
+                    iter(
+                        ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
+                    ),
+                    iter(
+                        ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
+                    ),
+                ]
+            )
 
             mock_client.return_value.__enter__.return_value.identify.return_value = {
                 "field": "sample_id",
