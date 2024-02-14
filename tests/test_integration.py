@@ -1033,7 +1033,7 @@ class Test_mscape_validator(unittest.TestCase):
                 in_message, args, pipeline
             )
 
-            print(payload)
+            # print(payload)
 
             self.assertTrue(Success)
             self.assertFalse(alert)
