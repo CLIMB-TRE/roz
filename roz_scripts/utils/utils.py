@@ -439,15 +439,19 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
                     )
                     payload.setdefault("onyx_errors", {})
                     payload["onyx_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_errors"]["onyx_errors"].append(str(e))
+                    payload["onyx_errors"]["onyx_errors"].append(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
+                    )
 
                     return (False, True, payload)
 
             except (OnyxServerError, OnyxConfigError) as e:
-                log.error(f"Unhandled Onyx error: {e}")
+                log.error(f"Unhandled Onyx identify error: {e}")
                 payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
-                payload["onyx_errors"]["onyx_errors"].append(e)
+                payload["onyx_errors"]["onyx_errors"].append(
+                    f"Unhandled Onyx identify error: {e}"
+                )
                 return (False, True, payload)
 
             except OnyxClientError as e:
@@ -462,6 +466,7 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
                 return (False, True, payload)
 
             except OnyxRequestError as e:
+                print(type(e.response))
                 if e.response.status_code == 404:
                     return (False, False, payload)
 
