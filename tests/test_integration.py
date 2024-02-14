@@ -1451,7 +1451,27 @@ class Test_mscape_validator(unittest.TestCase):
                                 "sample_type": "Some Sample Type",
                                 "sequence_purpose": "Some Sequence Purpose",
                             }
-                        ]
+                        ],
+                        {
+                            "yeet": "yeet",
+                            "climb_id": "test_id",
+                            "is_published": True,
+                            "adm1_country": "GB-ENG",
+                            "adm2_region": "Some Region",
+                            "study_centre_id": "Some Study Centre ID",
+                            "biosample_source_id": "Some Biosample Source ID",
+                            "input_type": "Some Input Type",
+                            "input_type_details": "Some Input Type Details",
+                            "is_approximate_date": True,
+                            "is_public_dataset": True,
+                            "received_date": "Some Received Date",
+                            "collection_date": "Some Collection Date",
+                            "sample_latitude": "Some Sample Latitude",
+                            "sample_longitude": "Some Sample Longitude",
+                            "sample_source": "Some Sample Source",
+                            "sample_type": "Some Sample Type",
+                            "sequence_purpose": "Some Sequence Purpose",
+                        },
                     ),
                     iter(
                         [
@@ -1466,11 +1486,34 @@ class Test_mscape_validator(unittest.TestCase):
                                 "library_protocol": "Some Library Protocol",
                                 "sequencing_protocol": "Some Sequencing Protocol",
                                 "study_centre_id": "Some Study Centre ID",
-                            }
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            },
                         ]
                     ),
                     iter(
-                        ({"yeet": "yeet", "climb_id": "test_id", "is_published": True})
+                        (
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                        )
                     ),
                 ]
             )
