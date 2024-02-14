@@ -353,7 +353,7 @@ class test_utils(unittest.TestCase):
 
             self.assertTrue(published)
             self.assertFalse(alert)
-            self.assertEqual("test_id", payload["climb_id"])
+            self.assertFalse("climb_id" in payload)
 
     def test_published_check_false(self):
         # Test artifact is not published
