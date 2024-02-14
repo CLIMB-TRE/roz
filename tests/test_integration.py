@@ -1240,6 +1240,10 @@ class Test_mscape_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
+            test_message = copy.deepcopy(example_test_validator_message)
+
+            test_message["uuid"] = "test_successful_test"
+
             mock_pipeline.return_value.execute.return_value = (
                 0,
                 "test_stdout",
@@ -1263,7 +1267,7 @@ class Test_mscape_validator(unittest.TestCase):
                 ()
             )
 
-            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            result_path = os.path.join(DIR, test_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
             classifications_path = os.path.join(result_path, "classifications")
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
@@ -1277,7 +1281,7 @@ class Test_mscape_validator(unittest.TestCase):
             open(
                 os.path.join(
                     preprocess_path,
-                    f"{example_test_validator_message['uuid']}.fastp.fastq.gz",
+                    f"{test_message['uuid']}.fastp.fastq.gz",
                 ),
                 "w",
             ).close()
@@ -1285,16 +1289,14 @@ class Test_mscape_validator(unittest.TestCase):
                 os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
             ).close()
             open(
-                os.path.join(
-                    result_path, f"{example_test_validator_message['uuid']}_report.html"
-                ),
+                os.path.join(result_path, f"{test_message['uuid']}_report.html"),
                 "w",
             ).close()
 
             with open(
                 os.path.join(
                     pipeline_info_path,
-                    f"execution_trace_{example_test_validator_message['uuid']}.txt",
+                    f"execution_trace_{test_message['uuid']}.txt",
                 ),
                 "w",
             ) as f:
@@ -1320,10 +1322,6 @@ class Test_mscape_validator(unittest.TestCase):
                 nxf_executable="test",
                 config="test",
             )
-
-            test_message = copy.deepcopy(example_test_validator_message)
-
-            test_message["uuid"] = "test_successful_test"
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
