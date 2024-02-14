@@ -1033,7 +1033,7 @@ class Test_mscape_validator(unittest.TestCase):
                 in_message, args, pipeline
             )
 
-            # print(payload)
+            print(payload)
 
             self.assertTrue(Success)
             self.assertFalse(alert)
@@ -1396,11 +1396,23 @@ class Test_mscape_validator(unittest.TestCase):
                 iter(()),
                 iter(({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)),
             ]
-            mock_client.return_value.__enter__.return_value.identify = {}
 
-            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
-                ()
+            mock_client.return_value.__enter__.return_value.identify = Mock(
+                side_effect=OnyxRequestError(
+                    message="test identify exception",
+                    response=MockResponse(
+                        status_code=404,
+                        json_data={
+                            "data": [],
+                            "messages": {"sample_id": "Test sample_id error handling"},
+                        },
+                    ),
+                )
             )
+
+            # mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+            #     ()
+            # )
 
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")

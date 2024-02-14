@@ -466,8 +466,6 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
                 return (False, True, payload)
 
             except OnyxRequestError as e:
-                print(type(e.response))
-                print(e.response)
                 if e.response.status_code == 404:
                     return (False, False, payload)
 
