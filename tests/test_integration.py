@@ -571,6 +571,8 @@ class Test_S3_matcher(unittest.TestCase):
         channel.queue_delete(queue="inbound.s3")
         channel.queue_delete(queue="inbound.matched")
 
+        del os.environ["UNIT_TESTING"]
+
         connection.close()
         time.sleep(1)
 
@@ -749,6 +751,8 @@ class Test_ingest(unittest.TestCase):
 
         os.remove(TEST_CSV_FILENAME)
 
+        del os.environ["UNIT_TESTING"]
+
         channel.queue_delete(queue="inbound.matched")
         channel.queue_delete(queue="inbound.to_validate.mscape")
 
@@ -894,6 +898,9 @@ class Test_mscape_validator(unittest.TestCase):
 
         self.server.stop()
         self.varys_client.close()
+
+        del os.environ["UNIT_TESTING"]
+
         time.sleep(1)
 
     def test_validator_successful(self):

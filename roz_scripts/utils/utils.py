@@ -224,11 +224,15 @@ def csv_create(
                     if test_submission:
                         payload.setdefault("onyx_test_create_errors", {})
                         payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                        payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
+                        payload["onyx_test_create_errors"]["onyx_errors"].append(
+                            f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
+                        )
                     else:
                         payload.setdefault("onyx_create_errors", {})
                         payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                        payload["onyx_create_errors"]["onyx_errors"].append(str(e))
+                        payload["onyx_create_errors"]["onyx_errors"].append(
+                            f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
+                        )
 
                     return (False, True, payload)
 
@@ -237,11 +241,15 @@ def csv_create(
                 if test_submission:
                     payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(
+                        f"Unhandled Onyx error: {e}"
+                    )
                 else:
                     payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
+                    payload["onyx_create_errors"]["onyx_errors"].append(
+                        f"Unhandled Onyx error: {e}"
+                    )
 
                 return (False, True, payload)
 
