@@ -1398,14 +1398,79 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
+            mock_filter_return_fields = [
+                "adm1_country",
+                "adm2_region",
+                "study_centre_id",
+                "biosample_source_id",
+                "input_type",
+                "input_type_details",
+                "is_approximate_date",
+                "is_public_dataset",
+                "received_date",
+                "collection_date",
+                "sample_latitude",
+                "sample_longitude",
+                "sample_source",
+                "sample_type",
+                "sequence_purpose",
+            ]
+
+            mock_filter_return_fields_2 = [
+                "batch_id",
+                "bioinformatics_protocol",
+                "dehumanisation_protocol",
+                "extraction_enrichment_protocol",
+                "library_protocol",
+                "sequencing_protocol",
+                "study_centre_id",
+            ]
+
             mock_client.return_value.__enter__.return_value.filter = Mock(
                 side_effect=[
                     iter(()),
                     iter(
-                        ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "adm1_country": "GB-ENG",
+                                "adm2_region": "Some Region",
+                                "study_centre_id": "Some Study Centre ID",
+                                "biosample_source_id": "Some Biosample Source ID",
+                                "input_type": "Some Input Type",
+                                "input_type_details": "Some Input Type Details",
+                                "is_approximate_date": True,
+                                "is_public_dataset": True,
+                                "received_date": "Some Received Date",
+                                "collection_date": "Some Collection Date",
+                                "sample_latitude": "Some Sample Latitude",
+                                "sample_longitude": "Some Sample Longitude",
+                                "sample_source": "Some Sample Source",
+                                "sample_type": "Some Sample Type",
+                                "sequence_purpose": "Some Sequence Purpose",
+                            }
+                        ]
                     ),
                     iter(
-                        ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            }
+                        ]
+                    ),
+                    iter(
+                        ({"yeet": "yeet", "climb_id": "test_id", "is_published": True})
                     ),
                 ]
             )
