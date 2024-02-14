@@ -1323,6 +1323,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             test_message = copy.deepcopy(example_test_validator_message)
 
+            test_message["uuid"] = "test_successful_test"
+
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
             Success, alert, payload, message = mscape_ingest_validation.validate(
