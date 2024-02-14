@@ -28,7 +28,7 @@ from moto.server import ThreadedMotoServer
 import boto3
 import uuid
 import pika
-import requests
+import copy
 
 DIR = os.path.dirname(__file__)
 S3_MATCHER_LOG_FILENAME = os.path.join(DIR, "s3_matcher.log")
@@ -768,8 +768,10 @@ class Test_ingest(unittest.TestCase):
 
             time.sleep(1)
 
+            test_message = copy.deepcopy(example_match_message)
+
             self.varys_client.send(
-                example_match_message,
+                test_message,
                 exchange="inbound.matched",
                 queue_suffix="s3_matcher",
             )
@@ -1027,7 +1029,9 @@ class Test_mscape_validator(unittest.TestCase):
                 config="test",
             )
 
-            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+            test_message = copy.deepcopy(example_validator_message)
+
+            in_message = SimpleNamespace(body=json.dumps(test_message))
 
             Success, alert, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
@@ -1186,7 +1190,9 @@ class Test_mscape_validator(unittest.TestCase):
                 config="test",
             )
 
-            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+            test_message = copy.deepcopy(example_validator_message)
+
+            in_message = SimpleNamespace(body=json.dumps(test_message))
 
             Success, alert, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
@@ -1315,9 +1321,9 @@ class Test_mscape_validator(unittest.TestCase):
                 config="test",
             )
 
-            in_message = SimpleNamespace(
-                body=json.dumps(example_test_validator_message)
-            )
+            test_message = copy.deepcopy(example_test_validator_message)
+
+            in_message = SimpleNamespace(body=json.dumps(test_message))
 
             Success, alert, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
@@ -1465,7 +1471,9 @@ class Test_mscape_validator(unittest.TestCase):
                 nxf_executable="test",
             )
 
-            in_message = SimpleNamespace(body=json.dumps(example_validator_message))
+            test_message = copy.deepcopy(example_validator_message)
+
+            in_message = SimpleNamespace(body=json.dumps(test_message))
 
             Success, alert, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline

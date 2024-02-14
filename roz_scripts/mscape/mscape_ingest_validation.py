@@ -935,7 +935,6 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
 
-    print(payload)
     if payload["test_flag"]:
         log.info(
             f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
