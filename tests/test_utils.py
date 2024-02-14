@@ -60,8 +60,7 @@ class test_utils(unittest.TestCase):
 
         self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
 
-        global example_match
-        example_match = {
+        self.example_match = {
             "uuid": "42c3796d-d767-4293-97a8-c4906bb5cca8",
             "payload_version": 1,
             "site": "birm",
@@ -87,6 +86,18 @@ class test_utils(unittest.TestCase):
             "test_flag": False,
         }
 
+        self.s3_client.put_object(
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+            Body=b"sample_id,run_id\nsample-test,run-test",
+        )
+        resp = self.s3_client.head_object(
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+        )
+
+        self.example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
+
     def tearDown(self):
         self.mock_s3.stop()
         self.s3_client.close()
@@ -104,13 +115,13 @@ class test_utils(unittest.TestCase):
 
         print(get_s3_credentials())
 
-        example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
+        self.example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
 
             success, alert, payload = csv_create(
-                payload=example_match,
+                payload=self.example_match,
                 log=self.log,
                 test_submission=True,
             )
@@ -128,7 +139,7 @@ class test_utils(unittest.TestCase):
             }
 
             success, alert, payload = csv_create(
-                payload=example_match,
+                payload=self.example_match,
                 log=self.log,
                 test_submission=False,
             )
@@ -159,7 +170,7 @@ class test_utils(unittest.TestCase):
             mock_published_check.return_value = (True, False, payload)
 
             success, alert, payload = csv_create(
-                payload=example_match, log=self.log, test_submission=False
+                payload=self.example_match, log=self.log, test_submission=False
             )
             print(payload)
 
@@ -187,7 +198,7 @@ class test_utils(unittest.TestCase):
             mock_published_check.return_value = (False, False, payload)
 
             success, alert, payload = csv_create(
-                payload=example_match, log=self.log, test_submission=False
+                payload=self.example_match, log=self.log, test_submission=False
             )
 
             print(payload)
@@ -203,7 +214,7 @@ class test_utils(unittest.TestCase):
             )
 
             success, alert, payload = csv_create(
-                payload=example_match,
+                payload=self.example_match,
                 log=self.log,
                 test_submission=True,
             )
@@ -233,7 +244,7 @@ class test_utils(unittest.TestCase):
             )
 
             success, alert, payload = csv_create(
-                payload=example_match,
+                payload=self.example_match,
                 log=self.log,
                 test_submission=True,
             )
@@ -251,7 +262,7 @@ class test_utils(unittest.TestCase):
             )
 
             success, alert, payload = csv_create(
-                payload=example_match,
+                payload=self.example_match,
                 log=self.log,
                 test_submission=True,
             )
@@ -274,7 +285,7 @@ class test_utils(unittest.TestCase):
             )
 
             success, alert, payload = csv_create(
-                payload=example_match,
+                payload=self.example_match,
                 log=self.log,
                 test_submission=True,
             )
@@ -289,7 +300,7 @@ class test_utils(unittest.TestCase):
             )
 
             success, alert, payload = csv_create(
-                payload=example_match,
+                payload=self.example_match,
                 log=self.log,
                 test_submission=True,
             )
@@ -297,39 +308,20 @@ class test_utils(unittest.TestCase):
             self.assertFalse(success)
             self.assertTrue(alert)
 
-    def test_csv_field_checks(self):
-        self.s3_client.put_object(
-            Bucket="mscape-birm-ont-prod",
-            Key="mscape.sample-test.run-test.csv",
-            Body=b"sample_id,run_id\nsample-test,run-test",
-        )
-        resp = self.s3_client.head_object(
-            Bucket="mscape-birm-ont-prod",
-            Key="mscape.sample-test.run-test.csv",
-        )
-
-        example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
-
-        success, alert, payload = csv_field_checks(payload=example_match)
+    def test_csv_field_check_success(self):
+        success, alert, payload = csv_field_checks(payload=self.example_match)
 
         print(payload)
 
         self.assertTrue(success)
         self.assertFalse(alert)
 
-        self.s3_client.put_object(
-            Bucket="mscape-birm-ont-prod",
-            Key="mscape.sample-test.run-test.csv",
-            Body=b"sample_id,run_id\nsample-yeet,run-yeet",
-        )
-        resp = self.s3_client.head_object(
-            Bucket="mscape-birm-ont-prod",
-            Key="mscape.sample-test.run-test.csv",
-        )
+    def test_csv_field_check_failure(self):
 
-        example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
+        self.example_match["sample_id"] = "sample-test-2"
+        self.example_match["run_id"] = "run-test-2"
 
-        success, alert, payload = csv_field_checks(payload=example_match)
+        success, alert, payload = csv_field_checks(payload=self.example_match)
 
         print(payload)
 
@@ -344,49 +336,67 @@ class test_utils(unittest.TestCase):
             payload["onyx_test_create_errors"]["run_id"],
         )
 
-    def test_published_check(self):
+    def test_published_check_true(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
-                ()
-            )
-
-            published, alert, payload = check_artifact_published(
-                payload=example_match, log=self.log
-            )
-            print(payload)
-
-            self.assertFalse(published)
-            self.assertFalse(alert)
-
-        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-
-            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
-                ({"yeet": "yeet", "climb_id": "test_id", "is_published": False},)
-            )
-
-            published, alert, payload = check_artifact_published(
-                payload=example_match, log=self.log
-            )
-            print(payload)
-
-            self.assertFalse(published)
-            self.assertFalse(alert)
-
-        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-
             mock_client.return_value.__enter__.return_value.filter.return_value = iter(
                 ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
             )
-
+            mock_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "sample_id",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
             published, alert, payload = check_artifact_published(
-                payload=example_match, log=self.log
+                payload=self.example_match, log=self.log
             )
             print(payload)
 
             self.assertTrue(published)
             self.assertFalse(alert)
+            self.assertEqual("test_id", payload["climb_id"])
 
-    def test_onyx_identify(self):
+    def test_published_check_false(self):
+        # Test artifact is not published
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "sample_id",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+                ({"yeet": "yeet", "climb_id": "test_id", "is_published": False},)
+            )
+
+            published, alert, payload = check_artifact_published(
+                payload=self.example_match, log=self.log
+            )
+
+            print(payload)
+
+            self.assertFalse(published)
+            self.assertFalse(alert)
+            self.assertEqual(payload["climb_id"], "test_id")
+
+    def test_published_check_error(self):
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "sample_id",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+                ()
+            )
+
+            published, alert, payload = check_artifact_published(
+                payload=self.example_match, log=self.log
+            )
+            print(payload)
+
+            self.assertTrue(published)
+            self.assertTrue(alert)
+
+    def test_onyx_identify_true(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
                 "field": "sample_id",
@@ -394,10 +404,8 @@ class test_utils(unittest.TestCase):
                 "identifier": "S-1234567890",
             }
 
-            example_payload = copy.deepcopy(example_match)
-
             success, alert, payload = onyx_identify(
-                payload=example_payload, log=self.log, identity_field="sample_id"
+                payload=self.example_match, log=self.log, identity_field="sample_id"
             )
             print(payload)
 
@@ -405,6 +413,7 @@ class test_utils(unittest.TestCase):
             self.assertFalse(alert)
             self.assertEqual("S-1234567890", payload["climb_sample_id"])
 
+    def test_onyx_identify_failure(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify = Mock(
                 side_effect=OnyxRequestError(
@@ -419,10 +428,8 @@ class test_utils(unittest.TestCase):
                 )
             )
 
-            example_payload = copy.deepcopy(example_match)
-
             success, alert, payload = onyx_identify(
-                payload=example_payload, log=self.log, identity_field="sample_id"
+                payload=self.example_match, log=self.log, identity_field="sample_id"
             )
 
             print(payload)
@@ -442,7 +449,7 @@ class test_utils(unittest.TestCase):
             Key="mscape.sample-test.run-test.csv",
         )
 
-        example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
+        self.example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
         # Test
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
@@ -470,10 +477,8 @@ class test_utils(unittest.TestCase):
                 )
             )
 
-            example_payload = copy.deepcopy(example_match)
-
             success, alert, payload = onyx_reconcile(
-                payload=example_payload,
+                payload=self.example_match,
                 log=self.log,
                 identifier="sample_id",
                 fields_to_reconcile=["adm1_country", "adm2_region", "study_centre_id"],
@@ -484,6 +489,7 @@ class test_utils(unittest.TestCase):
             self.assertTrue(success)
             self.assertFalse(alert)
 
+    def test_onyx_reconcile_failure(self):
         # Test failure
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
@@ -511,14 +517,14 @@ class test_utils(unittest.TestCase):
                 )
             )
 
-            example_payload = copy.deepcopy(example_match)
-
             success, alert, payload = onyx_reconcile(
-                payload=example_payload,
+                payload=self.example_match,
                 log=self.log,
                 identifier="sample_id",
                 fields_to_reconcile=["adm1_country", "adm2_region", "study_centre_id"],
             )
+
+            print(payload)
 
             self.assertFalse(success)
             self.assertFalse(alert)
@@ -527,6 +533,7 @@ class test_utils(unittest.TestCase):
                 payload["onyx_errors"]["reconcile_errors"],
             )
 
+    def test_onyx_reconcile_no_filter_return(self):
         # Test no filter return
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
@@ -539,14 +546,14 @@ class test_utils(unittest.TestCase):
                 ()
             )
 
-            example_payload = copy.deepcopy(example_match)
-
             success, alert, payload = onyx_reconcile(
-                payload=example_payload,
+                payload=self.example_match,
                 log=self.log,
                 identifier="sample_id",
                 fields_to_reconcile=["adm1_country", "adm2_region", "study_centre_id"],
             )
+
+            print(payload)
 
             self.assertFalse(success)
             self.assertTrue(alert)

@@ -988,6 +988,13 @@ def validate(
         test_submission=False,
     )
 
+    if alert:
+        log.error(
+            f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
+
     if not create_success:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)

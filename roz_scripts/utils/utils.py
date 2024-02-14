@@ -297,9 +297,9 @@ def csv_create(
                             payload["onyx_create_errors"].setdefault(field, [])
                             payload["onyx_create_errors"][field].extend(messages)
 
-                        return (False, False, payload)
+                        return (False, alert, payload)
 
-                    return (True, False, payload)
+                    return (True, alert, payload)
 
             except EtagMismatchError as e:
                 log.error(
@@ -393,7 +393,6 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
                 return (True, False, payload)
 
     except Exception as e:
-        log.error(f"Unhandled csv field check error: {e}")
         payload.setdefault("onyx_test_create_errors", {})
         payload["onyx_test_create_errors"].setdefault("roz_errors", [])
         payload["onyx_test_create_errors"]["roz_errors"].append(
@@ -747,7 +746,15 @@ def check_artifact_published(
                 )
 
                 if len(response) == 0:
-                    return (False, False, payload)
+                    log.error(
+                        f"Failed to find records with Onyx for: {payload['artifact']} despite successful identification by Onyx"
+                    )
+                    payload.setdefault("onyx_errors", {})
+                    payload["onyx_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_errors"]["onyx_errors"].append(
+                        f"Failed to find records with Onyx for: {payload['artifact']} despite successful identification by Onyx"
+                    )
+                    return (True, True, payload)
 
                 else:
                     payload["climb_id"] = response[0]["climb_id"]
