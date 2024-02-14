@@ -757,10 +757,10 @@ def check_artifact_published(
                     return (True, True, payload)
 
                 else:
-                    payload["climb_id"] = response[0]["climb_id"]
                     if response[0]["is_published"]:
                         return (True, False, payload)
 
+                    payload["climb_id"] = response[0]["climb_id"]
                     return (False, False, payload)
 
             except OnyxConnectionError as e:
