@@ -143,10 +143,7 @@ class test_utils(unittest.TestCase):
         ) as mock_published_check:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
-                    message={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
+                    message="test csv_create error handling",
                     response=MockResponse(
                         status_code=400,
                         json_data={
@@ -174,10 +171,7 @@ class test_utils(unittest.TestCase):
         ) as mock_published_check:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
-                    message={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
+                    message="test csv_create error handling",
                     response=MockResponse(
                         status_code=400,
                         json_data={
@@ -225,10 +219,7 @@ class test_utils(unittest.TestCase):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
-                    message={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
+                    message="test csv_create error handling",
                     response=MockResponse(
                         status_code=400,
                         json_data={
@@ -417,13 +408,13 @@ class test_utils(unittest.TestCase):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify = Mock(
                 side_effect=OnyxRequestError(
-                    message={
-                        "data": [],
-                        "messages": {"sample_id": "Test sample_id error handling"},
-                    },
+                    message="test error handling",
                     response=MockResponse(
                         status_code=404,
-                        json_data={},
+                        json_data={
+                            "data": [],
+                            "messages": {"sample_id": "Test sample_id error handling"},
+                        },
                     ),
                 )
             )
