@@ -237,18 +237,18 @@ def csv_create(
                     return (False, True, payload)
 
             except (OnyxServerError, OnyxConfigError) as e:
-                log.error(f"Unhandled Onyx error: {e}")
+                log.error(f"Unhandled csv_create Onyx error: {e}")
                 if test_submission:
                     payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
                     payload["onyx_test_create_errors"]["onyx_errors"].append(
-                        f"Unhandled Onyx error: {e}"
+                        f"Unhandled csv_create Onyx error: {e}"
                     )
                 else:
                     payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
                     payload["onyx_create_errors"]["onyx_errors"].append(
-                        f"Unhandled Onyx error: {e}"
+                        f"Unhandled csv_create Onyx error: {e}"
                     )
 
                 return (False, True, payload)
@@ -309,25 +309,33 @@ def csv_create(
                 if test_submission:
                     payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(
+                        f"CSV appears to have been modified after upload for artifact: {payload['artifact']}"
+                    )
                 else:
                     payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
+                    payload["onyx_create_errors"]["onyx_errors"].append(
+                        f"CSV appears to have been modified after upload for artifact: {payload['artifact']}"
+                    )
 
                 return (False, False, payload)
 
             except Exception as e:
                 if test_submission:
-                    log.error(f"Unhandled error: {e}")
+                    log.error(f"Unhandled csv_create error: {e}")
                     payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(
+                        f"Unhandled csv_create error: {e}"
+                    )
                 else:
-                    log.error(f"Unhandled error: {e}")
+                    log.error(f"Unhandled csv_create error: {e}")
                     payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
+                    payload["onyx_create_errors"]["onyx_errors"].append(
+                        f"Unhandled csv_create error: {e}"
+                    )
 
                 return (False, True, payload)
 
@@ -385,9 +393,12 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
                 return (True, False, payload)
 
     except Exception as e:
+        log.error(f"Unhandled csv field check error: {e}")
         payload.setdefault("onyx_test_create_errors", {})
         payload["onyx_test_create_errors"].setdefault("roz_errors", [])
-        payload["onyx_test_create_errors"]["roz_errors"].append(e)
+        payload["onyx_test_create_errors"]["roz_errors"].append(
+            f"Unhandled csv field check error: {e}"
+        )
         return (False, True, payload)
 
 
@@ -441,11 +452,13 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
 
             except OnyxClientError as e:
                 log.error(
-                    f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                    f"Onyx identify failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
-                payload["onyx_errors"]["onyx_errors"].append(str(e))
+                payload["onyx_errors"]["onyx_errors"].append(
+                    f"Onyx identify failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                )
                 return (False, True, payload)
 
             except OnyxRequestError as e:
@@ -456,13 +469,19 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
                     f"Onyx identify failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
-                for field, messages in e.response.json()["messages"].items():
-                    payload["onyx_errors"].setdefault(field, [])
-                    payload["onyx_errors"][field].extend(messages)
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(
+                    f"Onyx identify failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                )
                 return (False, True, payload)
 
             except Exception as e:
-                log.error(f"Unhandled error: {e}")
+                log.error(f"Unhandled onyx_identify error: {e}")
+                payload.setdefault("onyx_errors", {})
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(
+                    f"Unhandled onyx_identify error: {e}"
+                )
                 return (False, True, payload)
 
 
@@ -561,7 +580,7 @@ def onyx_reconcile(
 
             except OnyxClientError as e:
                 log.error(
-                    f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                    f"Onyx reconcile failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_reconcile_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
@@ -579,7 +598,7 @@ def onyx_reconcile(
 
             except OnyxRequestError as e:
                 log.error(
-                    f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                    f"Onyx reconcile failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
                 for field, messages in e.response.json()["messages"].items():
@@ -588,7 +607,12 @@ def onyx_reconcile(
                 return (False, True, payload)
 
             except Exception as e:
-                log.error(f"Unhandled error: {e}")
+                log.error(f"Unhandled onyx_reconcile error: {e}")
+                payload.setdefault("onyx_errors", {})
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(
+                    f"Unhandled onyx_reconcile error: {e}"
+                )
                 return (False, True, payload)
 
     # This should never be reached
@@ -678,7 +702,12 @@ def ensure_file_unseen(
                 return (False, True, payload)
 
             except Exception as e:
-                log.error(f"Unhandled error: {e}")
+                log.error(f"Unhandled check_file_unseen error: {e}")
+                payload.setdefault("onyx_errors", {})
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(
+                    f"Unhandled check_file_unseen error: {e}"
+                )
                 return (False, True, payload)
 
 
@@ -769,7 +798,12 @@ def check_artifact_published(
                 return (False, True, payload)
 
             except Exception as e:
-                log.error(f"Unhandled error: {e}")
+                log.error(f"Unhandled check_published error: {e}")
+                payload.setdefault("onyx_errors", {})
+                payload["onyx_errors"].setdefault("onyx_errors", [])
+                payload["onyx_errors"]["onyx_errors"].append(
+                    f"Unhandled check_published error: {e}"
+                )
                 return (False, True, payload)
 
 
@@ -853,9 +887,11 @@ def onyx_update(
                 return (True, False, payload)
 
             except Exception as e:
-                log.error(f"Unhandled error: {e}")
+                log.error(f"Unhandled onyx_update error: {e}")
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
-                payload["onyx_update_errors"]["onyx_errors"].append(e)
+                payload["onyx_update_errors"]["onyx_errors"].append(
+                    f"Unhandled onyx_update error: {e}"
+                )
 
                 return (True, True, payload)
 
