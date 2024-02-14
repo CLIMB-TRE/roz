@@ -1398,7 +1398,7 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
-            mock_client.return_value.__enter__.return_value.filter.return_value = Mock(
+            mock_client.return_value.__enter__.return_value.filter = Mock(
                 side_effect=[
                     iter(()),
                     iter(
