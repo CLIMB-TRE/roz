@@ -1397,18 +1397,11 @@ class Test_mscape_validator(unittest.TestCase):
                 iter(({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)),
             ]
 
-            mock_client.return_value.__enter__.return_value.identify = Mock(
-                side_effect=OnyxRequestError(
-                    message="test identify exception",
-                    response=MockResponse(
-                        status_code=404,
-                        json_data={
-                            "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
-                        },
-                    ),
-                )
-            )
+            mock_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "sample_id",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
 
             # mock_client.return_value.__enter__.return_value.filter.return_value = iter(
             #     ()
