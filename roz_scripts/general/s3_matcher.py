@@ -335,7 +335,7 @@ def main():
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    varys_client = varys(
+    varys_client = Varys(
         profile="roz",
         logfile=os.getenv("S3_MATCHER_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),

@@ -203,7 +203,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
             json.dump(roz_config, f)
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
-        self.varys_client = varys("roz", logfile=TEST_MESSAGE_LOG_FILENAME)
+        self.varys_client = Varys("roz", logfile=TEST_MESSAGE_LOG_FILENAME)
 
         self.s3_client.create_bucket(Bucket="project1-site1-illumina-prod")
         self.s3_client.create_bucket(Bucket="project1-site2-illumina-prod")

@@ -472,7 +472,7 @@ def validate(
 def run(args):
     log = init_logger("pathsafe.validate", args.logfile, args.log_level)
 
-    varys_client = varys(
+    varys_client = Varys(
         profile="roz",
         logfile=args.logfile,
         log_level=args.log_level,
