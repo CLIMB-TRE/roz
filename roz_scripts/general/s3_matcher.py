@@ -1,6 +1,6 @@
 from roz_scripts.utils.utils import get_s3_credentials, init_logger
 from roz_scripts.general.s3_controller import create_config_map
-from varys import varys
+from varys import Varys
 
 import boto3
 from botocore.exceptions import ClientError

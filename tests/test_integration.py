@@ -22,7 +22,7 @@ import multiprocessing as mp
 import time
 import os
 import json
-from varys import varys
+from varys import Varys
 from moto import mock_s3
 from moto.server import ThreadedMotoServer
 import boto3

@@ -1,7 +1,7 @@
 import unittest
 from roz_scripts import s3_notifications
 
-from varys import varys
+from varys import Varys
 import boto3
 from moto.server import ThreadedMotoServer
 import os

@@ -19,7 +19,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
 )
-from varys import varys
+from varys import Varys
 from onyx import OnyxClient
 
 

@@ -1,6 +1,6 @@
 from roz_scripts.general.s3_controller import create_config_map
 from roz_scripts.utils.utils import get_s3_credentials, init_logger
-from varys import varys
+from varys import Varys
 import datetime
 import copy
 import os

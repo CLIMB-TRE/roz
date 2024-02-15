@@ -8,7 +8,7 @@ from snoop_db.models import (
 )
 import snoop_db.db
 
-from roz import varys
+from roz import Varys
 
 import os
 import json

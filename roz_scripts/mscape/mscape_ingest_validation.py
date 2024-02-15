@@ -24,7 +24,7 @@ from roz_scripts.utils.utils import (
     ensure_file_unseen,
     onyx_reconcile,
 )
-from varys import varys
+from varys import Varys
 
 
 class worker_pool_handler:
@@ -1171,7 +1171,9 @@ def run(args):
     try:
         while True:
             message = varys_client.receive(
-                exchange="inbound.to_validate.mscape", queue_suffix="validator"
+                exchange="inbound.to_validate.mscape",
+                queue_suffix="validator",
+                prefetch_count=args.n_workers,
             )
 
             worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)

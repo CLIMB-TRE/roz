@@ -7,7 +7,7 @@ from collections import defaultdict, namedtuple
 import uuid
 import copy
 
-import varys
+import Varys
 from roz_scripts.utils.utils import init_logger, get_s3_credentials
 
 

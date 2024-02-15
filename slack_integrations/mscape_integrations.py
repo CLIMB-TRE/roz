@@ -1,4 +1,4 @@
-from varys import varys
+from varys import Varys
 import os
 import requests
 import json

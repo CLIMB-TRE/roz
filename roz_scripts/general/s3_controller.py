@@ -1,4 +1,4 @@
-from varys import varys
+from varys import Varys
 import boto3
 import json
 import sys
