@@ -1603,7 +1603,7 @@ class Test_mscape_validator(unittest.TestCase):
             )
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
-def test_validator_successful_onyx_fail_unpublished(self):
+    def test_validator_successful_onyx_fail_unpublished(self):
         with (
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
