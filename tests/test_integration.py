@@ -1398,34 +1398,6 @@ class Test_mscape_validator(unittest.TestCase):
                 )
             )
 
-            mock_filter_return_fields = [
-                "adm1_country",
-                "adm2_region",
-                "study_centre_id",
-                "biosample_source_id",
-                "input_type",
-                "input_type_details",
-                "is_approximate_date",
-                "is_public_dataset",
-                "received_date",
-                "collection_date",
-                "sample_latitude",
-                "sample_longitude",
-                "sample_source",
-                "sample_type",
-                "sequence_purpose",
-            ]
-
-            mock_filter_return_fields_2 = [
-                "batch_id",
-                "bioinformatics_protocol",
-                "dehumanisation_protocol",
-                "extraction_enrichment_protocol",
-                "library_protocol",
-                "sequencing_protocol",
-                "study_centre_id",
-            ]
-
             mock_client.return_value.__enter__.return_value.filter = Mock(
                 side_effect=[
                     iter(()),
@@ -1630,6 +1602,278 @@ class Test_mscape_validator(unittest.TestCase):
                 Bucket="mscape-published-binned-reads"
             )
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
+
+def test_validator_successful_onyx_fail_unpublished(self):
+        with (
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
+
+            mock_client.return_value.__enter__.return_value.csv_create = Mock(
+                side_effect=OnyxRequestError(
+                    message="test csv_create exception",
+                    response=MockResponse(
+                        status_code=400,
+                        json_data={
+                            "data": [],
+                            "messages": {
+                                "sample_id": ["Test sample_id error handling"]
+                            },
+                        },
+                    ),
+                )
+            )
+
+            mock_client.return_value.__enter__.return_value.filter = Mock(
+                side_effect=[
+                    iter(()),
+                    iter(
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "adm1_country": "GB-ENG",
+                                "adm2_region": "Some Region",
+                                "study_centre_id": "Some Study Centre ID",
+                                "biosample_source_id": "Some Biosample Source ID",
+                                "input_type": "Some Input Type",
+                                "input_type_details": "Some Input Type Details",
+                                "is_approximate_date": True,
+                                "is_public_dataset": True,
+                                "received_date": "Some Received Date",
+                                "collection_date": "Some Collection Date",
+                                "sample_latitude": "Some Sample Latitude",
+                                "sample_longitude": "Some Sample Longitude",
+                                "sample_source": "Some Sample Source",
+                                "sample_type": "Some Sample Type",
+                                "sequence_purpose": "Some Sequence Purpose",
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "adm1_country": "GB-ENG",
+                                "adm2_region": "Some Region",
+                                "study_centre_id": "Some Study Centre ID",
+                                "biosample_source_id": "Some Biosample Source ID",
+                                "input_type": "Some Input Type",
+                                "input_type_details": "Some Input Type Details",
+                                "is_approximate_date": True,
+                                "is_public_dataset": True,
+                                "received_date": "Some Received Date",
+                                "collection_date": "Some Collection Date",
+                                "sample_latitude": "Some Sample Latitude",
+                                "sample_longitude": "Some Sample Longitude",
+                                "sample_source": "Some Sample Source",
+                                "sample_type": "Some Sample Type",
+                                "sequence_purpose": "Some Sequence Purpose",
+                            },
+                        ]
+                    ),
+                    iter(
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            },
+                        ]
+                    ),
+                    iter(
+                        (
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                        )
+                    ),
+                ]
+            )
+
+            mock_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "sample_id",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
+
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            read_fraction_path = os.path.join(result_path, "read_fractions")
+
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(read_fraction_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "viral_and_unclassified.fastq.gz"), "w"
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(os.path.join(binned_reads_path, "286.fastq.gz"), "w").close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"params_{example_validator_message['uuid']}.log",
+                ),
+                "w",
+            ) as f:
+                f.write(json.dumps(example_params))
+
+            with open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.json"), "w"
+            ) as f:
+                f.write(json.dumps(example_k2_out))
+
+            with open(
+                os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
+            ) as f:
+                json.dump(example_reads_summary, f)
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = utils.pipeline(
+                pipe="test",
+                nxf_executable="test",
+                config="test",
+            )
+
+            test_message = copy.deepcopy(example_validator_message)
+
+            in_message = SimpleNamespace(body=json.dumps(test_message))
+
+            Success, alert, payload, message = mscape_ingest_validation.validate(
+                in_message, args, pipeline
+            )
+
+            print(payload)
+
+            self.assertTrue(Success)
+            self.assertFalse(alert)
+
+            self.assertTrue(uuid.UUID(payload["uuid"], version=4))
+            self.assertEqual(
+                payload["artifact"],
+                "mscape.sample-test.run-test",
+            )
+            self.assertEqual(payload["project"], "mscape")
+            self.assertEqual(payload["site"], "birm")
+            self.assertEqual(payload["platform"], "ont")
+            self.assertEqual(payload["climb_id"], "test_climb_id")
+            self.assertEqual(payload["created"], True)
+            self.assertEqual(payload["published"], True)
+            self.assertEqual(payload["onyx_create_status"], True)
+            self.assertEqual(payload["test_flag"], False)
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="mscape-published-reads"
+            )
+            self.assertEqual(
+                published_reads_contents["Contents"][0]["Key"], "test_climb_id.fastq.gz"
+            )
+
+            published_reports_contents = self.s3_client.list_objects(
+                Bucket="mscape-published-reports"
+            )
+            self.assertEqual(
+                published_reports_contents["Contents"][0]["Key"],
+                "test_climb_id_scylla_report.html",
+            )
+
+            published_taxon_reports_contents = self.s3_client.list_objects(
+                Bucket="mscape-published-taxon-reports"
+            )
+            self.assertIn(
+                "test_climb_id/test_climb_id_PlusPF.kraken_report.txt",
+                [x["Key"] for x in published_taxon_reports_contents["Contents"]],
+            )
+
+            published_binned_reads_contents = self.s3_client.list_objects(
+                Bucket="mscape-published-binned-reads"
+            )
+            self.assertEqual(
+                published_binned_reads_contents["Contents"][0]["Key"],
+                "test_climb_id/test_climb_id_286.fastq.gz",
+            )
 
 
 # class Test_pathsafe_validator(unittest.TestCase):
