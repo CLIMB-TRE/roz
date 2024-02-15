@@ -101,7 +101,7 @@ def main():
         "roz_ingest", os.getenv("ROZ_INGEST_LOG"), os.getenv("INGEST_LOG_LEVEL")
     )
 
-    varys_client = varys.varys(
+    varys_client = varys.Varys(
         profile="roz",
         logfile=os.getenv("ROZ_INGEST_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),

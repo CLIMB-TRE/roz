@@ -22,7 +22,7 @@ import multiprocessing as mp
 import time
 import os
 import json
-from varys import varys
+from varys import Varys
 from moto import mock_s3
 from moto.server import ThreadedMotoServer
 import boto3
@@ -549,7 +549,7 @@ class Test_S3_matcher(unittest.TestCase):
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
-        self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
+        self.varys_client = Varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
         self.s3_matcher_process = mp.Process(target=s3_matcher.main)
         self.s3_matcher_process.start()
@@ -735,7 +735,7 @@ class Test_ingest(unittest.TestCase):
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
-        self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
+        self.varys_client = Varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
     def tearDown(self):
         self.varys_client.close()
@@ -880,7 +880,7 @@ class Test_mscape_validator(unittest.TestCase):
 
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
-        self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
+        self.varys_client = Varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
     def tearDown(self):
         credentials = pika.PlainCredentials("guest", "guest")
@@ -1939,7 +1939,7 @@ class Test_mscape_validator(unittest.TestCase):
 #         os.environ["ONYX_ROZ_PASSWORD"] = "password"
 #         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
-#         self.varys_client = varys("roz", TEST_MESSAGE_LOG_FILENAME)
+#         self.varys_client = Varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
 #     def tearDown(self):
 #         credentials = pika.PlainCredentials("guest", "guest")

@@ -1,6 +1,6 @@
 from roz_scripts.general.s3_controller import create_config_map
 from roz_scripts.utils.utils import get_s3_credentials, init_logger
-from varys import varys
+from varys import Varys
 import datetime
 import copy
 import os
@@ -122,7 +122,7 @@ def run(args):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
 
-    varys_client = varys(profile="roz", logfile=os.getenv("S3_NOTIFICATIONS_LOG"))
+    varys_client = Varys(profile="roz", logfile=os.getenv("S3_NOTIFICATIONS_LOG"))
 
     s3_credentials = get_s3_credentials()
 

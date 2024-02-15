@@ -1,10 +1,10 @@
-from varys import varys
+from varys import Varys
 import os
 import requests
 import json
 import sys
 
-varys_client = varys(
+varys_client = Varys(
     profile="roz",
     logfile=os.devnull,
     log_level="CRITICAL",

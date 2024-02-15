@@ -7,7 +7,7 @@ from collections import defaultdict, namedtuple
 import uuid
 import copy
 
-import varys
+import Varys
 from roz_scripts.utils.utils import init_logger, get_s3_credentials
 
 
@@ -419,7 +419,7 @@ def run(args):
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    varys_client = varys.varys(
+    varys_client = varys.Varys(
         profile="roz",
         logfile=os.getenv("S3_MATCHER_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),

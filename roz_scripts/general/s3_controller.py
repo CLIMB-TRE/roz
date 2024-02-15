@@ -1,4 +1,4 @@
-from varys import varys
+from varys import Varys
 import boto3
 import json
 import sys
@@ -975,25 +975,25 @@ def audit_all_buckets(
     for project, project_config in config_map.items():
         # Audit out buckets (made by admin user)
         for bucket, bucket_arn in project_config["project_buckets"]:
-            audit_dict[project]["project_buckets"][
-                (bucket, bucket_arn)
-            ] = audit_bucket_policy(
-                bucket_name=bucket_arn,
-                aws_credentials_dict=aws_credentials_dict,
-                project=project,
-                config_map=config_map,
+            audit_dict[project]["project_buckets"][(bucket, bucket_arn)] = (
+                audit_bucket_policy(
+                    bucket_name=bucket_arn,
+                    aws_credentials_dict=aws_credentials_dict,
+                    project=project,
+                    config_map=config_map,
+                )
             )
 
         # Audit in buckets (made by site user)
         for site, site_config in project_config["sites"].items():
             for bucket, bucket_arn in site_config["site_buckets"]:
-                audit_dict[project]["site_buckets"][site][
-                    (bucket, bucket_arn)
-                ] = audit_bucket_policy(
-                    bucket_name=bucket_arn,
-                    aws_credentials_dict=aws_credentials_dict,
-                    project=project,
-                    config_map=config_map,
+                audit_dict[project]["site_buckets"][site][(bucket, bucket_arn)] = (
+                    audit_bucket_policy(
+                        bucket_name=bucket_arn,
+                        aws_credentials_dict=aws_credentials_dict,
+                        project=project,
+                        config_map=config_map,
+                    )
                 )
 
     return audit_dict
@@ -1512,7 +1512,7 @@ def run(args):
                 file=sys.stdout,
             )
 
-            varys_client = varys(
+            varys_client = Varys(
                 profile="roz",
                 logfile=os.devnull,
                 log_level="CRITICAL",

@@ -1,6 +1,6 @@
 from roz_scripts.utils.utils import get_s3_credentials, init_logger
 from roz_scripts.general.s3_controller import create_config_map
-from varys import varys
+from varys import Varys
 
 import boto3
 from botocore.exceptions import ClientError
@@ -335,7 +335,7 @@ def main():
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    varys_client = varys(
+    varys_client = Varys(
         profile="roz",
         logfile=os.getenv("S3_MATCHER_LOG"),
         log_level=os.getenv("INGEST_LOG_LEVEL"),

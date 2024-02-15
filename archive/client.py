@@ -94,13 +94,13 @@ def run(args):
         )
         sys.exit(2)
 
-    varys_client = roz.varys.varys(
+    varys_client = roz.varys.Varys(
         profile="roz_admin",
         in_exchange="inbound.matched",
         out_exchange="inbound.validated",
         logfile=env_vars.logfile,
         log_level=env_vars.log_level,
-        queue_suffix="roz_client"
+        queue_suffix="roz_client",
     )
 
     log = roz.varys.init_logger("roz_client", env_vars.logfile, env_vars.log_level)

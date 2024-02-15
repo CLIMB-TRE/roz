@@ -8,7 +8,7 @@ from snoop_db.models import (
 )
 import snoop_db.db
 
-from roz import varys
+# from roz import Varys
 
 import os
 import json
@@ -20,7 +20,7 @@ def main():
 
     log = varys.init_logger("snoop_db", snooper_log_path, os.getenv("INGEST_LOG_LEVEL"))
 
-    inbound_s3 = varys.varys(
+    inbound_s3 = varys.Varys(
         profile="roz",
         in_exchange="inbound.s3",
         logfile=snooper_log_path,
@@ -28,7 +28,7 @@ def main():
         queue_suffix="snoop_db",
     )
 
-    inbound_matched = varys.varys(
+    inbound_matched = varys.Varys(
         profile="roz",
         in_exchange="inbound.matched",
         logfile=snooper_log_path,
@@ -36,7 +36,7 @@ def main():
         queue_suffix="snoop_db",
     )
 
-    inbound_to_validate = varys.varys(
+    inbound_to_validate = varys.Varys(
         profile="roz",
         in_exchange="inbound.to_validate",
         logfile=snooper_log_path,
@@ -44,7 +44,7 @@ def main():
         queue_suffix="snoop_db",
     )
 
-    inbound_validated = varys.varys(
+    inbound_validated = varys.Varys(
         profile="roz",
         in_exchange="inbound.validated",
         logfile=snooper_log_path,
@@ -52,7 +52,7 @@ def main():
         queue_suffix="snoop_db",
     )
 
-    inbound_artifacts = varys.varys(
+    inbound_artifacts = varys.Varys(
         profile="roz",
         in_exchange="inbound.artifacts",
         logfile=snooper_log_path,
