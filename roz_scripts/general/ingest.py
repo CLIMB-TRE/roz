@@ -3,7 +3,7 @@ import sys
 import json
 import time
 
-import Varys
+import varys
 
 from onyx import OnyxClient
 from onyx.exceptions import (
