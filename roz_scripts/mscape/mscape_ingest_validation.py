@@ -22,6 +22,7 @@ from roz_scripts.utils.utils import (
     csv_create,
     onyx_update,
     ensure_file_unseen,
+    onyx_reconcile,
 )
 from varys import varys
 
@@ -942,11 +943,57 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (True, alert, payload, message)
 
+    # Spot if metadata disagrees anywhere, don't act on it yet though
+    sample_reconcile_success, alert, payload = onyx_reconcile(
+        payload=payload,
+        identifier="sample_id",
+        fields_to_reconcile=[
+            "adm1_country",
+            "adm2_region",
+            "study_centre_id",
+            "biosample_source_id",
+            "input_type",
+            "input_type_details",
+            "is_approximate_date",
+            "is_public_dataset",
+            "received_date",
+            "collection_date",
+            "sample_latitude",
+            "sample_longitude",
+            "sample_source",
+            "sample_type",
+            "sequence_purpose",
+        ],
+        log=log,
+    )
+
+    run_reconcile_success, alert, payload = onyx_reconcile(
+        payload=payload,
+        identifier="run_id",
+        fields_to_reconcile=[
+            "batch_id",
+            "bioinformatics_protocol",
+            "dehumanisation_protocol",
+            "extraction_enrichment_protocol",
+            "library_protocol",
+            "sequencing_protocol",
+            "study_centre_id",
+        ],
+        log=log,
+    )
+
     create_success, alert, payload = csv_create(
         payload=payload,
         log=log,
         test_submission=False,
     )
+
+    if alert:
+        log.error(
+            f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
+        )
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
 
     if not create_success:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
@@ -1064,11 +1111,11 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
 
-    unsuppress_fail, alert, payload = onyx_update(
-        payload=payload, log=log, fields={"suppressed": False}
+    publish_fail, alert, payload = onyx_update(
+        payload=payload, log=log, fields={"is_published": True}
     )
 
-    if unsuppress_fail:
+    if publish_fail:
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
 

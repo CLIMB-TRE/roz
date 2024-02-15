@@ -225,6 +225,8 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
         self.s3_notifications.terminate()
 
+        del os.environ["UNIT_TESTING"]
+
         credentials = pika.PlainCredentials("guest", "guest")
 
         connection = pika.BlockingConnection(

@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install 'pytest' 'moto[server]<=4.2.14'
       - name: Install Varys
-        run: python3 -m pip install git+https://github.com/CLIMB-TRE/varys.git
+        run: python3 -m pip install varys-client
       - name: Install Onyx-client
         run: python3 -m pip install climb-onyx-client
       - name: Install Roz
@@ -67,5 +67,12 @@ jobs:
         with:
           name: pathsafe-validation-logfile-${{ matrix.python-version }}
           path: tests/pathsafe_validation.log
+          retention-days: 5
+        if: ${{ always() }}
+      - name: "Upload test utils logfile"
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-utils-logfile-${{ matrix.python-version }}
+          path: tests/test_utils.log
           retention-days: 5
         if: ${{ always() }}
