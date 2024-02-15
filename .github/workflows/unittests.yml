@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install 'pytest' 'moto[server]<=4.2.14'
       - name: Install Varys
-        run: python3 -m pip install git+https://github.com/warrickball/varys.git@697dcc463caf69395ea67ae4170d05269a9b87e3
+        run: python3 -m pip install varys-client
       - name: Install Onyx-client
         run: python3 -m pip install climb-onyx-client
       - name: Install Roz
