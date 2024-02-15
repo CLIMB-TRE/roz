@@ -1478,12 +1478,12 @@ class Test_mscape_validator(unittest.TestCase):
                             {
                                 "yeet": "yeet",
                                 "climb_id": "test_id",
-                                "is_published": False,
+                                "is_published": True,
                             },
                             {
                                 "yeet": "yeet",
                                 "climb_id": "test_id",
-                                "is_published": False,
+                                "is_published": True,
                             },
                         )
                     ),
@@ -1718,12 +1718,12 @@ class Test_mscape_validator(unittest.TestCase):
                             {
                                 "yeet": "yeet",
                                 "climb_id": "test_id",
-                                "is_published": True,
+                                "is_published": False,
                             },
                             {
                                 "yeet": "yeet",
                                 "climb_id": "test_id",
-                                "is_published": True,
+                                "is_published": False,
                             },
                         )
                     ),
