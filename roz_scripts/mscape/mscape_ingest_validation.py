@@ -798,6 +798,12 @@ def ret_0_parser(
                 or process.startswith("extract_taxa_paired_reads")
             ) and trace["exit"] == "3":
                 continue
+            elif process.startswith("fastp") and trace["exit"] == "255":
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the mSCAPE admin team for assistance"
+                )
+                ingest_fail = True
             else:
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
