@@ -50,7 +50,7 @@ def main():
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.matched", queue_suffix="ingest"
+            exchange="inbound-matched", queue_suffix="ingest"
         )
 
         payload = json.loads(message.body)
@@ -69,7 +69,7 @@ def main():
             )
             varys_client.send(
                 message=payload,
-                exchange=f"restricted.{payload['project']}.alert",
+                exchange=f"restricted-{payload['project']}-alert",
                 queue_suffix="ingest",
             )
             varys_client.nack_message(message)
@@ -80,7 +80,7 @@ def main():
             varys_client.acknowledge_message(message)
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                 queue_suffix="s3_matcher",
             )
             continue
@@ -93,7 +93,7 @@ def main():
         if alert:
             varys_client.send(
                 message=payload,
-                exchange=f"restricted.{payload['project']}.alert",
+                exchange=f"restricted-{payload['project']}-alert",
                 queue_suffix="ingest",
             )
             varys_client.nack_message(message)
@@ -114,7 +114,7 @@ def main():
 
         varys_client.send(
             message=payload,
-            exchange=f"inbound.to_validate.{payload['project']}",
+            exchange=f"inbound-to_validate-{payload['project']}",
             queue_suffix="ingest",
         )
 
