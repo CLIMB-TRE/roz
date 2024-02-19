@@ -366,7 +366,7 @@ def main():
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.s3",
+            exchange="inbound-s3",
             queue_suffix="s3_matcher",
         )
 
