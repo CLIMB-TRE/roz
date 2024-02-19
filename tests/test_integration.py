@@ -578,14 +578,14 @@ class Test_S3_matcher(unittest.TestCase):
 
     def test_s3_successful_match(self):
         self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
         self.varys_client.send(
-            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_fastq_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=20,
         )
@@ -612,14 +612,14 @@ class Test_S3_matcher(unittest.TestCase):
 
     def test_s3_incorrect_match(self):
         self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
         self.varys_client.send(
-            incorrect_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            incorrect_fastq_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=10,
         )
@@ -627,14 +627,14 @@ class Test_S3_matcher(unittest.TestCase):
 
     def test_s3_updated_csv(self):
         self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
         self.varys_client.send(
-            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_fastq_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=30,
         )
@@ -642,11 +642,11 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertIsNotNone(message)
 
         self.varys_client.send(
-            example_csv_msg_2, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg_2, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message_2 = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=30,
         )
@@ -772,12 +772,12 @@ class Test_ingest(unittest.TestCase):
 
             self.varys_client.send(
                 test_message,
-                exchange="inbound.matched",
+                exchange="inbound-matched",
                 queue_suffix="s3_matcher",
             )
 
             message = self.varys_client.receive(
-                exchange="inbound.to_validate.mscape",
+                exchange="inbound-to_validate-mscape",
                 queue_suffix="ingest",
                 timeout=10,
             )

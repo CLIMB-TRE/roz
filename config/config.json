@@ -7,7 +7,8 @@
       "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
       "sites": {
         "birm": "analysis",
-        "ukhsa": "analysis",
+        "gpha.ukhsa": "analysis",
+        "tarzet.ukhsa": "analysis",
         "gstt": "uploader"
       },
       "bucket_policies": {

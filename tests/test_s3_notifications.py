@@ -209,7 +209,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="project1-site2-illumina-prod")
 
         self.varys_client.receive(
-            exchange="inbound.s3", queue_suffix="s3_matcher", timeout=1
+            exchange="inbound-s3", queue_suffix="s3_matcher", timeout=1
         )
 
         self.s3_notifications = mp.Process(
@@ -259,7 +259,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
         while not timeout:
             message = self.varys_client.receive(
-                exchange="inbound.s3", queue_suffix="s3_matcher", timeout=10
+                exchange="inbound-s3", queue_suffix="s3_matcher", timeout=10
             )
             if not message:
                 timeout = True

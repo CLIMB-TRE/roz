@@ -385,7 +385,7 @@ def main():
             log.info(failure_message)
             varys_client.send(
                 message=failure_message,
-                exchange=f"inbound.results.{project}.{site}",
+                exchange=f"inbound-results-{project}-{site}",
                 queue_suffix="s3_matcher",
             )
             continue
@@ -399,7 +399,7 @@ def main():
 
         log.info(f"Successful match for artifact: {artifact}. Sending payload.")
         varys_client.send(
-            message=payload, exchange="inbound.matched", queue_suffix="s3_matcher"
+            message=payload, exchange="inbound-matched", queue_suffix="s3_matcher"
         )
 
 

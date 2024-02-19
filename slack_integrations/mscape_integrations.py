@@ -38,7 +38,7 @@ mscape_alert_template = """<!channel>
 
 while True:
     new_artifact_message = varys_client.receive(
-        "inbound.new_artifact.mscape", queue_suffix="slack_integration", timeout=1
+        "inbound-new_artifact-mscape", queue_suffix="slack_integration", timeout=1
     )
     if new_artifact_message:
         in_dict = json.loads(new_artifact_message.body)
@@ -56,7 +56,7 @@ while True:
         varys_client.acknowledge_message(new_artifact_message)
 
     public_result_message = varys_client.receive(
-        "inbound.results.mscape.public", queue_suffix="slack_integration", timeout=1
+        "inbound-results-mscape-public", queue_suffix="slack_integration", timeout=1
     )
 
     if public_result_message:
@@ -79,7 +79,7 @@ while True:
         varys_client.acknowledge_message(public_result_message)
 
     alert_message = varys_client.receive(
-        "mscape.restricted.announce", queue_suffix="slack_integration", timeout=1
+        "mscape-restricted-announce", queue_suffix="slack_integration", timeout=1
     )
 
     if alert_message:
