@@ -438,6 +438,8 @@ def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
     if not sample_id_match or not run_id_match:
         return (False, False, payload)
 
+    return (True, False, payload)
+
 
 def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
     if identity_field not in ("sample_id", "run_id"):

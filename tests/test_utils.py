@@ -587,6 +587,10 @@ class test_utils(unittest.TestCase):
         self.assertFalse(success)
         self.assertFalse(alert)
         self.assertIn(
-            "Invalid characters found for UUID: 42c3796d-d767-4293-97a8-c4906bb5cca8",
-            payload["onyx_test_create_errors"]["onyx_errors"],
+            "sample_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
+            payload["onyx_test_create_errors"]["sample_id"],
+        )
+        self.assertIn(
+            "run_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
+            payload["onyx_test_create_errors"]["run_id"],
         )

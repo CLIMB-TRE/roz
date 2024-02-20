@@ -615,7 +615,7 @@ class test_s3_matcher(unittest.TestCase):
 
     def test_parse_new_object_message(self):
         index_tuple = (
-            "project1.sample1.run1",
+            "project1|sample1|run1",
             "project1",
             "site1",
             "illumina",
