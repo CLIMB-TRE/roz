@@ -333,7 +333,7 @@ class test_s3_matcher(unittest.TestCase):
             "illumina",
             "prod",
         )
-        index_tuple_2 = ("project1.sample1.run1", "project1", "site1", "ont", "prod")
+        index_tuple_2 = ("project1|sample1|run1", "project1", "site1", "ont", "prod")
 
         existing_object_dict = {
             index_tuple_1: {
