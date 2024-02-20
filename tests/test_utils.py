@@ -68,8 +68,8 @@ class test_utils(unittest.TestCase):
             "uploaders": ["testuser"],
             "match_timestamp": 1697036668222422871,
             "artifact": "mscape|sample-test|run-test",
-            "sample_id": "birm:sample-test",
-            "run_id": "birm:run-test",
+            "sample_id": "sample-test",
+            "run_id": "run-test",
             "project": "mscape",
             "platform": "ont",
             "files": {
@@ -104,6 +104,10 @@ class test_utils(unittest.TestCase):
         self.s3_client.close()
 
     def test_csv_create(self):
+
+        self.example_match["sample_id"] = "test:sample-test-2"
+        self.example_match["run_id"] = "test:run-test-2"
+
         self.s3_client.put_object(
             Bucket="mscape-birm-ont-prod",
             Key="mscape.sample-test.run-test.csv",
