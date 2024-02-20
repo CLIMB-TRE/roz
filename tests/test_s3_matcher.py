@@ -489,7 +489,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertTrue(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample1.run1",
+                    "project1|sample1|run1",
                     "project1",
                     "site1",
                     "illumina",
@@ -503,7 +503,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample2.run1",
+                    "project1|sample2|run1",
                     "project1",
                     "site1",
                     "ont",
@@ -517,7 +517,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample3.run1",
+                    "project1|sample3|run1",
                     "project1",
                     "site1",
                     "ont",
@@ -531,7 +531,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample1.run1",
+                    "project1|sample1|run1",
                     "project1",
                     "site1",
                     "illumina",
@@ -544,7 +544,7 @@ class test_s3_matcher(unittest.TestCase):
 
     def test_generate_payload(self):
         index_tuple = (
-            "project1.sample1.run1",
+            "project1|sample1|run1",
             "project1",
             "site1",
             "illumina",
