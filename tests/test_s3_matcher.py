@@ -285,7 +285,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(parsed_key)
 
     def test_generate_artifact(self):
-        artifact_layout = "project.sample_id.run_id"
+        artifact_layout = "project|sample_id|run_id"
         parsed_key = {
             "project": "project1",
             "sample_id": "sample1",
@@ -297,7 +297,7 @@ class test_s3_matcher(unittest.TestCase):
 
         artifact = s3_matcher.generate_artifact(parsed_key, artifact_layout)
 
-        self.assertEqual(artifact, "project1.sample1.run1")
+        self.assertEqual(artifact, "project1|sample1|run1")
 
         parsed_key = {
             "project": "project1",
@@ -805,7 +805,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertEqual(index_tuple, index_tuple_ret)
 
         index_tuple_2 = (
-            "project1.sample1.run2",
+            "project1|sample1|run2",
             "project1",
             "site1",
             "illumina",

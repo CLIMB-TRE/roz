@@ -139,7 +139,6 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
                 config_dict=config_dict,
                 project=project,
                 platform=platform,
-                site=site,
             )
 
             if not extension:
