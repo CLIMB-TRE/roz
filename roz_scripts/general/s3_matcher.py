@@ -219,7 +219,12 @@ def parse_new_object_message(
 
     bucket_name = record["s3"]["bucket"]["name"]
 
-    project, site, platform, test_flag = bucket_name.split("-")
+    project, site_str, platform, test_flag = bucket_name.split("-")
+
+    if "." in site_str:
+        site = site_str.split(".")[-2]
+    else:
+        site = site_str
 
     object_key = record["s3"]["object"]["key"]
 

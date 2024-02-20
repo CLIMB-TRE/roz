@@ -21,7 +21,11 @@ fake_roz_cfg_dict = {
         "project1": {
             "artifact_layout": "project.sample_name.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": {"site1": "analysis", "site2": "uploader"},
+            "sites": {
+                "site1.project1": "analysis",
+                "subsite1.site2.project1": "uploader",
+                "subsite2.site2.project1": "uploader",
+            },
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -81,7 +85,11 @@ fake_roz_cfg_dict = {
         "project2": {
             "artifact_layout": "project.sample_id.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": {"site1": "analysis", "site2": "analysis"},
+            "sites": {
+                "subsite1.site1.project2": "analysis",
+                "subsite2.site1.project2": "analysis",
+                "site2.project2": "analysis",
+            },
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -158,27 +166,37 @@ fake_roz_cfg_dict = {
 
 fake_aws_cred_dict = {
     "project1": {
-        "site1": {
+        "site1.project1": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site1",
+            "username": "bryn-site1.project1",
         },
-        "site2": {
+        "site2.subsite1.project1": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site2",
+            "username": "bryn-site2.subsite1.project1",
+        },
+        "site2.subsite2.project1": {
+            "aws_access_key_id": "",
+            "aws_secret_access_key": "",
+            "username": "bryn-site2.subsite2.project1",
         },
     },
     "project2": {
-        "site1": {
+        "site1.subsite1.project2": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site1",
+            "username": "bryn-site1.subsite1.project2",
         },
-        "site2": {
+        "site1.subsite2.project2": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site2",
+            "username": "bryn-site2.subsite2.project2",
+        },
+        "site2.project2": {
+            "aws_access_key_id": "",
+            "aws_secret_access_key": "",
+            "username": "bryn-site2.project2",
         },
     },
     "project3": {
@@ -234,9 +252,9 @@ class TestS3Controller(unittest.TestCase):
         self.s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk")
         self.iam_client = boto3.client("iam")
 
-        self.iam_client.create_user(UserName="bryn-site1")
+        self.iam_client.create_user(UserName="bryn-site1.project1")
 
-        resp = self.iam_client.create_access_key(UserName="bryn-site1")
+        resp = self.iam_client.create_access_key(UserName="bryn-site1.project1")
 
         fake_aws_cred_dict["project1"]["site1"]["aws_access_key_id"] = resp[
             "AccessKey"
@@ -258,13 +276,16 @@ class TestS3Controller(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="fake_bucket")
 
         bucket_exists = s3_controller.check_bucket_exists(
-            "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+            "fake_bucket", fake_aws_cred_dict, "project1", "site1.project1"
         )
 
         self.assertTrue(bucket_exists)
 
         bucket_does_not_exist = s3_controller.check_bucket_exists(
-            "other_fake_bucket", fake_aws_cred_dict, "project1", "site1"
+            "other_fake_bucket",
+            fake_aws_cred_dict,
+            "project1",
+            "site1.subsite1.project1",
         )
 
         self.assertFalse(bucket_does_not_exist)
@@ -275,7 +296,7 @@ class TestS3Controller(unittest.TestCase):
         )
 
         bucket_exists = s3_controller.check_bucket_exists(
-            "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+            "fake_bucket", fake_aws_cred_dict, "project1", "site2.subsite1.project1"
         )
 
         self.assertTrue(bucket_exists)

@@ -1094,7 +1094,9 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
     return to_fix
 
 
-def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_dict: dict) -> list:
+def apply_policies(
+    to_fix: dict, aws_credentials_dict: dict, config_dict: dict, dry_run: bool
+) -> list:
     """Apply the correct policies to all buckets that need to be fixed
 
     Args:
@@ -1113,17 +1115,24 @@ def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_dict: dict) 
             config_dict=config_dict,
         )
 
-        policy_success = put_policy(
-            bucket_arn=bucket_arn,
-            project=project,
-            site=site,
-            aws_credentials_dict=aws_credentials_dict,
-            policy=policy,
-        )
+        if not dry_run:
+            policy_success = put_policy(
+                bucket_arn=bucket_arn,
+                project=project,
+                site=site,
+                aws_credentials_dict=aws_credentials_dict,
+                policy=policy,
+            )
 
-        if not policy_success:
+            if not policy_success:
+                print(
+                    f"Policy for bucket {bucket_arn} could not be applied",
+                    file=sys.stdout,
+                )
+        else:
             print(
-                f"Policy for bucket {bucket_arn} could not be applied", file=sys.stdout
+                f"Dry run, not applying policy: {json.dumps(policy)} for bucket {bucket_arn}",
+                file=sys.stdout,
             )
 
     for bucket, bucket_arn, project in to_fix["project_buckets"]:
@@ -1135,17 +1144,24 @@ def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_dict: dict) 
             config_dict=config_dict,
         )
 
-        policy_success = put_policy(
-            bucket_arn=bucket_arn,
-            project="admin",
-            site=None,
-            aws_credentials_dict=aws_credentials_dict,
-            policy=policy,
-        )
+        if not dry_run:
+            policy_success = put_policy(
+                bucket_arn=bucket_arn,
+                project="admin",
+                site=None,
+                aws_credentials_dict=aws_credentials_dict,
+                policy=policy,
+            )
 
-        if not policy_success:
+            if not policy_success:
+                print(
+                    f"Policy for bucket {bucket_arn} could not be applied",
+                    file=sys.stdout,
+                )
+        else:
             print(
-                f"Policy for bucket {bucket_arn} could not be applied", file=sys.stdout
+                f"Dry run, not applying policy: {json.dumps(policy)} for bucket {bucket_arn}",
+                file=sys.stdout,
             )
 
 
@@ -1428,6 +1444,7 @@ def run(args):
                 to_fix=to_fix,
                 aws_credentials_dict=aws_credentials_dict,
                 config_dict=config_dict,
+                dry_run=args.dry_run,
             )
 
             print(

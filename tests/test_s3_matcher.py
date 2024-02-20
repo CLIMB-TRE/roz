@@ -19,7 +19,7 @@ fake_roz_cfg_dict = {
         "project1": {
             "artifact_layout": "project|sample_id|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["site1", "site2"],
+            "sites": ["subsite1.site1.project1", "site2.project1"],
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -67,7 +67,7 @@ fake_roz_cfg_dict = {
         "project2": {
             "artifact_layout": "project|sample_id|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["site1", "site2"],
+            "sites": ["subsite1.site1.project2", "site2.project2"],
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -186,13 +186,19 @@ class test_s3_matcher(unittest.TestCase):
         self.s3_client.close()
 
     def test_get_existing_objects(self):
-        self.s3_client.create_bucket(Bucket="project1-site1-illumina-prod")
-        self.s3_client.create_bucket(Bucket="project1-site1-ont-prod")
-        self.s3_client.create_bucket(Bucket="project1-site1-illumina-test")
-        self.s3_client.create_bucket(Bucket="project2-site1-illumina-prod")
+        self.s3_client.create_bucket(
+            Bucket="project1-site1.subsite1.project1-illumina-prod"
+        )
+        self.s3_client.create_bucket(Bucket="project1-site1.subsite1.project1-ont-prod")
+        self.s3_client.create_bucket(
+            Bucket="project1-subsite1.site1.project1-illumina-test"
+        )
+        self.s3_client.create_bucket(
+            Bucket="project2-subsite1.site1.project1-illumina-prod"
+        )
 
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-prod",
+            Bucket="project1-site1.subsite1.project1-illumina-prod",
             Key="project1.sample1.run1.1.fastq.gz",
             Body="",
         )
