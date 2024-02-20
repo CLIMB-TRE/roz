@@ -308,7 +308,7 @@ class test_s3_matcher(unittest.TestCase):
 
         artifact = s3_matcher.generate_artifact(parsed_key, artifact_layout)
 
-        self.assertEqual(artifact, "project1.sample1.run1")
+        self.assertEqual(artifact, "project1|sample1|run1")
 
         parsed_key = {"sample_id": "sample1", "run_id": "run1", "ftype": "csv"}
 
@@ -327,7 +327,7 @@ class test_s3_matcher(unittest.TestCase):
 
     def test_is_artifact_dict_complete(self):
         index_tuple_1 = (
-            "project1.sample1.run1",
+            "project1|sample1|run1",
             "project1",
             "site1",
             "illumina",
