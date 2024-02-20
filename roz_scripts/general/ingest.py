@@ -18,7 +18,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     csv_create,
     csv_field_checks,
-    get_onyx_credentials,
+    valid_character_checks,
 )
 
 
@@ -57,6 +57,61 @@ def main():
         payload["validate"] = False
 
         log.info(
+            f"Checking that sample_id and run_id do not contain invalid characters for match UUID: {payload['uuid']}"
+        )
+
+        valid_character_status, alert, payload = valid_character_checks(payload=payload)
+
+        if alert:
+            varys_client.send(
+                message=payload,
+                exchange=f"restricted-{payload['project']}-alert",
+                queue_suffix="ingest",
+            )
+            varys_client.nack_message(message)
+            continue
+
+        if not valid_character_status:
+            payload["validate"] = False
+            log.info(f"Invalid characters found for UUID: {payload['uuid']}")
+            varys_client.acknowledge_message(message)
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                queue_suffix="s3_matcher",
+            )
+            continue
+
+        log.info(
+            f"Checking that sample_id and run_id match provided CSV for match UUID: {payload['uuid']}"
+        )
+
+        field_check_status, alert, payload = csv_field_checks(payload=payload)
+
+        if alert:
+            varys_client.send(
+                message=payload,
+                exchange=f"restricted-{payload['project']}-alert",
+                queue_suffix="ingest",
+            )
+            varys_client.nack_message(message)
+            continue
+
+        if not field_check_status:
+            payload["validate"] = False
+            log.info(f"Field checks failed for UUID: {payload['uuid']}")
+            varys_client.acknowledge_message(message)
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                queue_suffix="s3_matcher",
+            )
+            continue
+
+        payload["sample_id"] = f"{payload['site']}:{payload['sample_id']}"
+        payload["run_id"] = f"{payload['site']}:{payload['run_id']}"
+
+        log.info(
             f"Attempting to test create metadata record in onyx for match with UUID: {payload['uuid']}"
         )
         test_create_status, alert, payload = csv_create(
@@ -87,28 +142,6 @@ def main():
 
         payload["onyx_test_create_status"] = True
         payload["validate"] = True
-
-        field_check_status, alert, payload = csv_field_checks(payload=payload)
-
-        if alert:
-            varys_client.send(
-                message=payload,
-                exchange=f"restricted-{payload['project']}-alert",
-                queue_suffix="ingest",
-            )
-            varys_client.nack_message(message)
-            continue
-
-        if not field_check_status:
-            payload["validate"] = False
-            log.info(f"Field checks failed for UUID: {payload['uuid']}")
-            varys_client.acknowledge_message(message)
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                queue_suffix="s3_matcher",
-            )
-            continue
 
         varys_client.acknowledge_message(message)
 

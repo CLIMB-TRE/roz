@@ -69,6 +69,9 @@ def parse_object_key(
 
     key_split = object_key.split(".")
 
+    if not all(key_split):
+        return (False, False)
+
     spec_split = spec["layout"].split(".")
 
     if len(key_split) != len(spec_split):
@@ -91,10 +94,10 @@ def generate_artifact(parsed_object_key: dict, artifact_layout: str) -> str | bo
         str | bool: Artifact name, or False if the artifact name can't be generated
     """
 
-    layout = artifact_layout.split(".")
+    layout = artifact_layout.split("|")
 
     try:
-        artifact = ".".join(str(parsed_object_key[x]) for x in layout)
+        artifact = "|".join(str(parsed_object_key[x]) for x in layout)
     except KeyError:
         return False
 
@@ -136,6 +139,7 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
                 config_dict=config_dict,
                 project=project,
                 platform=platform,
+                site=site,
             )
 
             if not extension:

@@ -17,7 +17,7 @@ fake_roz_cfg_dict = {
     "pathogen_configs": ["project1", "project2"],
     "configs": {
         "project1": {
-            "artifact_layout": "project.sample_id.run_id",
+            "artifact_layout": "project|sample_id|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": ["site1", "site2"],
             "bucket_policies": {
@@ -65,7 +65,7 @@ fake_roz_cfg_dict = {
             },
         },
         "project2": {
-            "artifact_layout": "project.sample_id.run_id",
+            "artifact_layout": "project|sample_id|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": ["site1", "site2"],
             "bucket_policies": {

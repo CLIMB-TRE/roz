@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import time
 import csv
+import regex as re
 
 from onyx import (
     OnyxClient,
@@ -197,7 +198,12 @@ def csv_create(
                         payload["files"][".csv"]["etag"],
                     ),  # I don't like having a hardcoded metadata file name like this but hypothetically we should always have a metadata CSV
                     test=test_submission,
-                    fields={"site": payload["site"], "is_published": False},
+                    fields={
+                        "site": payload["site"],
+                        "is_published": False,
+                        "sample_id": payload["sample_id"],
+                        "run_id": payload["run_id"],
+                    },
                     multiline=False,
                 )
 
@@ -399,6 +405,38 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
             f"Unhandled csv field check error: {e}"
         )
         return (False, True, payload)
+
+
+def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
+    """Function to check that the sample_id and run_id contain only valid characters
+
+    Args:
+        payload (dict): Payload dict for the current artifact
+
+    Returns:
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the character checks failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
+    """
+    pattern = re.compile(r"^[A-Za-z1-9_-]*$")
+
+    sample_id_match = pattern.match(payload["sample_id"])
+    run_id_match = pattern.match(payload["run_id"])
+
+    if not sample_id_match:
+        payload.setdefault("onyx_test_create_errors", {})
+        payload["onyx_test_create_errors"].setdefault("sample_id", [])
+        payload["onyx_test_create_errors"]["sample_id"].append(
+            "sample_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores"
+        )
+
+    if not run_id_match:
+        payload.setdefault("onyx_test_create_errors", {})
+        payload["onyx_test_create_errors"].setdefault("run_id", [])
+        payload["onyx_test_create_errors"]["run_id"].append(
+            "run_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores"
+        )
+
+    if not sample_id_match or not run_id_match:
+        return (False, False, payload)
 
 
 def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):

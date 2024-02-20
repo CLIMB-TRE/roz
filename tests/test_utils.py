@@ -14,6 +14,7 @@ from roz_scripts.utils.utils import (
     onyx_identify,
     onyx_reconcile,
     get_s3_credentials,
+    valid_character_checks,
 )
 
 import moto
@@ -66,9 +67,9 @@ class test_utils(unittest.TestCase):
             "site": "birm",
             "uploaders": ["testuser"],
             "match_timestamp": 1697036668222422871,
-            "artifact": "mscape.sample-test.run-test",
-            "sample_id": "sample-test",
-            "run_id": "run-test",
+            "artifact": "mscape|sample-test|run-test",
+            "sample_id": "birm:sample-test",
+            "run_id": "birm:run-test",
             "project": "mscape",
             "platform": "ont",
             "files": {
@@ -562,3 +563,26 @@ class test_utils(unittest.TestCase):
                 "Failed to find records with Onyx sample_id for: S-1234567890 despite successful identification by Onyx",
                 payload["onyx_errors"]["onyx_errors"],
             )
+
+    def test_valid_character_check_success(self):
+        success, alert, payload = valid_character_checks(payload=self.example_match)
+
+        print(payload)
+
+        self.assertTrue(success)
+        self.assertFalse(alert)
+
+    def test_valid_character_check_failure(self):
+        self.example_match["sample_id"] = "test:sample-test-2"
+        self.example_match["run_id"] = "test:run-test-2"
+
+        success, alert, payload = valid_character_checks(payload=self.example_match)
+
+        print(payload)
+
+        self.assertFalse(success)
+        self.assertFalse(alert)
+        self.assertIn(
+            "Invalid characters found for UUID: 42c3796d-d767-4293-97a8-c4906bb5cca8",
+            payload["onyx_test_create_errors"]["onyx_errors"],
+        )
