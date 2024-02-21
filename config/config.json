@@ -90,66 +90,6 @@
           }
         }
       }
-    },
-    "pathsafe": {
-      "file_naming": {
-        "identical": true,
-        "allowed_characters": "alphanumeric,_,-,."
-      },
-      "artifact_layout": "project.sample_id.run_id",
-      "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-      "sites": { "birm": "admin", "public": "analysis" },
-      "bucket_policies": {
-        "site_ingest": ["get", "put", "list", "delete"],
-        "site_read": ["get", "list"],
-        "project_read": ["get", "list"],
-        "project_private": []
-      },
-      "platform_buckets": {
-        "ingest": {
-          "name_layout": "{project}-{site}-{platform}-{test_flag}",
-          "policy": "site_ingest",
-          "owner": "{site}"
-        }
-      },
-      "site_buckets": {
-        "ingest": {
-          "name_layout": "{project}-{site}-{platform}-{test_flag}",
-          "policy": {
-            "analysis": "site_ingest",
-            "uploader": "site_ingest"
-          },
-          "owner": "{site}"
-        }
-      },
-      "project_buckets": {
-        "published_reads": {
-          "name_layout": "{project}-published-reads",
-          "policy": {},
-          "owner": "admin"
-        },
-        "published_assemblies": {
-          "name_layout": "{project}-published-assemblies",
-          "policy": { "analysis": "project_read" },
-          "owner": "admin"
-        }
-      },
-      "file_specs": {
-        "illumina": {
-          ".1.fastq.gz": {
-            "sections": 6,
-            "layout": "project.sample_id.run_id.direction.ftype.gzip"
-          },
-          ".2.fastq.gz": {
-            "sections": 6,
-            "layout": "project.sample_id.run_id.direction.ftype.gzip"
-          },
-          ".csv": {
-            "sections": 4,
-            "layout": "project.sample_id.run_id.ftype"
-          }
-        }
-      }
     }
   }
 }
