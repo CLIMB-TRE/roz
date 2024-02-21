@@ -69,6 +69,9 @@ def parse_object_key(
 
     key_split = object_key.split(".")
 
+    if not all(key_split):
+        return (False, False)
+
     spec_split = spec["layout"].split(".")
 
     if len(key_split) != len(spec_split):
@@ -91,10 +94,10 @@ def generate_artifact(parsed_object_key: dict, artifact_layout: str) -> str | bo
         str | bool: Artifact name, or False if the artifact name can't be generated
     """
 
-    layout = artifact_layout.split(".")
+    layout = artifact_layout.split("|")
 
     try:
-        artifact = ".".join(str(parsed_object_key[x]) for x in layout)
+        artifact = "|".join(str(parsed_object_key[x]) for x in layout)
     except KeyError:
         return False
 
@@ -131,6 +134,9 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
         project, site, platform, test_flag = bucket_name.split("-")
 
         for obj in objs:
+            # Ignore test key, s3_controller uses it to check if the bucket is correctly configured
+            if obj["Key"] == "test":
+                continue
             extension, parsed_object_key = parse_object_key(
                 object_key=obj["Key"],
                 config_dict=config_dict,
@@ -216,9 +222,21 @@ def parse_new_object_message(
 
     bucket_name = record["s3"]["bucket"]["name"]
 
-    project, site, platform, test_flag = bucket_name.split("-")
+    project, site_str, platform, test_flag = bucket_name.split("-")
+
+    if "." in site_str:
+        site = site_str.split(".")[-2]
+    else:
+        site = site_str
 
     object_key = record["s3"]["object"]["key"]
+
+    if object_key == "test":
+        return (
+            False,
+            existing_object_dict,
+            (False, project, site, platform, test_flag),
+        )
 
     extension, parsed_object_key = parse_object_key(
         object_key=object_key,
@@ -366,7 +384,7 @@ def main():
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.s3",
+            exchange="inbound-s3",
             queue_suffix="s3_matcher",
         )
 
@@ -385,7 +403,7 @@ def main():
             log.info(failure_message)
             varys_client.send(
                 message=failure_message,
-                exchange=f"inbound.results.{project}.{site}",
+                exchange=f"inbound-results-{project}-{site}",
                 queue_suffix="s3_matcher",
             )
             continue
@@ -399,7 +417,7 @@ def main():
 
         log.info(f"Successful match for artifact: {artifact}. Sending payload.")
         varys_client.send(
-            message=payload, exchange="inbound.matched", queue_suffix="s3_matcher"
+            message=payload, exchange="inbound-matched", queue_suffix="s3_matcher"
         )
 
 

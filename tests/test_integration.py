@@ -216,7 +216,7 @@ example_match_message = {
     "site": "birm",
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
-    "artifact": "mscape.sample-test.run-test",
+    "artifact": "mscape|sample-test|run-test",
     "sample_id": "sample-test",
     "run_id": "run-test",
     "project": "mscape",
@@ -225,7 +225,7 @@ example_match_message = {
         ".fastq.gz": {
             "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "mscapeple-test.run-test.fastq.gz",
+            "key": "mscape-test.run-test.fastq.gz",
         },
         ".csv": {
             "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
@@ -242,7 +242,7 @@ example_mismatch_match_message = {
     "site": "birm",
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
-    "artifact": "mscape.sample-test-2.run-test-2",
+    "artifact": "mscape|sample-test-2|run-test-2",
     "sample_id": "sample-test-2",
     "run_id": "run-test-2",
     "project": "mscape",
@@ -264,7 +264,7 @@ example_mismatch_match_message = {
 
 example_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "mscape.sample-test.run-test",
+    "artifact": "mscape|sample-test|run-test",
     "sample_id": "sample-test",
     "run_id": "run-test",
     "project": "mscape",
@@ -301,7 +301,7 @@ example_validator_message = {
 
 example_pathsafe_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "pathsafetest.sample-test.run-test",
+    "artifact": "pathsafetest|sample-test|run-test",
     "sample_id": "sample-test",
     "run_id": "run-test",
     "project": "pathsafetest",
@@ -343,7 +343,7 @@ example_pathsafe_validator_message = {
 
 example_pathsafe_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "pathsafetest.sample-test.run-test",
+    "artifact": "pathsafetest|sample-test|run-test",
     "sample_id": "sample-test",
     "run_id": "run-test",
     "project": "pathsafetest",
@@ -385,7 +385,7 @@ example_pathsafe_test_validator_message = {
 
 example_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "mscape.sample-test.run-test",
+    "artifact": "mscape|sample_test|run-test",
     "sample_id": "sample-test",
     "run_id": "run-test",
     "project": "mscape",
@@ -578,14 +578,14 @@ class Test_S3_matcher(unittest.TestCase):
 
     def test_s3_successful_match(self):
         self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
         self.varys_client.send(
-            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_fastq_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=20,
         )
@@ -594,7 +594,7 @@ class Test_S3_matcher(unittest.TestCase):
         message_dict = json.loads(message.body)
 
         self.assertEqual(message_dict["sample_id"], "sample-test")
-        self.assertEqual(message_dict["artifact"], "mscape.sample-test.run-test")
+        self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
         self.assertEqual(message_dict["run_id"], "run-test")
         self.assertEqual(message_dict["project"], "mscape")
         self.assertEqual(message_dict["platform"], "ont")
@@ -612,14 +612,14 @@ class Test_S3_matcher(unittest.TestCase):
 
     def test_s3_incorrect_match(self):
         self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
         self.varys_client.send(
-            incorrect_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            incorrect_fastq_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=10,
         )
@@ -627,14 +627,14 @@ class Test_S3_matcher(unittest.TestCase):
 
     def test_s3_updated_csv(self):
         self.varys_client.send(
-            example_csv_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
         self.varys_client.send(
-            example_fastq_msg, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_fastq_msg, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=30,
         )
@@ -642,11 +642,11 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertIsNotNone(message)
 
         self.varys_client.send(
-            example_csv_msg_2, exchange="inbound.s3", queue_suffix="s3_matcher"
+            example_csv_msg_2, exchange="inbound-s3", queue_suffix="s3_matcher"
         )
 
         message_2 = self.varys_client.receive(
-            exchange="inbound.matched",
+            exchange="inbound-matched",
             queue_suffix="s3_matcher",
             timeout=30,
         )
@@ -656,7 +656,7 @@ class Test_S3_matcher(unittest.TestCase):
         message_dict = json.loads(message_2.body)
 
         self.assertEqual(message_dict["sample_id"], "sample-test")
-        self.assertEqual(message_dict["artifact"], "mscape.sample-test.run-test")
+        self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
         self.assertEqual(message_dict["run_id"], "run-test")
         self.assertEqual(message_dict["project"], "mscape")
         self.assertEqual(message_dict["platform"], "ont")
@@ -772,12 +772,12 @@ class Test_ingest(unittest.TestCase):
 
             self.varys_client.send(
                 test_message,
-                exchange="inbound.matched",
+                exchange="inbound-matched",
                 queue_suffix="s3_matcher",
             )
 
             message = self.varys_client.receive(
-                exchange="inbound.to_validate.mscape",
+                exchange="inbound-to_validate-mscape",
                 queue_suffix="ingest",
                 timeout=10,
             )
@@ -786,9 +786,9 @@ class Test_ingest(unittest.TestCase):
 
             message_dict = json.loads(message.body)
 
-            self.assertEqual(message_dict["sample_id"], "sample-test")
-            self.assertEqual(message_dict["artifact"], "mscape.sample-test.run-test")
-            self.assertEqual(message_dict["run_id"], "run-test")
+            self.assertEqual(message_dict["sample_id"], "birm:sample-test")
+            self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
+            self.assertEqual(message_dict["run_id"], "birm:run-test")
             self.assertEqual(message_dict["project"], "mscape")
             self.assertEqual(message_dict["platform"], "ont")
             self.assertEqual(message_dict["site"], "birm")
@@ -1045,7 +1045,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
             self.assertEqual(
                 payload["artifact"],
-                "mscape.sample-test.run-test",
+                "mscape|sample-test|run-test",
             )
             self.assertEqual(payload["project"], "mscape")
             self.assertEqual(payload["site"], "birm")
@@ -1833,7 +1833,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
             self.assertEqual(
                 payload["artifact"],
-                "mscape.sample-test.run-test",
+                "mscape|sample-test|run-test",
             )
             self.assertEqual(payload["project"], "mscape")
             self.assertEqual(payload["site"], "birm")

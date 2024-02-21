@@ -62,7 +62,7 @@ class worker_pool_handler:
             )
             self._varys_client.send(
                 message=payload,
-                exchange="restricted.mscape.announce",
+                exchange="restricted-mscape-announce",
                 queue_suffix="alert",
             )
 
@@ -75,7 +75,7 @@ class worker_pool_handler:
 
             self._varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                 queue_suffix="validator",
             )
 
@@ -92,7 +92,7 @@ class worker_pool_handler:
 
                 self._varys_client.send(
                     message=new_artifact_payload,
-                    exchange="inbound.new_artifact.mscape",
+                    exchange="inbound-new_artifact-mscape",
                     queue_suffix="validator",
                 )
 
@@ -113,13 +113,13 @@ class worker_pool_handler:
 
                     self._varys_client.send(
                         message=payload,
-                        exchange="mscape.restricted.announce",
+                        exchange="mscape-restricted-announce",
                         queue_suffix="dead_letter",
                     )
 
                     self._varys_client.send(
                         message=payload,
-                        exchange=f"inbound.results.{payload['project']}.{payload['site']}",
+                        exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                         queue_suffix="validator",
                     )
 
@@ -135,7 +135,7 @@ class worker_pool_handler:
 
                 self._varys_client.send(
                     message=payload,
-                    exchange=f"inbound.results.{payload['project']}.{payload['site']}",
+                    exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="validator",
                 )
 
@@ -143,7 +143,7 @@ class worker_pool_handler:
         self._log.error(f"Worker failed with unhandled exception: {exception}")
         self._varys_client.send(
             message=f"MScape ingest worker failed with unhandled exception: {exception}",
-            exchange="mscape.restricted.announce",
+            exchange="mscape-restricted-announce",
             queue_suffix="dead_worker",
         )
 
@@ -1177,7 +1177,7 @@ def run(args):
     try:
         while True:
             message = varys_client.receive(
-                exchange="inbound.to_validate.mscape",
+                exchange="inbound-to_validate-mscape",
                 queue_suffix="validator",
                 prefetch_count=args.n_workers,
             )

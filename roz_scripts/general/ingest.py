@@ -18,68 +18,8 @@ from roz_scripts.utils.utils import (
     init_logger,
     csv_create,
     csv_field_checks,
-    get_onyx_credentials,
+    valid_character_checks,
 )
-
-
-# def identify_run_disagreements(payload, log):
-#     onyx_config = get_onyx_credentials()
-
-#     with OnyxClient(config=onyx_config) as client:
-#         while reconnect_count <= 3:
-#             try:
-#                 run = client.identify(
-#                     project=payload["project"], field="run_id", value=payload["run_id"]
-#                 )
-
-#             except OnyxConnectionError as e:
-#                 if reconnect_count < 3:
-#                     reconnect_count += 1
-#                     log.error(
-#                         f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 3 seconds"
-#                     )
-#                     time.sleep(3)
-#                     continue
-
-#                 else:
-#                     log.error(
-#                         f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
-#                     )
-#                     payload.setdefault("onyx_errors", {})
-#                     payload["onyx_errors"].setdefault("onyx_errors", [])
-#                     payload["onyx_errors"]["onyx_errors"].append(str(e))
-
-#                     return (False, True, payload)
-
-#             except (OnyxServerError, OnyxConfigError) as e:
-#                 log.error(f"Unhandled Onyx error: {e}")
-#                 payload.setdefault("onyx_errors", {})
-#                 payload["onyx_errors"].setdefault("onyx_errors", [])
-#                 payload["onyx_errors"]["onyx_errors"].append(e)
-#                 return (False, True, payload)
-
-#             except OnyxClientError as e:
-#                 log.error(
-#                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
-#                 )
-#                 payload.setdefault("onyx_errors", {})
-#                 payload["onyx_errors"].setdefault("onyx_errors", [])
-#                 payload["onyx_errors"]["onyx_errors"].append(str(e))
-#                 return (False, True, payload)
-
-#             except OnyxRequestError as e:
-#                 log.error(
-#                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
-#                 )
-#                 payload.setdefault("onyx_errors", {})
-#                 for field, messages in e.response.json()["messages"].items():
-#                     payload["onyx_errors"].setdefault(field, [])
-#                     payload["onyx_errors"][field].extend(messages)
-#                 return (False, True, payload)
-
-#             except Exception as e:
-#                 log.error(f"Unhandled error: {e}")
-#                 return (False, True, payload)
 
 
 def main():
@@ -110,11 +50,66 @@ def main():
 
     while True:
         message = varys_client.receive(
-            exchange="inbound.matched", queue_suffix="ingest"
+            exchange="inbound-matched", queue_suffix="ingest"
         )
 
         payload = json.loads(message.body)
         payload["validate"] = False
+
+        log.info(
+            f"Checking that sample_id and run_id do not contain invalid characters for match UUID: {payload['uuid']}"
+        )
+
+        valid_character_status, alert, payload = valid_character_checks(payload=payload)
+
+        if alert:
+            varys_client.send(
+                message=payload,
+                exchange=f"restricted-{payload['project']}-alert",
+                queue_suffix="ingest",
+            )
+            varys_client.nack_message(message)
+            continue
+
+        if not valid_character_status:
+            payload["validate"] = False
+            log.info(f"Invalid characters found for UUID: {payload['uuid']}")
+            varys_client.acknowledge_message(message)
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                queue_suffix="s3_matcher",
+            )
+            continue
+
+        log.info(
+            f"Checking that sample_id and run_id match provided CSV for match UUID: {payload['uuid']}"
+        )
+
+        field_check_status, alert, payload = csv_field_checks(payload=payload)
+
+        if alert:
+            varys_client.send(
+                message=payload,
+                exchange=f"restricted-{payload['project']}-alert",
+                queue_suffix="ingest",
+            )
+            varys_client.nack_message(message)
+            continue
+
+        if not field_check_status:
+            payload["validate"] = False
+            log.info(f"Field checks failed for UUID: {payload['uuid']}")
+            varys_client.acknowledge_message(message)
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                queue_suffix="s3_matcher",
+            )
+            continue
+
+        payload["sample_id"] = f"{payload['site']}:{payload['sample_id']}"
+        payload["run_id"] = f"{payload['site']}:{payload['run_id']}"
 
         log.info(
             f"Attempting to test create metadata record in onyx for match with UUID: {payload['uuid']}"
@@ -129,7 +124,7 @@ def main():
             )
             varys_client.send(
                 message=payload,
-                exchange=f"restricted.{payload['project']}.alert",
+                exchange=f"restricted-{payload['project']}-alert",
                 queue_suffix="ingest",
             )
             varys_client.nack_message(message)
@@ -140,7 +135,7 @@ def main():
             varys_client.acknowledge_message(message)
             varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                 queue_suffix="s3_matcher",
             )
             continue
@@ -148,33 +143,11 @@ def main():
         payload["onyx_test_create_status"] = True
         payload["validate"] = True
 
-        field_check_status, alert, payload = csv_field_checks(payload=payload)
-
-        if alert:
-            varys_client.send(
-                message=payload,
-                exchange=f"restricted.{payload['project']}.alert",
-                queue_suffix="ingest",
-            )
-            varys_client.nack_message(message)
-            continue
-
-        if not field_check_status:
-            payload["validate"] = False
-            log.info(f"Field checks failed for UUID: {payload['uuid']}")
-            varys_client.acknowledge_message(message)
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound.results.{payload['project']}.{payload['site']}",
-                queue_suffix="s3_matcher",
-            )
-            continue
-
         varys_client.acknowledge_message(message)
 
         varys_client.send(
             message=payload,
-            exchange=f"inbound.to_validate.{payload['project']}",
+            exchange=f"inbound-to_validate-{payload['project']}",
             queue_suffix="ingest",
         )
 

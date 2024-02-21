@@ -5,6 +5,7 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 import json
+from unittest.mock import patch, Mock
 
 import unittest
 
@@ -21,7 +22,11 @@ fake_roz_cfg_dict = {
         "project1": {
             "artifact_layout": "project.sample_name.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": {"site1": "analysis", "site2": "uploader"},
+            "sites": {
+                "site1.project1": "analysis",
+                "subsite1.site2.project1": "uploader",
+                "subsite2.site2.project1": "uploader",
+            },
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -81,7 +86,11 @@ fake_roz_cfg_dict = {
         "project2": {
             "artifact_layout": "project.sample_id.run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": {"site1": "analysis", "site2": "analysis"},
+            "sites": {
+                "subsite1.site1.project2": "analysis",
+                "subsite2.site1.project2": "analysis",
+                "site2.project2": "analysis",
+            },
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -158,27 +167,37 @@ fake_roz_cfg_dict = {
 
 fake_aws_cred_dict = {
     "project1": {
-        "site1": {
+        "site1.project1": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site1",
+            "username": "bryn-site1.project1",
         },
-        "site2": {
+        "subsite1.site2.project1": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site2",
+            "username": "bryn-site2.subsite1.project1",
+        },
+        "subsite2.site2.project1": {
+            "aws_access_key_id": "",
+            "aws_secret_access_key": "",
+            "username": "bryn-site2.subsite2.project1",
         },
     },
     "project2": {
-        "site1": {
+        "subsite1.site1.project2": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site1",
+            "username": "bryn-site1.subsite1.project2",
         },
-        "site2": {
+        "subsite2.site1.project2": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
-            "username": "bryn-site2",
+            "username": "bryn-site2.subsite2.project2",
+        },
+        "site2.project2": {
+            "aws_access_key_id": "",
+            "aws_secret_access_key": "",
+            "username": "bryn-site2.project2",
         },
     },
     "project3": {
@@ -199,6 +218,15 @@ fake_aws_cred_dict = {
         "username": "admin",
     },
 }
+
+
+class mock_response:
+    def __init__(self, status_code, data):
+        self.status_code = status_code
+        self.data = data
+
+    def json(self):
+        return self.data
 
 
 class TestS3Controller(unittest.TestCase):
@@ -234,17 +262,17 @@ class TestS3Controller(unittest.TestCase):
         self.s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk")
         self.iam_client = boto3.client("iam")
 
-        self.iam_client.create_user(UserName="bryn-site1")
+        self.iam_client.create_user(UserName="bryn-site1.project1")
 
-        resp = self.iam_client.create_access_key(UserName="bryn-site1")
+        resp = self.iam_client.create_access_key(UserName="bryn-site1.project1")
 
-        fake_aws_cred_dict["project1"]["site1"]["aws_access_key_id"] = resp[
+        fake_aws_cred_dict["project1"]["site1.project1"]["aws_access_key_id"] = resp[
             "AccessKey"
         ]["AccessKeyId"]
 
-        fake_aws_cred_dict["project1"]["site1"]["aws_secret_access_key"] = resp[
-            "AccessKey"
-        ]["SecretAccessKey"]
+        fake_aws_cred_dict["project1"]["site1.project1"]["aws_secret_access_key"] = (
+            resp["AccessKey"]["SecretAccessKey"]
+        )
 
     def TearDown(self):
         self.mock_s3.stop()
@@ -254,28 +282,79 @@ class TestS3Controller(unittest.TestCase):
         self.iam_client.close()
         self.mock_sns.stop()
 
-    def test_s3_bucket_exists(self):
+    def test_project_bucket_exists(self):
         self.s3_client.create_bucket(Bucket="fake_bucket")
 
-        bucket_exists = s3_controller.check_bucket_exists(
-            "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+        bucket_exists = s3_controller.check_project_bucket_exists(
+            "fake_bucket", fake_aws_cred_dict, "project1", "site1.project1"
         )
 
         self.assertTrue(bucket_exists)
 
-        bucket_does_not_exist = s3_controller.check_bucket_exists(
-            "other_fake_bucket", fake_aws_cred_dict, "project1", "site1"
+        bucket_does_not_exist = s3_controller.check_project_bucket_exists(
+            "other_fake_bucket",
+            fake_aws_cred_dict,
+            "project1",
+            "site1.project1",
         )
 
         self.assertFalse(bucket_does_not_exist)
 
-    def test_s3_create_bucket(self):
-        s3_controller.create_bucket(
-            "fake_bucket", "project1", "site1", fake_aws_cred_dict
+    def test_site_bucket_exists(self):
+        with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
+            mock_requests.get = Mock(
+                side_effect=[
+                    mock_response(
+                        200,
+                        {
+                            "Buckets": [
+                                {"Name": "fake_bucket"},
+                            ]
+                        },
+                    ),
+                    mock_response(404, {}),
+                ]
+            )
+
+            bucket_exists = s3_controller.check_site_bucket_exists(
+                "fake_bucket", "site1.project1"
+            )
+
+            self.assertTrue(bucket_exists)
+
+            bucket_does_not_exist = s3_controller.check_site_bucket_exists(
+                "other_fake_bucket", "site1.project1"
+            )
+
+            self.assertFalse(bucket_does_not_exist)
+
+    def test_create_site_bucket(self):
+        with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
+            mock_requests.post = Mock(
+                side_effect=[
+                    mock_response(201, {}),
+                    mock_response(404, {}),
+                ]
+            )
+
+            create_success = s3_controller.create_site_bucket(
+                "fake_bucket", "site1.project1", {}
+            )
+
+            self.assertTrue(create_success)
+
+            create_fail = s3_controller.create_site_bucket(
+                "fake_bucket", "site1.project1", {}
+            )
+            self.assertFalse(create_fail)
+
+    def test_create_project_bucket(self):
+        s3_controller.create_project_bucket(
+            "fake_bucket", "project1", "subsite1.site2.project1", fake_aws_cred_dict
         )
 
-        bucket_exists = s3_controller.check_bucket_exists(
-            "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+        bucket_exists = s3_controller.check_project_bucket_exists(
+            "fake_bucket", fake_aws_cred_dict, "project1", "subsite1.site2.project1"
         )
 
         self.assertTrue(bucket_exists)
@@ -293,13 +372,13 @@ class TestS3Controller(unittest.TestCase):
                 "fake_bucket",
                 fake_aws_cred_dict,
                 "project1",
-                "site1",
+                "subsite1.site2.project1",
             )
         )
 
         self.assertFalse(
             s3_controller.can_site_list_objects(
-                "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+                "fake_bucket", fake_aws_cred_dict, "project1", "subsite1.site2.project1"
             )
         )
 
@@ -314,13 +393,13 @@ class TestS3Controller(unittest.TestCase):
                 "fake_bucket",
                 fake_aws_cred_dict,
                 "project1",
-                "site1",
+                "subsite1.site2.project1",
             )
         )
 
         self.assertFalse(
             s3_controller.can_site_put_object(
-                "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+                "fake_bucket", fake_aws_cred_dict, "project1", "subsite1.site2.project1"
             )
         )
 
@@ -363,60 +442,100 @@ class TestS3Controller(unittest.TestCase):
     def test_check_bucket_exists_and_create(self):
         config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
 
-        s3_controller.check_bucket_exist_and_create(fake_aws_cred_dict, config_map)
+        with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
+            mock_requests.post.return_value = mock_response(201, {})
+            mock_requests.get.return_value = mock_response(404, {})
 
-        for project, project_config in config_map.items():
-            for bucket, bucket_arn in project_config["project_buckets"]:
-                self.assertTrue(
-                    s3_controller.check_bucket_exists(
-                        bucket_arn, fake_aws_cred_dict, project, "admin"
-                    )
-                )
+            s3_controller.check_bucket_exist_and_create(
+                fake_aws_cred_dict, config_map, fake_roz_cfg_dict
+            )
 
-            for site, site_config in project_config["sites"].items():
-                for bucket, bucket_arn in site_config["site_buckets"]:
+            mock_requests.get.return_value = mock_response(200, {})
+
+            # Create the buckets that would be created by bryn
+            for project, project_config in config_map.items():
+                for site, site_config in project_config["sites"].items():
+                    for bucket, bucket_arn in site_config["site_buckets"]:
+                        self.s3_client.create_bucket(Bucket=bucket_arn)
+
+            for project, project_config in config_map.items():
+                for bucket, bucket_arn in project_config["project_buckets"]:
                     self.assertTrue(
-                        s3_controller.check_bucket_exists(
-                            bucket_arn, fake_aws_cred_dict, project, site
+                        s3_controller.check_project_bucket_exists(
+                            bucket_arn, fake_aws_cred_dict, project, "admin"
                         )
                     )
+
+                for site, site_config in project_config["sites"].items():
+                    for bucket, bucket_arn in site_config["site_buckets"]:
+                        self.assertTrue(
+                            s3_controller.check_site_bucket_exists(bucket_arn, site)
+                        )
 
     def test_bucket_audit(self):
         config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
 
-        s3_controller.check_bucket_exist_and_create(fake_aws_cred_dict, config_map)
+        with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
+            mock_requests.post.return_value = mock_response(201, {})
+            mock_requests.get.return_value = mock_response(400, {})
 
-        audit = s3_controller.audit_all_buckets(fake_aws_cred_dict, config_map)
+            s3_controller.check_bucket_exist_and_create(
+                fake_aws_cred_dict, config_map, fake_roz_cfg_dict
+            )
 
-        for project, project_config in config_map.items():
-            for bucket, bucket_arn in project_config["project_buckets"]:
-                self.assertTrue(audit[project]["project_buckets"][(bucket, bucket_arn)])
+            # Create the buckets that would be created by bryn
+            for project, project_config in config_map.items():
+                for site, site_config in project_config["sites"].items():
+                    for bucket, bucket_arn in site_config["site_buckets"]:
+                        self.s3_client.create_bucket(Bucket=bucket_arn)
 
-            for site, site_config in project_config["sites"].items():
-                for bucket, bucket_arn in site_config["site_buckets"]:
+            audit = s3_controller.audit_all_buckets(fake_aws_cred_dict, config_map)
+
+            for project, project_config in config_map.items():
+                for bucket, bucket_arn in project_config["project_buckets"]:
                     self.assertTrue(
-                        audit[project]["site_buckets"][site][(bucket, bucket_arn)]
+                        audit[project]["project_buckets"][(bucket, bucket_arn)]
                     )
+
+                for site, site_config in project_config["sites"].items():
+                    for bucket, bucket_arn in site_config["site_buckets"]:
+                        self.assertTrue(
+                            audit[project]["site_buckets"][site][(bucket, bucket_arn)]
+                        )
 
     def test_test_policies(self):
         config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
 
-        s3_controller.check_bucket_exist_and_create(fake_aws_cred_dict, config_map)
+        with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
+            mock_requests.post.return_value = mock_response(201, {})
+            mock_requests.get.return_value = mock_response(404, {})
 
-        audit = s3_controller.audit_all_buckets(fake_aws_cred_dict, config_map)
+            s3_controller.check_bucket_exist_and_create(
+                fake_aws_cred_dict, config_map, fake_roz_cfg_dict
+            )
 
-        policy_results = s3_controller.test_policies(audit, fake_roz_cfg_dict)
+            # Create the buckets that would be created by bryn
+            for project, project_config in config_map.items():
+                for site, site_config in project_config["sites"].items():
+                    for bucket, bucket_arn in site_config["site_buckets"]:
+                        self.s3_client.create_bucket(Bucket=bucket_arn)
 
-        for project, project_config in config_map.items():
-            for bucket, bucket_arn in project_config["project_buckets"]:
-                self.assertIn(
-                    (bucket, bucket_arn, project),
-                    policy_results["project_buckets"],
-                )
+            mock_requests.get.return_value = mock_response(200, {})
 
-            for site, site_config in project_config["sites"].items():
-                for bucket, bucket_arn in site_config["site_buckets"]:
+            audit = s3_controller.audit_all_buckets(fake_aws_cred_dict, config_map)
+
+            policy_results = s3_controller.test_policies(audit, fake_roz_cfg_dict)
+
+            for project, project_config in config_map.items():
+                for bucket, bucket_arn in project_config["project_buckets"]:
                     self.assertIn(
-                        (bucket, bucket_arn, project, site),
-                        policy_results["site_buckets"],
+                        (bucket, bucket_arn, project),
+                        policy_results["project_buckets"],
                     )
+
+                for site, site_config in project_config["sites"].items():
+                    for bucket, bucket_arn in site_config["site_buckets"]:
+                        self.assertIn(
+                            (bucket, bucket_arn, project, site),
+                            policy_results["site_buckets"],
+                        )

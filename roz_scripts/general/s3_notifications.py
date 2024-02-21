@@ -174,7 +174,7 @@ def run(args):
                                 )
                                 varys_client.send(
                                     message=message,
-                                    exchange="inbound.s3",
+                                    exchange="inbound-s3",
                                     queue_suffix="ingest",
                                 )
                                 sent_etags[bucket_arn].add((obj["Key"], obj["ETag"]))
@@ -199,7 +199,7 @@ def run(args):
                                     message = obj_to_message(obj)
                                     varys_client.send(
                                         message=message,
-                                        exchange="inbound.s3",
+                                        exchange="inbound-s3",
                                         queue_suffix="s3_matcher",
                                     )
                                     sent_etags[bucket_arn].add(

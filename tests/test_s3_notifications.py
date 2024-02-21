@@ -54,7 +54,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
             "pathogen_configs": ["project1", "project2"],
             "configs": {
                 "project1": {
-                    "artifact_layout": "project.sample_name.run_id",
+                    "artifact_layout": "project|sample_name|run_id",
                     "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
                     "sites": ["site1", "site2"],
                     "bucket_policies": {
@@ -118,7 +118,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
                     },
                 },
                 "project2": {
-                    "artifact_layout": "project.sample_id.run_id",
+                    "artifact_layout": "project|sample_id|run_id",
                     "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
                     "sites": ["site1", "site2"],
                     "bucket_policies": {
@@ -129,7 +129,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
                     },
                     "notification_bucket_configs": {
                         "ingest": {
-                            "rmq_exchange": "inbound.test",
+                            "rmq_exchange": "inbound-test",
                             "rmq_queue_env": "s3_matcher",
                             "amqps": True,
                         }
@@ -209,7 +209,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="project1-site2-illumina-prod")
 
         self.varys_client.receive(
-            exchange="inbound.s3", queue_suffix="s3_matcher", timeout=1
+            exchange="inbound-s3", queue_suffix="s3_matcher", timeout=1
         )
 
         self.s3_notifications = mp.Process(
@@ -259,7 +259,7 @@ class test_s3_notifications_emulation(unittest.TestCase):
 
         while not timeout:
             message = self.varys_client.receive(
-                exchange="inbound.s3", queue_suffix="s3_matcher", timeout=10
+                exchange="inbound-s3", queue_suffix="s3_matcher", timeout=10
             )
             if not message:
                 timeout = True

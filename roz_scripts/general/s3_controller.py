@@ -7,7 +7,7 @@ from botocore.client import Config
 import os
 import re
 import copy
-
+import requests
 
 policy_template = {
     "Version": "2012-10-17",
@@ -156,7 +156,7 @@ def create_config_map(config_dict: dict) -> dict:
     return config_map
 
 
-def check_bucket_exists(
+def check_project_bucket_exists(
     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
 ) -> bool:
     """Check if a bucket exists
@@ -353,159 +353,159 @@ def can_site_delete_object(
             return False
 
 
-def can_site_modify_policy(
-    bucket_name: str, aws_credentials_dict: dict, project: str, site: str
-) -> bool:
-    """Check if a site can modify a bucket policy, i.e. get the current policy and put it back
+# def can_site_modify_policy(
+#     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
+# ) -> bool:
+#     """Check if a site can modify a bucket policy, i.e. get the current policy and put it back
 
-    Args:
-        bucket_name (str): name of bucket to check
-        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
-        project (str): name of project in question
-        site (str): name of site in question
+#     Args:
+#         bucket_name (str): name of bucket to check
+#         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
+#         project (str): name of project in question
+#         site (str): name of site in question
 
-    Returns:
-        bool: True if the site can modify a bucket policy, False otherwise
-    """
-    site_credentials = aws_credentials_dict[project][site]
+#     Returns:
+#         bool: True if the site can modify a bucket policy, False otherwise
+#     """
+#     site_credentials = aws_credentials_dict[project][site]
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=site_credentials["aws_access_key_id"],
+#         aws_secret_access_key=site_credentials["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    admin_s3 = boto3.client(
-        "s3",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     admin_s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
+#         aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    try:
-        policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
+#     try:
+#         policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
 
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
-            policy = copy.deepcopy(policy_template)
+#     except ClientError as e:
+#         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
+#             policy = copy.deepcopy(policy_template)
 
-            # Add the admin object permissions statement
-            admin_obj_statement = copy.deepcopy(statement_template)
+#             # Add the admin object permissions statement
+#             admin_obj_statement = copy.deepcopy(statement_template)
 
-            admin_obj_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_obj_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+#             ]
 
-            admin_obj_statement["Action"] = admin_obj_actions_template
+#             admin_obj_statement["Action"] = admin_obj_actions_template
 
-            admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+#             admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
 
-            policy["Statement"].append(admin_obj_statement)
+#             policy["Statement"].append(admin_obj_statement)
 
-            # Add the admin bucket permissions statement
+#             # Add the admin bucket permissions statement
 
-            admin_bucket_statement = copy.deepcopy(statement_template)
+#             admin_bucket_statement = copy.deepcopy(statement_template)
 
-            admin_bucket_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_bucket_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{admin_slug}"
+#             ]
 
-            admin_bucket_statement["Action"] = admin_bucket_actions_template
+#             admin_bucket_statement["Action"] = admin_bucket_actions_template
 
-            admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
+#             admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
 
-            policy["Statement"].append(admin_bucket_statement)
+#             policy["Statement"].append(admin_bucket_statement)
 
-        elif e.response["Error"]["Code"] == "AccessDenied":
-            return False
+#         elif e.response["Error"]["Code"] == "AccessDenied":
+#             return False
 
-    if isinstance(policy, str):
-        policy = json.loads(policy)
+#     if isinstance(policy, str):
+#         policy = json.loads(policy)
 
-    try:
-        s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
-        return True
-    except ClientError as e:
-        return False
+#     try:
+#         s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
+#         return True
+#     except ClientError as e:
+#         return False
 
 
-def can_site_delete_policy(
-    bucket_name: str, aws_credentials_dict: dict, project: str, site: str
-) -> bool:
-    """Check if a site can delete a bucket policy, i.e. get the current policy, delete it and put it back
+# def can_site_delete_policy(
+#     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
+# ) -> bool:
+#     """Check if a site can delete a bucket policy, i.e. get the current policy, delete it and put it back
 
-    Args:
-        bucket_name (str): name of bucket to check
-        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
-        project (str): name of project in question
-        site (str): name of site in question
+#     Args:
+#         bucket_name (str): name of bucket to check
+#         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
+#         project (str): name of project in question
+#         site (str): name of site in question
 
-    Returns:
-        bool: True if the site can delete a bucket policy, False otherwise
-    """
-    site_credentials = aws_credentials_dict[project][site]
+#     Returns:
+#         bool: True if the site can delete a bucket policy, False otherwise
+#     """
+#     site_credentials = aws_credentials_dict[project][site]
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=site_credentials["aws_access_key_id"],
+#         aws_secret_access_key=site_credentials["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    admin_s3 = boto3.client(
-        "s3",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     admin_s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
+#         aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    try:
-        policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
+#     try:
+#         policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
 
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
-            policy = copy.deepcopy(policy_template)
+#     except ClientError as e:
+#         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
+#             policy = copy.deepcopy(policy_template)
 
-            # Add the admin object permissions statement
-            admin_obj_statement = copy.deepcopy(statement_template)
+#             # Add the admin object permissions statement
+#             admin_obj_statement = copy.deepcopy(statement_template)
 
-            admin_obj_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_obj_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+#             ]
 
-            admin_obj_statement["Action"] = admin_obj_actions_template
+#             admin_obj_statement["Action"] = admin_obj_actions_template
 
-            admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+#             admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
 
-            policy["Statement"].append(admin_obj_statement)
+#             policy["Statement"].append(admin_obj_statement)
 
-            # Add the admin bucket permissions statement
+#             # Add the admin bucket permissions statement
 
-            admin_bucket_statement = copy.deepcopy(statement_template)
+#             admin_bucket_statement = copy.deepcopy(statement_template)
 
-            admin_bucket_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_bucket_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+#             ]
 
-            admin_bucket_statement["Action"] = admin_bucket_actions_template
+#             admin_bucket_statement["Action"] = admin_bucket_actions_template
 
-            admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
+#             admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
 
-            policy["Statement"].append(admin_bucket_statement)
+#             policy["Statement"].append(admin_bucket_statement)
 
-        elif e.response["Error"]["Code"] == "AccessDenied":
-            return False
+#         elif e.response["Error"]["Code"] == "AccessDenied":
+#             return False
 
-    if isinstance(policy, str):
-        policy = json.loads(policy)
+#     if isinstance(policy, str):
+#         policy = json.loads(policy)
 
-    try:
-        s3.delete_bucket_policy(Bucket=bucket_name)
-        admin_s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
-        return True
-    except ClientError as e:
-        return False
+#     try:
+#         s3.delete_bucket_policy(Bucket=bucket_name)
+#         admin_s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
+#         return True
+#     except ClientError as e:
+#         return False
 
 
 def can_site_get_policy(
@@ -530,7 +530,7 @@ def can_site_get_policy(
         return False
 
 
-def put_policy(
+def put_project_policy(
     bucket_arn: str, aws_credentials_dict: dict, policy: dict, project: str, site: str
 ) -> bool:
     """Put a policy on a bucket
@@ -596,12 +596,14 @@ def generate_site_policy(
 
     site_role = config_dict["configs"][project]["sites"][site]
 
+    site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(".", "-")
+
+    admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
+
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_obj_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
+    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
 
     admin_obj_statement["Action"] = admin_obj_actions_template
 
@@ -613,9 +615,7 @@ def generate_site_policy(
 
     admin_bucket_statement = copy.deepcopy(statement_template)
 
-    admin_bucket_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
+    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
 
     admin_bucket_statement["Action"] = admin_bucket_actions_template
 
@@ -626,119 +626,19 @@ def generate_site_policy(
     # Add the site statement
     site_obj_statement = copy.deepcopy(statement_template)
 
-    site_obj_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
-    ]
+    site_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/bryn-{site_slug}"]
 
     site_bucket_statement = copy.deepcopy(statement_template)
 
-    site_bucket_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
-    ]
+    site_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/bryn-{site_slug}"]
     try:
         permission_set = config_dict["configs"][project]["site_buckets"][bucket_name][
             "policy"
         ][site_role]
     except KeyError:
-        policy
+        permission_set = None
 
-    correct_perms = config_dict["configs"][project]["bucket_policies"][permission_set]
-
-    site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
-
-    site_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
-
-    for perm in correct_perms:
-        aws_perm = perm_map[perm]
-        if aws_perm in admin_obj_actions_template:
-            site_obj_statement["Action"].append(perm_map[perm])
-
-        elif aws_perm in admin_bucket_actions_template:
-            site_bucket_statement["Action"].append(perm_map[perm])
-
-    if site_obj_statement["Action"]:
-        policy["Statement"].append(site_obj_statement)
-
-    if site_bucket_statement["Action"]:
-        policy["Statement"].append(site_bucket_statement)
-
-    return policy
-
-
-def generate_project_policy(
-    bucket_name: str,
-    bucket_arn: str,
-    project: str,
-    config_dict: dict,
-    aws_credentials_dict: dict,
-) -> dict:
-    """Generate the policy for an out bucket
-
-    Args:
-        bucket_name (str): The name of the bucket
-        bucket_arn (str): The ARN of the bucket
-        project (str): The project the bucket belongs to
-        config_dict (dict): Dict created from the config JSON
-        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
-
-    Returns:
-        dict: The policy as a dictionary
-    """
-
-    policy = copy.deepcopy(policy_template)
-
-    # Add the admin object permissions statement
-    admin_obj_statement = copy.deepcopy(statement_template)
-
-    admin_obj_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
-
-    admin_obj_statement["Action"] = admin_obj_actions_template
-
-    admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
-
-    policy["Statement"].append(admin_obj_statement)
-
-    # Add the admin bucket permissions statement
-
-    admin_bucket_statement = copy.deepcopy(statement_template)
-
-    admin_bucket_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
-
-    admin_bucket_statement["Action"] = admin_bucket_actions_template
-
-    admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
-
-    policy["Statement"].append(admin_bucket_statement)
-
-    for site, role in config_dict["configs"][project]["sites"].items():
-        if (
-            role
-            not in config_dict["configs"][project]["project_buckets"][bucket_name][
-                "policy"
-            ]
-        ):
-            continue
-
-        # Add the site statement
-        site_obj_statement = copy.deepcopy(statement_template)
-
-        site_obj_statement["Principal"]["AWS"] = [
-            f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
-        ]
-
-        site_bucket_statement = copy.deepcopy(statement_template)
-
-        site_bucket_statement["Principal"]["AWS"] = [
-            f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
-        ]
-
-        permission_set = config_dict["configs"][project]["project_buckets"][
-            bucket_name
-        ]["policy"]
+    if permission_set:
 
         correct_perms = config_dict["configs"][project]["bucket_policies"][
             permission_set
@@ -765,7 +665,115 @@ def generate_project_policy(
     return policy
 
 
-def create_bucket(
+def generate_project_policy(
+    bucket_name: str,
+    bucket_arn: str,
+    project: str,
+    config_dict: dict,
+    aws_credentials_dict: dict,
+) -> dict:
+    """Generate the policy for an out bucket
+
+    Args:
+        bucket_name (str): The name of the bucket
+        bucket_arn (str): The ARN of the bucket
+        project (str): The project the bucket belongs to
+        config_dict (dict): Dict created from the config JSON
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
+
+    Returns:
+        dict: The policy as a dictionary
+    """
+
+    policy = copy.deepcopy(policy_template)
+
+    admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
+
+    # Add the admin object permissions statement
+    admin_obj_statement = copy.deepcopy(statement_template)
+
+    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
+
+    admin_obj_statement["Action"] = admin_obj_actions_template
+
+    admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
+
+    policy["Statement"].append(admin_obj_statement)
+
+    # Add the admin bucket permissions statement
+
+    admin_bucket_statement = copy.deepcopy(statement_template)
+
+    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
+
+    admin_bucket_statement["Action"] = admin_bucket_actions_template
+
+    admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
+
+    policy["Statement"].append(admin_bucket_statement)
+
+    for site, role in config_dict["configs"][project]["sites"].items():
+        if (
+            role
+            not in config_dict["configs"][project]["project_buckets"][bucket_name][
+                "policy"
+            ]
+        ):
+            continue
+
+        # Add the site statement
+        site_obj_statement = copy.deepcopy(statement_template)
+
+        site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(
+            ".", "-"
+        )
+
+        site_obj_statement["Principal"]["AWS"] = [
+            f"arn:aws:iam:::user/bryn-{site_slug}"
+        ]
+
+        site_bucket_statement = copy.deepcopy(statement_template)
+
+        site_bucket_statement["Principal"]["AWS"] = [
+            f"arn:aws:iam:::user/bryn-{site_slug}"
+        ]
+
+        try:
+            permission_set = config_dict["configs"][project]["project_buckets"][
+                bucket_name
+            ]["policy"][role]
+
+            correct_perms = config_dict["configs"][project]["bucket_policies"][
+                permission_set
+            ]
+        except KeyError:
+            correct_perms = []
+
+        if not correct_perms:
+            continue
+
+        site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
+
+        site_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
+
+        for perm in correct_perms:
+            aws_perm = perm_map[perm]
+            if aws_perm in admin_obj_actions_template:
+                site_obj_statement["Action"].append(perm_map[perm])
+
+            elif aws_perm in admin_bucket_actions_template:
+                site_bucket_statement["Action"].append(perm_map[perm])
+
+        if site_obj_statement["Action"]:
+            policy["Statement"].append(site_obj_statement)
+
+        if site_bucket_statement["Action"]:
+            policy["Statement"].append(site_bucket_statement)
+
+    return policy
+
+
+def create_project_bucket(
     bucket_name: str, project: str, site: str, aws_credentials_dict: dict
 ) -> bool:
     """Create a bucket
@@ -795,6 +803,107 @@ def create_bucket(
         s3.create_bucket(Bucket=bucket_name, ACL="private")
         return True
     except ClientError as e:
+        print(
+            f"Failed to create bucket {bucket_name} - Boto Exception:\n{e}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def create_site_bucket(
+    bucket_arn: str,
+    site: str,
+    policy: dict,
+) -> bool:
+    """Create a bucket via bryn
+
+    Args:
+        bucket_name (str): The name of the bucket
+        bucket_arn (str): The ARN of the bucket
+        project (str): The project the bucket belongs to
+        site (str): The site the bucket belongs to
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}
+        config_dict (dict): The config json as a dictionary
+
+    Returns:
+        bool: True if the bucket was created, False otherwise
+    """
+
+    site_slug = site[0:16].replace(".", "-")
+
+    endpoint_url = (
+        f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/"
+    )
+
+    headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
+
+    data = {"name": bucket_arn, "policy": json.dumps(policy)}
+
+    r = requests.post(endpoint_url, headers=headers, json=data)
+
+    if r.status_code == 201:
+        return True
+    else:
+        print(
+            f"Failed to create bucket {bucket_arn} - Bryn Response:\n{r.json()}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
+    """Put a policy on a bucket via bryn
+
+    Args:
+        bucket_arn (str): The ARN of the bucket
+        site (str): The site the bucket belongs to
+        policy (dict): The policy to put on the bucket as a dictionary
+
+    Returns:
+        bool: True if the policy was put on the bucket, False otherwise
+    """
+    site_slug = site[0:16].replace(".", "-")
+
+    endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+
+    headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
+
+    response = requests.patch(
+        endpoint_url, headers=headers, json={"policy": json.dumps(policy)}
+    )
+
+    if response.status_code == 200:
+        return True
+    else:
+        print(
+            f"Failed to put policy on bucket {bucket_arn}, Bryn response:\n{response.json()}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
+    """Check if a bucket exists via bryn
+
+    Args:
+        bucket_arn (str): The ARN of the bucket
+        site (str): The site the bucket belongs to
+
+    Returns:
+        bool: True if the bucket exists, False otherwise
+    """
+
+    site_slug = site[0:16].replace(".", "-")
+
+    endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+
+    headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
+
+    response = requests.get(endpoint_url, headers=headers)
+
+    if response.status_code == 200:
+        return True
+    else:
         return False
 
 
@@ -874,7 +983,10 @@ def audit_bucket_policy(
 
 
 def check_bucket_exist_and_create(
-    aws_credentials_dict: dict, config_map: dict, dry_run: bool = False
+    aws_credentials_dict: dict,
+    config_map: dict,
+    config_dict: dict,
+    dry_run: bool = False,
 ) -> None:
     """Check if all specified buckets exist, and if not, create them
 
@@ -889,7 +1001,7 @@ def check_bucket_exist_and_create(
     for project, project_config in config_map.items():
         # Create project buckets (made by admin user)
         for bucket, bucket_arn in project_config["project_buckets"]:
-            exists = check_bucket_exists(
+            exists = check_project_bucket_exists(
                 bucket_arn, aws_credentials_dict, project, "admin"
             )
 
@@ -905,7 +1017,7 @@ def check_bucket_exist_and_create(
                 continue
 
             print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
-            create_success = create_bucket(
+            create_success = create_project_bucket(
                 bucket_name=bucket_arn,
                 project=project,
                 site="admin",
@@ -913,14 +1025,13 @@ def check_bucket_exist_and_create(
             )
 
             if not create_success:
+
                 raise ValueError(f"Bucket {bucket_arn} could not be created")
 
         # Create in buckets (made by site user)
         for site, site_config in project_config["sites"].items():
             for bucket, bucket_arn in site_config["site_buckets"]:
-                exists = check_bucket_exists(
-                    bucket_arn, aws_credentials_dict, project, site
-                )
+                exists = check_site_bucket_exists(bucket_arn=bucket_arn, site=site)
 
                 if dry_run:
                     print(
@@ -937,15 +1048,23 @@ def check_bucket_exist_and_create(
 
                 print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
 
-                create_success = create_bucket(
-                    bucket_name=bucket_arn,
+                policy = generate_site_policy(
+                    bucket_name=bucket,
+                    bucket_arn=bucket_arn,
                     project=project,
                     site=site,
                     aws_credentials_dict=aws_credentials_dict,
+                    config_dict=config_dict,
+                )
+
+                create_success = create_site_bucket(
+                    bucket_arn=bucket_arn,
+                    site=site,
+                    policy=policy,
                 )
 
                 if not create_success:
-                    raise ValueError(f"Bucket {bucket} could not be created")
+                    raise ValueError(f"Site bucket {bucket_arn} could not be created")
 
 
 def audit_all_buckets(
@@ -1094,7 +1213,9 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
     return to_fix
 
 
-def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_dict: dict) -> list:
+def apply_policies(
+    to_fix: dict, aws_credentials_dict: dict, config_dict: dict, dry_run: bool
+) -> list:
     """Apply the correct policies to all buckets that need to be fixed
 
     Args:
@@ -1113,17 +1234,22 @@ def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_dict: dict) 
             config_dict=config_dict,
         )
 
-        policy_success = put_policy(
-            bucket_arn=bucket_arn,
-            project=project,
-            site=site,
-            aws_credentials_dict=aws_credentials_dict,
-            policy=policy,
-        )
+        if not dry_run:
+            policy_success = put_site_policy(
+                bucket_arn=bucket_arn,
+                site=site,
+                policy=policy,
+            )
 
-        if not policy_success:
+            if not policy_success:
+                print(
+                    f"Policy for bucket {bucket_arn} could not be applied",
+                    file=sys.stdout,
+                )
+        else:
             print(
-                f"Policy for bucket {bucket_arn} could not be applied", file=sys.stdout
+                f"Dry run, not applying policy: {json.dumps(policy)} for bucket {bucket_arn}",
+                file=sys.stdout,
             )
 
     for bucket, bucket_arn, project in to_fix["project_buckets"]:
@@ -1135,17 +1261,24 @@ def apply_policies(to_fix: dict, aws_credentials_dict: dict, config_dict: dict) 
             config_dict=config_dict,
         )
 
-        policy_success = put_policy(
-            bucket_arn=bucket_arn,
-            project="admin",
-            site=None,
-            aws_credentials_dict=aws_credentials_dict,
-            policy=policy,
-        )
+        if not dry_run:
+            policy_success = put_project_policy(
+                bucket_arn=bucket_arn,
+                project="admin",
+                site=None,
+                aws_credentials_dict=aws_credentials_dict,
+                policy=policy,
+            )
 
-        if not policy_success:
+            if not policy_success:
+                print(
+                    f"Policy for bucket {bucket_arn} could not be applied",
+                    file=sys.stdout,
+                )
+        else:
             print(
-                f"Policy for bucket {bucket_arn} could not be applied", file=sys.stdout
+                f"Dry run, not applying policy: {json.dumps(policy)} for bucket {bucket_arn}",
+                file=sys.stdout,
             )
 
 
@@ -1394,7 +1527,7 @@ def audit_bucket_messaging(
 
 def run(args):
     if args.setup_messaging:
-        for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS"]:
+        for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS", "BRYN_API_TOKEN"]:
             if env_var not in os.environ.keys():
                 print(f"Environment variable {env_var} not set", file=sys.stderr)
                 sys.exit(1)
@@ -1410,6 +1543,7 @@ def run(args):
     check_bucket_exist_and_create(
         aws_credentials_dict=aws_credentials_dict,
         config_map=config_map,
+        config_dict=config_dict,
         dry_run=args.dry_run,
     )
     to_fix = {"site_buckets": False, "project_buckets": False}
@@ -1428,6 +1562,7 @@ def run(args):
                 to_fix=to_fix,
                 aws_credentials_dict=aws_credentials_dict,
                 config_dict=config_dict,
+                dry_run=args.dry_run,
             )
 
             print(

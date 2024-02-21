@@ -17,9 +17,9 @@ fake_roz_cfg_dict = {
     "pathogen_configs": ["project1", "project2"],
     "configs": {
         "project1": {
-            "artifact_layout": "project.sample_id.run_id",
+            "artifact_layout": "project|sample_id|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["site1", "site2"],
+            "sites": ["subsite1.site1.project1", "site2.project1"],
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -65,9 +65,9 @@ fake_roz_cfg_dict = {
             },
         },
         "project2": {
-            "artifact_layout": "project.sample_id.run_id",
+            "artifact_layout": "project|sample_id|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["site1", "site2"],
+            "sites": ["subsite1.site1.project2", "site2.project2"],
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -186,36 +186,44 @@ class test_s3_matcher(unittest.TestCase):
         self.s3_client.close()
 
     def test_get_existing_objects(self):
-        self.s3_client.create_bucket(Bucket="project1-site1-illumina-prod")
-        self.s3_client.create_bucket(Bucket="project1-site1-ont-prod")
-        self.s3_client.create_bucket(Bucket="project1-site1-illumina-test")
-        self.s3_client.create_bucket(Bucket="project2-site1-illumina-prod")
+        self.s3_client.create_bucket(
+            Bucket="project1-subsite1.site1.project1-illumina-prod"
+        )
+        self.s3_client.create_bucket(Bucket="project1-subsite1.site1.project1-ont-prod")
+        self.s3_client.create_bucket(
+            Bucket="project1-subsite1.site1.project1-illumina-test"
+        )
+        self.s3_client.create_bucket(
+            Bucket="project2-subsite1.site1.project1-illumina-prod"
+        )
 
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-prod",
+            Bucket="project1-subsite1.site1.project1-illumina-prod",
             Key="project1.sample1.run1.1.fastq.gz",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-prod",
+            Bucket="project1-subsite1.site1.project1-illumina-prod",
             Key="project1.sample1.run1.2.fastq.gz",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-prod",
+            Bucket="project1-subsite1.site1.project1-illumina-prod",
             Key="project1.sample1.run1.csv",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-ont-prod",
+            Bucket="project1-subsite1.site1.project1-ont-prod",
             Key="project1.sample2.run1.fastq.gz",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-ont-prod", Key="project1.sample3.run1.csv", Body=""
+            Bucket="project1-subsite1.site1.project1-ont-prod",
+            Key="project1.sample3.run1.csv",
+            Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-test",
+            Bucket="project1-subsite1.site1.project1-illumina-test",
             Key="project1.sample1.run1.1.fastq.gz",
             Body="",
         )
@@ -223,17 +231,25 @@ class test_s3_matcher(unittest.TestCase):
         existing_objects = s3_matcher.get_existing_objects(
             s3_client=self.s3_client,
             to_check=[
-                "project1-site1-illumina-prod",
-                "project1-site1-ont-prod",
-                "project1-site1-illumina-test",
+                "project1-subsite1.site1.project1-illumina-prod",
+                "project1-subsite1.site1.project1-ont-prod",
+                "project1-subsite1.site1.project1-illumina-test",
             ],
         )
 
         self.assertTrue(len(existing_objects) == 3)
-        self.assertTrue(len(existing_objects["project1-site1-illumina-prod"]) == 3)
-        self.assertTrue(len(existing_objects["project1-site1-ont-prod"]) == 2)
-        self.assertTrue(len(existing_objects["project1-site1-illumina-test"]) == 1)
-        self.assertNotIn("project2-site1-illumina-prod", existing_objects)
+        self.assertTrue(
+            len(existing_objects["project1-subsite1.site1.project1-illumina-prod"]) == 3
+        )
+        self.assertTrue(
+            len(existing_objects["project1-subsite1.site1.project1-ont-prod"]) == 2
+        )
+        self.assertTrue(
+            len(existing_objects["project1-subsite1.site1.project1-illumina-test"]) == 1
+        )
+        self.assertNotIn(
+            "project2-subsite1.site1.project1-illumina-prod", existing_objects
+        )
 
     def test_get_existing_objects_no_bucket(self):
         self.s3_client.create_bucket(Bucket="project1-site1-illumina-prod")
@@ -285,7 +301,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(parsed_key)
 
     def test_generate_artifact(self):
-        artifact_layout = "project.sample_id.run_id"
+        artifact_layout = "project|sample_id|run_id"
         parsed_key = {
             "project": "project1",
             "sample_id": "sample1",
@@ -297,7 +313,7 @@ class test_s3_matcher(unittest.TestCase):
 
         artifact = s3_matcher.generate_artifact(parsed_key, artifact_layout)
 
-        self.assertEqual(artifact, "project1.sample1.run1")
+        self.assertEqual(artifact, "project1|sample1|run1")
 
         parsed_key = {
             "project": "project1",
@@ -308,7 +324,7 @@ class test_s3_matcher(unittest.TestCase):
 
         artifact = s3_matcher.generate_artifact(parsed_key, artifact_layout)
 
-        self.assertEqual(artifact, "project1.sample1.run1")
+        self.assertEqual(artifact, "project1|sample1|run1")
 
         parsed_key = {"sample_id": "sample1", "run_id": "run1", "ftype": "csv"}
 
@@ -327,13 +343,13 @@ class test_s3_matcher(unittest.TestCase):
 
     def test_is_artifact_dict_complete(self):
         index_tuple_1 = (
-            "project1.sample1.run1",
+            "project1|sample1|run1",
             "project1",
             "site1",
             "illumina",
             "prod",
         )
-        index_tuple_2 = ("project1.sample1.run1", "project1", "site1", "ont", "prod")
+        index_tuple_2 = ("project1|sample1|run1", "project1", "site1", "ont", "prod")
 
         existing_object_dict = {
             index_tuple_1: {
@@ -489,7 +505,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertTrue(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample1.run1",
+                    "project1|sample1|run1",
                     "project1",
                     "site1",
                     "illumina",
@@ -503,7 +519,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample2.run1",
+                    "project1|sample2|run1",
                     "project1",
                     "site1",
                     "ont",
@@ -517,7 +533,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample3.run1",
+                    "project1|sample3|run1",
                     "project1",
                     "site1",
                     "ont",
@@ -531,7 +547,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=(
-                    "project1.sample1.run1",
+                    "project1|sample1|run1",
                     "project1",
                     "site1",
                     "illumina",
@@ -544,7 +560,7 @@ class test_s3_matcher(unittest.TestCase):
 
     def test_generate_payload(self):
         index_tuple = (
-            "project1.sample1.run1",
+            "project1|sample1|run1",
             "project1",
             "site1",
             "illumina",
@@ -615,7 +631,7 @@ class test_s3_matcher(unittest.TestCase):
 
     def test_parse_new_object_message(self):
         index_tuple = (
-            "project1.sample1.run1",
+            "project1|sample1|run1",
             "project1",
             "site1",
             "illumina",
@@ -805,7 +821,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertEqual(index_tuple, index_tuple_ret)
 
         index_tuple_2 = (
-            "project1.sample1.run2",
+            "project1|sample1|run2",
             "project1",
             "site1",
             "illumina",
