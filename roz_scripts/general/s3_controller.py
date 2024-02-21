@@ -596,12 +596,14 @@ def generate_site_policy(
 
     site_role = config_dict["configs"][project]["sites"][site]
 
+    site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(".", "-")
+
+    admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
+
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_obj_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
+    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
 
     admin_obj_statement["Action"] = admin_obj_actions_template
 
@@ -613,9 +615,7 @@ def generate_site_policy(
 
     admin_bucket_statement = copy.deepcopy(statement_template)
 
-    admin_bucket_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
+    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
 
     admin_bucket_statement["Action"] = admin_bucket_actions_template
 
@@ -626,15 +626,11 @@ def generate_site_policy(
     # Add the site statement
     site_obj_statement = copy.deepcopy(statement_template)
 
-    site_obj_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
-    ]
+    site_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
 
     site_bucket_statement = copy.deepcopy(statement_template)
 
-    site_bucket_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
-    ]
+    site_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
     try:
         permission_set = config_dict["configs"][project]["site_buckets"][bucket_name][
             "policy"
@@ -691,12 +687,12 @@ def generate_project_policy(
 
     policy = copy.deepcopy(policy_template)
 
+    admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
+
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_obj_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
+    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
 
     admin_obj_statement["Action"] = admin_obj_actions_template
 
@@ -708,9 +704,7 @@ def generate_project_policy(
 
     admin_bucket_statement = copy.deepcopy(statement_template)
 
-    admin_bucket_statement["Principal"]["AWS"] = [
-        f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-    ]
+    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
 
     admin_bucket_statement["Action"] = admin_bucket_actions_template
 
@@ -730,6 +724,10 @@ def generate_project_policy(
         # Add the site statement
         site_obj_statement = copy.deepcopy(statement_template)
 
+        site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(
+            ".", "-"
+        )
+
         site_obj_statement["Principal"]["AWS"] = [
             f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
         ]
@@ -737,7 +735,7 @@ def generate_project_policy(
         site_bucket_statement = copy.deepcopy(statement_template)
 
         site_bucket_statement["Principal"]["AWS"] = [
-            f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
+            f"arn:aws:iam:::user/{site_slug}"
         ]
 
         permission_set = config_dict["configs"][project]["project_buckets"][
