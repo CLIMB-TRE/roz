@@ -6,10 +6,10 @@
       "artifact_layout": "project|sample_id|run_id",
       "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
       "sites": {
-        "birm": "analysis",
-        "gpha.ukhsa": "analysis",
-        "tarzet.ukhsa": "analysis",
-        "gstt": "uploader"
+        "bham.mscape": "analysis",
+        "gpha.ukhsa.mscape": "analysis",
+        "tarzet.ukhsa.mscape": "analysis",
+        "gstt.mscape": "uploader"
       },
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
