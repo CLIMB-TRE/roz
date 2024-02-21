@@ -556,14 +556,14 @@ def onyx_reconcile(
                 )
 
                 if len(response) == 0:
-                    log.error(
-                        f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
-                    )
-                    payload.setdefault("onyx_errors", {})
-                    payload["onyx_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_errors"]["onyx_errors"].append(
-                        f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
-                    )
+                    # log.error(
+                    #     f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
+                    # )
+                    # payload.setdefault("onyx_errors", {})
+                    # payload["onyx_errors"].setdefault("onyx_errors", [])
+                    # payload["onyx_errors"]["onyx_errors"].append(
+                    #     f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
+                    # )
                     return (False, True, payload)
 
                 fields_of_concern = []
