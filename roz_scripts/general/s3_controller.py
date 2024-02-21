@@ -799,6 +799,10 @@ def create_project_bucket(
         s3.create_bucket(Bucket=bucket_name, ACL="private")
         return True
     except ClientError as e:
+        print(
+            f"Failed to create bucket {bucket_name} - Boto Exception:\n{e}",
+            file=sys.stderr,
+        )
         return False
 
 
@@ -821,7 +825,7 @@ def create_site_bucket(
         bool: True if the bucket was created, False otherwise
     """
 
-    site_slug = site[0: 16].replace(".", "-")
+    site_slug = site[0:16].replace(".", "-")
 
     endpoint_url = (
         f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/"
@@ -1017,6 +1021,7 @@ def check_bucket_exist_and_create(
             )
 
             if not create_success:
+
                 raise ValueError(f"Bucket {bucket_arn} could not be created")
 
         # Create in buckets (made by site user)
