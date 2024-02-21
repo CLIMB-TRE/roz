@@ -734,13 +734,19 @@ def generate_project_policy(
 
         site_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
 
-        permission_set = config_dict["configs"][project]["project_buckets"][
-            bucket_name
-        ]["policy"]
+        try:
+            permission_set = config_dict["configs"][project]["project_buckets"][
+                bucket_name
+            ]["policy"][role]
 
-        correct_perms = config_dict["configs"][project]["bucket_policies"][
-            permission_set
-        ]
+            correct_perms = config_dict["configs"][project]["bucket_policies"][
+                permission_set
+            ]
+        except KeyError:
+            correct_perms = []
+
+        if not correct_perms:
+            continue
 
         site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
 
