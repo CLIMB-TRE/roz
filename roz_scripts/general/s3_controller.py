@@ -626,11 +626,11 @@ def generate_site_policy(
     # Add the site statement
     site_obj_statement = copy.deepcopy(statement_template)
 
-    site_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
+    site_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/bryn-{site_slug}"]
 
     site_bucket_statement = copy.deepcopy(statement_template)
 
-    site_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
+    site_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/bryn-{site_slug}"]
     try:
         permission_set = config_dict["configs"][project]["site_buckets"][bucket_name][
             "policy"
@@ -728,11 +728,15 @@ def generate_project_policy(
             ".", "-"
         )
 
-        site_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
+        site_obj_statement["Principal"]["AWS"] = [
+            f"arn:aws:iam:::user/bryn-{site_slug}"
+        ]
 
         site_bucket_statement = copy.deepcopy(statement_template)
 
-        site_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
+        site_bucket_statement["Principal"]["AWS"] = [
+            f"arn:aws:iam:::user/bryn-{site_slug}"
+        ]
 
         try:
             permission_set = config_dict["configs"][project]["project_buckets"][
