@@ -821,7 +821,7 @@ def create_site_bucket(
         bool: True if the bucket was created, False otherwise
     """
 
-    site_slug = site[0:16]
+    site_slug = site[0: 16].replace(".", "-")
 
     endpoint_url = (
         f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/"
@@ -854,7 +854,7 @@ def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
     Returns:
         bool: True if the policy was put on the bucket, False otherwise
     """
-    site_slug = site[0:16]
+    site_slug = site[0:16].replace(".", "-")
 
     endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
 
@@ -885,7 +885,7 @@ def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
         bool: True if the bucket exists, False otherwise
     """
 
-    site_slug = site[0:16]
+    site_slug = site[0:16].replace(".", "-")
 
     endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
 
