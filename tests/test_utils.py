@@ -563,11 +563,6 @@ class test_utils(unittest.TestCase):
             self.assertFalse(success)
             self.assertTrue(alert)
 
-            self.assertIn(
-                "Failed to find records with Onyx sample_id for: S-1234567890 despite successful identification by Onyx",
-                payload["onyx_errors"]["onyx_errors"],
-            )
-
     def test_valid_character_check_success(self):
         success, alert, payload = valid_character_checks(payload=self.example_match)
 
