@@ -7,7 +7,7 @@ from botocore.client import Config
 import os
 import re
 import copy
-
+import requests
 
 policy_template = {
     "Version": "2012-10-17",
@@ -156,7 +156,7 @@ def create_config_map(config_dict: dict) -> dict:
     return config_map
 
 
-def check_bucket_exists(
+def check_project_bucket_exists(
     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
 ) -> bool:
     """Check if a bucket exists
@@ -530,7 +530,7 @@ def can_site_get_policy(
         return False
 
 
-def put_policy(
+def put_project_policy(
     bucket_arn: str, aws_credentials_dict: dict, policy: dict, project: str, site: str
 ) -> bool:
     """Put a policy on a bucket
@@ -640,27 +640,31 @@ def generate_site_policy(
             "policy"
         ][site_role]
     except KeyError:
-        policy
+        permission_set = None
 
-    correct_perms = config_dict["configs"][project]["bucket_policies"][permission_set]
+    if permission_set:
 
-    site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
+        correct_perms = config_dict["configs"][project]["bucket_policies"][
+            permission_set
+        ]
 
-    site_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
+        site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
 
-    for perm in correct_perms:
-        aws_perm = perm_map[perm]
-        if aws_perm in admin_obj_actions_template:
-            site_obj_statement["Action"].append(perm_map[perm])
+        site_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
 
-        elif aws_perm in admin_bucket_actions_template:
-            site_bucket_statement["Action"].append(perm_map[perm])
+        for perm in correct_perms:
+            aws_perm = perm_map[perm]
+            if aws_perm in admin_obj_actions_template:
+                site_obj_statement["Action"].append(perm_map[perm])
 
-    if site_obj_statement["Action"]:
-        policy["Statement"].append(site_obj_statement)
+            elif aws_perm in admin_bucket_actions_template:
+                site_bucket_statement["Action"].append(perm_map[perm])
 
-    if site_bucket_statement["Action"]:
-        policy["Statement"].append(site_bucket_statement)
+        if site_obj_statement["Action"]:
+            policy["Statement"].append(site_obj_statement)
+
+        if site_bucket_statement["Action"]:
+            policy["Statement"].append(site_bucket_statement)
 
     return policy
 
@@ -765,7 +769,7 @@ def generate_project_policy(
     return policy
 
 
-def create_bucket(
+def create_project_bucket(
     bucket_name: str, project: str, site: str, aws_credentials_dict: dict
 ) -> bool:
     """Create a bucket
@@ -795,6 +799,95 @@ def create_bucket(
         s3.create_bucket(Bucket=bucket_name, ACL="private")
         return True
     except ClientError as e:
+        return False
+
+
+def create_site_bucket(
+    bucket_arn: str,
+    site: str,
+    policy: dict,
+) -> bool:
+    """Create a bucket via bryn
+
+    Args:
+        bucket_name (str): The name of the bucket
+        bucket_arn (str): The ARN of the bucket
+        project (str): The project the bucket belongs to
+        site (str): The site the bucket belongs to
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}
+        config_dict (dict): The config json as a dictionary
+
+    Returns:
+        bool: True if the bucket was created, False otherwise
+    """
+
+    site_slug = site[0:16]
+
+    endpoint_url = (
+        f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/"
+    )
+
+    headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
+
+    data = {"name": bucket_arn, "policy": json.dumps(policy)}
+
+    r = requests.post(endpoint_url, headers=headers, json=data)
+
+    if r.status_code == 201:
+        return True
+    else:
+        return False
+
+
+def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
+    """Put a policy on a bucket via bryn
+
+    Args:
+        bucket_arn (str): The ARN of the bucket
+        site (str): The site the bucket belongs to
+        policy (dict): The policy to put on the bucket as a dictionary
+
+    Returns:
+        bool: True if the policy was put on the bucket, False otherwise
+    """
+    site_slug = site[0:16]
+
+    endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+
+    headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
+
+    response = requests.patch(
+        endpoint_url, headers=headers, json={"policy": json.dumps(policy)}
+    )
+
+    if response.status_code == 200:
+        return True
+    else:
+        return False
+
+
+def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
+    """Check if a bucket exists via bryn
+
+    Args:
+        bucket_arn (str): The ARN of the bucket
+        site (str): The site the bucket belongs to
+
+    Returns:
+        bool: True if the bucket exists, False otherwise
+    """
+
+    site_slug = site[0:16]
+
+    endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+
+    headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
+
+    response = requests.get(endpoint_url, headers=headers)
+
+    if response.status_code == 200:
+        return True
+    else:
         return False
 
 
@@ -874,7 +967,10 @@ def audit_bucket_policy(
 
 
 def check_bucket_exist_and_create(
-    aws_credentials_dict: dict, config_map: dict, dry_run: bool = False
+    aws_credentials_dict: dict,
+    config_map: dict,
+    config_dict: dict,
+    dry_run: bool = False,
 ) -> None:
     """Check if all specified buckets exist, and if not, create them
 
@@ -889,7 +985,7 @@ def check_bucket_exist_and_create(
     for project, project_config in config_map.items():
         # Create project buckets (made by admin user)
         for bucket, bucket_arn in project_config["project_buckets"]:
-            exists = check_bucket_exists(
+            exists = check_project_bucket_exists(
                 bucket_arn, aws_credentials_dict, project, "admin"
             )
 
@@ -905,7 +1001,7 @@ def check_bucket_exist_and_create(
                 continue
 
             print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
-            create_success = create_bucket(
+            create_success = create_project_bucket(
                 bucket_name=bucket_arn,
                 project=project,
                 site="admin",
@@ -918,9 +1014,7 @@ def check_bucket_exist_and_create(
         # Create in buckets (made by site user)
         for site, site_config in project_config["sites"].items():
             for bucket, bucket_arn in site_config["site_buckets"]:
-                exists = check_bucket_exists(
-                    bucket_arn, aws_credentials_dict, project, site
-                )
+                exists = check_site_bucket_exists(bucket_arn=bucket_arn, site=site)
 
                 if dry_run:
                     print(
@@ -937,15 +1031,23 @@ def check_bucket_exist_and_create(
 
                 print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
 
-                create_success = create_bucket(
-                    bucket_name=bucket_arn,
+                policy = generate_site_policy(
+                    bucket_name=bucket,
+                    bucket_arn=bucket_arn,
                     project=project,
                     site=site,
                     aws_credentials_dict=aws_credentials_dict,
+                    config_dict=config_dict,
+                )
+
+                create_success = create_site_bucket(
+                    bucket_arn=bucket_arn,
+                    site=site,
+                    policy=policy,
                 )
 
                 if not create_success:
-                    raise ValueError(f"Bucket {bucket} could not be created")
+                    raise ValueError(f"Site bucket {bucket_arn} could not be created")
 
 
 def audit_all_buckets(
@@ -1116,11 +1218,9 @@ def apply_policies(
         )
 
         if not dry_run:
-            policy_success = put_policy(
+            policy_success = put_site_policy(
                 bucket_arn=bucket_arn,
-                project=project,
                 site=site,
-                aws_credentials_dict=aws_credentials_dict,
                 policy=policy,
             )
 
@@ -1145,7 +1245,7 @@ def apply_policies(
         )
 
         if not dry_run:
-            policy_success = put_policy(
+            policy_success = put_project_policy(
                 bucket_arn=bucket_arn,
                 project="admin",
                 site=None,
@@ -1426,6 +1526,7 @@ def run(args):
     check_bucket_exist_and_create(
         aws_credentials_dict=aws_credentials_dict,
         config_map=config_map,
+        config_dict=config_dict,
         dry_run=args.dry_run,
     )
     to_fix = {"site_buckets": False, "project_buckets": False}
