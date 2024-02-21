@@ -353,159 +353,159 @@ def can_site_delete_object(
             return False
 
 
-def can_site_modify_policy(
-    bucket_name: str, aws_credentials_dict: dict, project: str, site: str
-) -> bool:
-    """Check if a site can modify a bucket policy, i.e. get the current policy and put it back
+# def can_site_modify_policy(
+#     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
+# ) -> bool:
+#     """Check if a site can modify a bucket policy, i.e. get the current policy and put it back
 
-    Args:
-        bucket_name (str): name of bucket to check
-        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
-        project (str): name of project in question
-        site (str): name of site in question
+#     Args:
+#         bucket_name (str): name of bucket to check
+#         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
+#         project (str): name of project in question
+#         site (str): name of site in question
 
-    Returns:
-        bool: True if the site can modify a bucket policy, False otherwise
-    """
-    site_credentials = aws_credentials_dict[project][site]
+#     Returns:
+#         bool: True if the site can modify a bucket policy, False otherwise
+#     """
+#     site_credentials = aws_credentials_dict[project][site]
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=site_credentials["aws_access_key_id"],
+#         aws_secret_access_key=site_credentials["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    admin_s3 = boto3.client(
-        "s3",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     admin_s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
+#         aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    try:
-        policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
+#     try:
+#         policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
 
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
-            policy = copy.deepcopy(policy_template)
+#     except ClientError as e:
+#         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
+#             policy = copy.deepcopy(policy_template)
 
-            # Add the admin object permissions statement
-            admin_obj_statement = copy.deepcopy(statement_template)
+#             # Add the admin object permissions statement
+#             admin_obj_statement = copy.deepcopy(statement_template)
 
-            admin_obj_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_obj_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+#             ]
 
-            admin_obj_statement["Action"] = admin_obj_actions_template
+#             admin_obj_statement["Action"] = admin_obj_actions_template
 
-            admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+#             admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
 
-            policy["Statement"].append(admin_obj_statement)
+#             policy["Statement"].append(admin_obj_statement)
 
-            # Add the admin bucket permissions statement
+#             # Add the admin bucket permissions statement
 
-            admin_bucket_statement = copy.deepcopy(statement_template)
+#             admin_bucket_statement = copy.deepcopy(statement_template)
 
-            admin_bucket_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_bucket_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{admin_slug}"
+#             ]
 
-            admin_bucket_statement["Action"] = admin_bucket_actions_template
+#             admin_bucket_statement["Action"] = admin_bucket_actions_template
 
-            admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
+#             admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
 
-            policy["Statement"].append(admin_bucket_statement)
+#             policy["Statement"].append(admin_bucket_statement)
 
-        elif e.response["Error"]["Code"] == "AccessDenied":
-            return False
+#         elif e.response["Error"]["Code"] == "AccessDenied":
+#             return False
 
-    if isinstance(policy, str):
-        policy = json.loads(policy)
+#     if isinstance(policy, str):
+#         policy = json.loads(policy)
 
-    try:
-        s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
-        return True
-    except ClientError as e:
-        return False
+#     try:
+#         s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
+#         return True
+#     except ClientError as e:
+#         return False
 
 
-def can_site_delete_policy(
-    bucket_name: str, aws_credentials_dict: dict, project: str, site: str
-) -> bool:
-    """Check if a site can delete a bucket policy, i.e. get the current policy, delete it and put it back
+# def can_site_delete_policy(
+#     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
+# ) -> bool:
+#     """Check if a site can delete a bucket policy, i.e. get the current policy, delete it and put it back
 
-    Args:
-        bucket_name (str): name of bucket to check
-        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
-        project (str): name of project in question
-        site (str): name of site in question
+#     Args:
+#         bucket_name (str): name of bucket to check
+#         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
+#         project (str): name of project in question
+#         site (str): name of site in question
 
-    Returns:
-        bool: True if the site can delete a bucket policy, False otherwise
-    """
-    site_credentials = aws_credentials_dict[project][site]
+#     Returns:
+#         bool: True if the site can delete a bucket policy, False otherwise
+#     """
+#     site_credentials = aws_credentials_dict[project][site]
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=site_credentials["aws_access_key_id"],
+#         aws_secret_access_key=site_credentials["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    admin_s3 = boto3.client(
-        "s3",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+#     admin_s3 = boto3.client(
+#         "s3",
+#         aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
+#         aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
+#         endpoint_url="https://s3.climb.ac.uk",
+#     )
 
-    try:
-        policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
+#     try:
+#         policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
 
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
-            policy = copy.deepcopy(policy_template)
+#     except ClientError as e:
+#         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
+#             policy = copy.deepcopy(policy_template)
 
-            # Add the admin object permissions statement
-            admin_obj_statement = copy.deepcopy(statement_template)
+#             # Add the admin object permissions statement
+#             admin_obj_statement = copy.deepcopy(statement_template)
 
-            admin_obj_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_obj_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+#             ]
 
-            admin_obj_statement["Action"] = admin_obj_actions_template
+#             admin_obj_statement["Action"] = admin_obj_actions_template
 
-            admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
+#             admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
 
-            policy["Statement"].append(admin_obj_statement)
+#             policy["Statement"].append(admin_obj_statement)
 
-            # Add the admin bucket permissions statement
+#             # Add the admin bucket permissions statement
 
-            admin_bucket_statement = copy.deepcopy(statement_template)
+#             admin_bucket_statement = copy.deepcopy(statement_template)
 
-            admin_bucket_statement["Principal"]["AWS"] = [
-                f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-            ]
+#             admin_bucket_statement["Principal"]["AWS"] = [
+#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+#             ]
 
-            admin_bucket_statement["Action"] = admin_bucket_actions_template
+#             admin_bucket_statement["Action"] = admin_bucket_actions_template
 
-            admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
+#             admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
 
-            policy["Statement"].append(admin_bucket_statement)
+#             policy["Statement"].append(admin_bucket_statement)
 
-        elif e.response["Error"]["Code"] == "AccessDenied":
-            return False
+#         elif e.response["Error"]["Code"] == "AccessDenied":
+#             return False
 
-    if isinstance(policy, str):
-        policy = json.loads(policy)
+#     if isinstance(policy, str):
+#         policy = json.loads(policy)
 
-    try:
-        s3.delete_bucket_policy(Bucket=bucket_name)
-        admin_s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
-        return True
-    except ClientError as e:
-        return False
+#     try:
+#         s3.delete_bucket_policy(Bucket=bucket_name)
+#         admin_s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
+#         return True
+#     except ClientError as e:
+#         return False
 
 
 def can_site_get_policy(
@@ -728,15 +728,11 @@ def generate_project_policy(
             ".", "-"
         )
 
-        site_obj_statement["Principal"]["AWS"] = [
-            f"arn:aws:iam:::user/{aws_credentials_dict[project][site]['username']}"
-        ]
+        site_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
 
         site_bucket_statement = copy.deepcopy(statement_template)
 
-        site_bucket_statement["Principal"]["AWS"] = [
-            f"arn:aws:iam:::user/{site_slug}"
-        ]
+        site_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{site_slug}"]
 
         permission_set = config_dict["configs"][project]["project_buckets"][
             bucket_name
