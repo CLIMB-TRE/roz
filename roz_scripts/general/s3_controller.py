@@ -836,6 +836,10 @@ def create_site_bucket(
     if r.status_code == 201:
         return True
     else:
+        print(
+            f"Failed to create bucket {bucket_arn} - Bryn Response:\n{r.json()}",
+            file=sys.stderr,
+        )
         return False
 
 
@@ -863,6 +867,10 @@ def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
     if response.status_code == 200:
         return True
     else:
+        print(
+            f"Failed to put policy on bucket {bucket_arn}, Bryn response:\n{response.json()}",
+            file=sys.stderr,
+        )
         return False
 
 
@@ -1510,7 +1518,7 @@ def audit_bucket_messaging(
 
 def run(args):
     if args.setup_messaging:
-        for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS"]:
+        for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS", "BRYN_API_TOKEN"]:
             if env_var not in os.environ.keys():
                 print(f"Environment variable {env_var} not set", file=sys.stderr)
                 sys.exit(1)
