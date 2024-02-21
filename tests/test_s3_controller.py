@@ -171,24 +171,24 @@ fake_aws_cred_dict = {
             "aws_secret_access_key": "",
             "username": "bryn-site1.project1",
         },
-        "site2.subsite1.project1": {
+        "subsite1.site2.project1": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
             "username": "bryn-site2.subsite1.project1",
         },
-        "site2.subsite2.project1": {
+        "subsite2.site2.project1": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
             "username": "bryn-site2.subsite2.project1",
         },
     },
     "project2": {
-        "site1.subsite1.project2": {
+        "subsite1.site1.project2": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
             "username": "bryn-site1.subsite1.project2",
         },
-        "site1.subsite2.project2": {
+        "subsite2.site1.project2": {
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
             "username": "bryn-site2.subsite2.project2",
@@ -256,13 +256,13 @@ class TestS3Controller(unittest.TestCase):
 
         resp = self.iam_client.create_access_key(UserName="bryn-site1.project1")
 
-        fake_aws_cred_dict["project1"]["site1"]["aws_access_key_id"] = resp[
+        fake_aws_cred_dict["project1"]["site1.project1"]["aws_access_key_id"] = resp[
             "AccessKey"
         ]["AccessKeyId"]
 
-        fake_aws_cred_dict["project1"]["site1"]["aws_secret_access_key"] = resp[
-            "AccessKey"
-        ]["SecretAccessKey"]
+        fake_aws_cred_dict["project1"]["site1.project1"]["aws_secret_access_key"] = (
+            resp["AccessKey"]["SecretAccessKey"]
+        )
 
     def TearDown(self):
         self.mock_s3.stop()
@@ -285,18 +285,18 @@ class TestS3Controller(unittest.TestCase):
             "other_fake_bucket",
             fake_aws_cred_dict,
             "project1",
-            "site1.subsite1.project1",
+            "site1.project1",
         )
 
         self.assertFalse(bucket_does_not_exist)
 
     def test_s3_create_bucket(self):
         s3_controller.create_bucket(
-            "fake_bucket", "project1", "site1", fake_aws_cred_dict
+            "fake_bucket", "project1", "subsite1.site2.project1", fake_aws_cred_dict
         )
 
         bucket_exists = s3_controller.check_bucket_exists(
-            "fake_bucket", fake_aws_cred_dict, "project1", "site2.subsite1.project1"
+            "fake_bucket", fake_aws_cred_dict, "project1", "subsite1.site2.project1"
         )
 
         self.assertTrue(bucket_exists)
@@ -314,13 +314,13 @@ class TestS3Controller(unittest.TestCase):
                 "fake_bucket",
                 fake_aws_cred_dict,
                 "project1",
-                "site1",
+                "subsite1.site2.project1",
             )
         )
 
         self.assertFalse(
             s3_controller.can_site_list_objects(
-                "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+                "fake_bucket", fake_aws_cred_dict, "project1", "subsite1.site2.project1"
             )
         )
 
@@ -335,13 +335,13 @@ class TestS3Controller(unittest.TestCase):
                 "fake_bucket",
                 fake_aws_cred_dict,
                 "project1",
-                "site1",
+                "subsite1.site2.project1",
             )
         )
 
         self.assertFalse(
             s3_controller.can_site_put_object(
-                "fake_bucket", fake_aws_cred_dict, "project1", "site1"
+                "fake_bucket", fake_aws_cred_dict, "project1", "subsite1.site2.project1"
             )
         )
 

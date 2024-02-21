@@ -187,9 +187,9 @@ class test_s3_matcher(unittest.TestCase):
 
     def test_get_existing_objects(self):
         self.s3_client.create_bucket(
-            Bucket="project1-site1.subsite1.project1-illumina-prod"
+            Bucket="project1-subsite1.site1.project1-illumina-prod"
         )
-        self.s3_client.create_bucket(Bucket="project1-site1.subsite1.project1-ont-prod")
+        self.s3_client.create_bucket(Bucket="project1-subsite1.site1.project1-ont-prod")
         self.s3_client.create_bucket(
             Bucket="project1-subsite1.site1.project1-illumina-test"
         )
@@ -198,30 +198,32 @@ class test_s3_matcher(unittest.TestCase):
         )
 
         self.s3_client.put_object(
-            Bucket="project1-site1.subsite1.project1-illumina-prod",
+            Bucket="project1-subsite1.site1.project1-illumina-prod",
             Key="project1.sample1.run1.1.fastq.gz",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-prod",
+            Bucket="project1-subsite1.site1.project1-illumina-prod",
             Key="project1.sample1.run1.2.fastq.gz",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-prod",
+            Bucket="project1-subsite1.site1.project1-illumina-prod",
             Key="project1.sample1.run1.csv",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-ont-prod",
+            Bucket="project1-subsite1.site1.project1-ont-prod",
             Key="project1.sample2.run1.fastq.gz",
             Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-ont-prod", Key="project1.sample3.run1.csv", Body=""
+            Bucket="project1-subsite1.site1.project1-ont-prod",
+            Key="project1.sample3.run1.csv",
+            Body="",
         )
         self.s3_client.put_object(
-            Bucket="project1-site1-illumina-test",
+            Bucket="project1-subsite1.site1.project1-illumina-test",
             Key="project1.sample1.run1.1.fastq.gz",
             Body="",
         )
@@ -229,17 +231,25 @@ class test_s3_matcher(unittest.TestCase):
         existing_objects = s3_matcher.get_existing_objects(
             s3_client=self.s3_client,
             to_check=[
-                "project1-site1-illumina-prod",
-                "project1-site1-ont-prod",
-                "project1-site1-illumina-test",
+                "project1-subsite1.site1.project1-illumina-prod",
+                "project1-subsite1.site1.project1-ont-prod",
+                "project1-subsite1.site1.project1-illumina-test",
             ],
         )
 
         self.assertTrue(len(existing_objects) == 3)
-        self.assertTrue(len(existing_objects["project1-site1-illumina-prod"]) == 3)
-        self.assertTrue(len(existing_objects["project1-site1-ont-prod"]) == 2)
-        self.assertTrue(len(existing_objects["project1-site1-illumina-test"]) == 1)
-        self.assertNotIn("project2-site1-illumina-prod", existing_objects)
+        self.assertTrue(
+            len(existing_objects["project1-subsite1.site1.project1-illumina-prod"]) == 3
+        )
+        self.assertTrue(
+            len(existing_objects["project1-subsite1.site1.project1-ont-prod"]) == 2
+        )
+        self.assertTrue(
+            len(existing_objects["project1-subsite1.site1.project1-illumina-test"]) == 1
+        )
+        self.assertNotIn(
+            "project2-subsite1.site1.project1-illumina-prod", existing_objects
+        )
 
     def test_get_existing_objects_no_bucket(self):
         self.s3_client.create_bucket(Bucket="project1-site1-illumina-prod")
