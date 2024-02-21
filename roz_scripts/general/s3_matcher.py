@@ -134,6 +134,9 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
         project, site, platform, test_flag = bucket_name.split("-")
 
         for obj in objs:
+            # Ignore test key, s3_controller uses it to check if the bucket is correctly configured
+            if obj["Key"] == "test":
+                continue
             extension, parsed_object_key = parse_object_key(
                 object_key=obj["Key"],
                 config_dict=config_dict,
@@ -227,6 +230,13 @@ def parse_new_object_message(
         site = site_str
 
     object_key = record["s3"]["object"]["key"]
+
+    if object_key == "test":
+        return (
+            False,
+            existing_object_dict,
+            (False, project, site, platform, test_flag),
+        )
 
     extension, parsed_object_key = parse_object_key(
         object_key=object_key,

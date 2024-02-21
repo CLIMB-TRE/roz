@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "pathogen_configs": ["mscape", "pathsafe"],
+  "pathogen_configs": ["mscape"],
   "configs": {
     "mscape": {
       "artifact_layout": "project|sample_id|run_id",
