@@ -416,7 +416,7 @@ def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the character checks failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
-    pattern = re.compile(r"^[A-Za-z1-9_-]*$")
+    pattern = re.compile(r"^[A-Za-z0-9_-]*$")
 
     sample_id_match = pattern.match(payload["sample_id"])
     run_id_match = pattern.match(payload["run_id"])
