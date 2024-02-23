@@ -4,7 +4,6 @@
   "configs": {
     "mscape": {
       "artifact_layout": "project|sample_id|run_id",
-      "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
       "sites": {
         "bham.mscape": "analysis",
         "gpha.ukhsa.mscape": "analysis",
@@ -30,7 +29,7 @@
       },
       "notification_bucket_configs": {
         "ingest": {
-          "rmq_exchange": "inbound.s3",
+          "rmq_exchange": "inbound-s3",
           "rmq_queue_env": "s3_matcher",
           "amqps": false
         }
@@ -86,6 +85,61 @@
           },
           ".csv": {
             "sections": 4,
+            "layout": "project.sample_id.run_id.ftype"
+          }
+        }
+      }
+    },
+    "pathsafe": {
+      "artifact_layout": "project|sample_id|run_id",
+      "sites": {
+        "ukhsa.pathsafe": "uploader",
+        "ssscrdl.pathsafe": "uploader",
+        "aphl.pathsafe": "uploader",
+        "fss.pathsafe": "uploader",
+        "fsa.pathsafe": "uploader",
+        "phs.pathsafe": "uploader"
+      },
+      "bucket_policies": {
+        "site_ingest": ["get", "put", "list", "delete"]
+      },
+      "site_buckets": {
+        "ingest": {
+          "name_layout": "{project}-{site}-{platform}-{test_flag}",
+          "policy": {
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
+        }
+      },
+      "notification_bucket_configs": {
+        "ingest": {
+          "rmq_exchange": "inbound-s3",
+          "rmq_queue_env": "s3_matcher",
+          "amqps": false
+        }
+      },
+      "project_buckets": {
+        "published_reads": {
+          "name_layout": "{project}-reads",
+          "policy": {},
+          "owner": "admin"
+        },
+        "published_assemblies": {
+          "name_layout": "{project}-assemblies",
+          "policy": {},
+          "owner": "admin"
+        }
+      },
+      "file_specs": {
+        "illumina": {
+          ".1.fastq.gz": {
+            "layout": "project.sample_id.run_id.direction.ftype.gzip"
+          },
+          ".2.fastq.gz": {
+            "layout": "project.sample_id.run_id.direction.ftype.gzip"
+          },
+          ".csv": {
             "layout": "project.sample_id.run_id.ftype"
           }
         }

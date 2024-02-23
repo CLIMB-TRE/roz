@@ -928,7 +928,6 @@ def validate(
             f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
 
     ingest_fail, payload = ret_0_parser(
@@ -938,7 +937,6 @@ def validate(
     )
 
     if ingest_fail:
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
 
     if payload["test_flag"]:
