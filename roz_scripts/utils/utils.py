@@ -201,8 +201,6 @@ def csv_create(
                     fields={
                         "site": payload["site"],
                         "is_published": False,
-                        "sample_id": payload["sample_id"],
-                        "run_id": payload["run_id"],
                     },
                     multiline=False,
                 )

@@ -786,9 +786,9 @@ class Test_ingest(unittest.TestCase):
 
             message_dict = json.loads(message.body)
 
-            self.assertEqual(message_dict["sample_id"], "birm:sample-test")
+            self.assertEqual(message_dict["sample_id"], "sample-test")
             self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
-            self.assertEqual(message_dict["run_id"], "birm:run-test")
+            self.assertEqual(message_dict["run_id"], "run-test")
             self.assertEqual(message_dict["project"], "mscape")
             self.assertEqual(message_dict["platform"], "ont")
             self.assertEqual(message_dict["site"], "birm")
@@ -997,6 +997,15 @@ class Test_mscape_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
                     f"params_{example_validator_message['uuid']}.log",
                 ),
                 "w",
@@ -1047,6 +1056,7 @@ class Test_mscape_validator(unittest.TestCase):
                 payload["artifact"],
                 "mscape|sample-test|run-test",
             )
+            self.assertEqual(payload["scylla_version"], "test_version")
             self.assertEqual(payload["project"], "mscape")
             self.assertEqual(payload["site"], "birm")
             self.assertEqual(payload["platform"], "ont")
@@ -1158,6 +1168,15 @@ class Test_mscape_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
                     f"params_{example_validator_message['uuid']}.log",
                 ),
                 "w",
@@ -1210,6 +1229,8 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["ingested"])
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["climb_id"])
+
+            self.assertEqual(payload["scylla_version"], "test_version")
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reads"
@@ -1303,6 +1324,15 @@ class Test_mscape_validator(unittest.TestCase):
                 f.write(example_execution_trace)
 
             with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"workflow_version_{test_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
@@ -1340,6 +1370,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["climb_id"])
             self.assertTrue(payload["test_ingest_result"])
             self.assertFalse(payload["ingest_errors"])
+            self.assertEqual(payload["scylla_version"], "test_version")
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reads"
@@ -1538,6 +1569,15 @@ class Test_mscape_validator(unittest.TestCase):
                 f.write(example_execution_trace)
 
             with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
@@ -1576,6 +1616,8 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["climb_id"])
             self.assertFalse(payload["test_ingest_result"])
+
+            self.assertEqual("test_version", payload["scylla_version"])
 
             self.assertIn(
                 "Test sample_id error handling",
@@ -1785,6 +1827,15 @@ class Test_mscape_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
                     f"params_{example_validator_message['uuid']}.log",
                 ),
                 "w",
@@ -1835,6 +1886,7 @@ class Test_mscape_validator(unittest.TestCase):
                 payload["artifact"],
                 "mscape|sample-test|run-test",
             )
+            self.assertEqual(payload["scylla_version"], "test_version")
             self.assertEqual(payload["project"], "mscape")
             self.assertEqual(payload["site"], "birm")
             self.assertEqual(payload["platform"], "ont")
