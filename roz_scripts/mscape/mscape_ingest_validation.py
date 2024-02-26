@@ -756,7 +756,6 @@ def ret_0_parser(
     Returns:
         tuple[bool, dict]: Tuple containing the ingest fail boolean and the payload dictionary
     """
-
     try:
         with open(
             os.path.join(
@@ -770,6 +769,17 @@ def ret_0_parser(
             trace_dict = {}
             for process in reader:
                 trace_dict[process["name"].split(":")[-1]] = process
+
+        with open(
+            os.path.join(
+                result_path,
+                "pipeline_info",
+                f"workflow_version_{payload['uuid']}.txt",
+            )
+        ) as version_fh:
+            version = version_fh.read().strip()
+
+        payload["scylla_version"] = version
 
     except Exception as pipeline_trace_exception:
         log.error(
@@ -947,6 +957,17 @@ def validate(
         payload["test_ingest_result"] = True
         ingest_pipe.cleanup(stdout=stdout)
         return (True, alert, payload, message)
+
+    scylla_version_fail, alert, payload = onyx_update(
+        payload=payload,
+        fields={"scylla_version": payload["scylla_version"]},
+        log=log,
+    )
+
+    if scylla_version_fail:
+        log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
 
     # Spot if metadata disagrees anywhere, don't act on it yet though
     sample_reconcile_success, alert, payload = onyx_reconcile(

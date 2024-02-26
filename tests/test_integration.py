@@ -997,6 +997,15 @@ class Test_mscape_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
                     f"params_{example_validator_message['uuid']}.log",
                 ),
                 "w",
@@ -1158,6 +1167,15 @@ class Test_mscape_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
                     f"params_{example_validator_message['uuid']}.log",
                 ),
                 "w",
@@ -1301,6 +1319,15 @@ class Test_mscape_validator(unittest.TestCase):
                 "w",
             ) as f:
                 f.write(example_execution_trace)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
 
             with open(
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
@@ -1536,6 +1563,15 @@ class Test_mscape_validator(unittest.TestCase):
                 "w",
             ) as f:
                 f.write(example_execution_trace)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
 
             with open(
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
@@ -1781,6 +1817,15 @@ class Test_mscape_validator(unittest.TestCase):
                 "w",
             ) as f:
                 f.write(example_execution_trace)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
 
             with open(
                 os.path.join(
