@@ -775,7 +775,8 @@ def ret_0_parser(
                 result_path,
                 "pipeline_info",
                 f"workflow_version_{payload['uuid']}.txt",
-            )
+            ),
+            "rt",
         ) as version_fh:
             version = version_fh.read().strip()
 
