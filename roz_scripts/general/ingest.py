@@ -108,9 +108,6 @@ def main():
             )
             continue
 
-        payload["sample_id"] = f"{payload['site']}:{payload['sample_id']}"
-        payload["run_id"] = f"{payload['site']}:{payload['run_id']}"
-
         log.info(
             f"Attempting to test create metadata record in onyx for match with UUID: {payload['uuid']}"
         )

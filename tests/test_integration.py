@@ -786,9 +786,9 @@ class Test_ingest(unittest.TestCase):
 
             message_dict = json.loads(message.body)
 
-            self.assertEqual(message_dict["sample_id"], "birm:sample-test")
+            self.assertEqual(message_dict["sample_id"], "sample-test")
             self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
-            self.assertEqual(message_dict["run_id"], "birm:run-test")
+            self.assertEqual(message_dict["run_id"], "run-test")
             self.assertEqual(message_dict["project"], "mscape")
             self.assertEqual(message_dict["platform"], "ont")
             self.assertEqual(message_dict["site"], "birm")
