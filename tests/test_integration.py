@@ -1056,6 +1056,7 @@ class Test_mscape_validator(unittest.TestCase):
                 payload["artifact"],
                 "mscape|sample-test|run-test",
             )
+            self.assertEqual(payload["scylla_version"], "test_version")
             self.assertEqual(payload["project"], "mscape")
             self.assertEqual(payload["site"], "birm")
             self.assertEqual(payload["platform"], "ont")
@@ -1229,6 +1230,8 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["climb_id"])
 
+            self.assertEqual(payload["scylla_version"], "test_version")
+
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reads"
             )
@@ -1367,6 +1370,7 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["climb_id"])
             self.assertTrue(payload["test_ingest_result"])
             self.assertFalse(payload["ingest_errors"])
+            self.assertEqual(payload["scylla_version"], "test_version")
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-reads"
@@ -1612,6 +1616,8 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["climb_id"])
             self.assertFalse(payload["test_ingest_result"])
+
+            self.assertEqual("test_version", payload["scylla_version"])
 
             self.assertIn(
                 "Test sample_id error handling",
@@ -1880,6 +1886,7 @@ class Test_mscape_validator(unittest.TestCase):
                 payload["artifact"],
                 "mscape|sample-test|run-test",
             )
+            self.assertEqual(payload["scylla_version"], "test_version")
             self.assertEqual(payload["project"], "mscape")
             self.assertEqual(payload["site"], "birm")
             self.assertEqual(payload["platform"], "ont")
