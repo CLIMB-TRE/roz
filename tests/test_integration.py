@@ -1323,7 +1323,7 @@ class Test_mscape_validator(unittest.TestCase):
             with open(
                 os.path.join(
                     pipeline_info_path,
-                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                    f"workflow_version_{test_message['uuid']}.txt",
                 ),
                 "w",
             ) as f:
