@@ -398,6 +398,14 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
             else:
                 return (True, False, payload)
 
+    except EtagMismatchError as e:
+        payload.setdefault("onyx_test_create_errors", {})
+        payload["onyx_test_create_errors"].setdefault("roz_errors", [])
+        payload["onyx_test_create_errors"]["roz_errors"].append(
+            f"CSV appears to have been modified after upload for artifact: {payload['artifact']}"
+        )
+        return (False, False, payload)
+
     except Exception as e:
         payload.setdefault("onyx_test_create_errors", {})
         payload["onyx_test_create_errors"].setdefault("roz_errors", [])

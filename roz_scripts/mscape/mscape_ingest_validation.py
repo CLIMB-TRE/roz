@@ -937,6 +937,7 @@ def validate(
     )
 
     if ingest_fail:
+        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, payload, message)
 
     if payload["test_flag"]:
