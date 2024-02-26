@@ -8,7 +8,8 @@
         "bham.mscape": "analysis",
         "gpha.ukhsa.mscape": "analysis",
         "tarzet.ukhsa.mscape": "analysis",
-        "gstt.mscape": "uploader"
+        "gstt.mscape": "uploader",
+        "mscape": "analysis"
       },
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
