@@ -124,6 +124,13 @@
             "uploader": "site_ingest"
           },
           "owner": "{site}"
+        },
+        "results": {
+          "name_layout": "{project}-{site}-results",
+          "policy": {
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
         }
       },
       "notification_bucket_configs": {
