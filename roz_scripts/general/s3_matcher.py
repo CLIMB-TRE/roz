@@ -131,12 +131,18 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
     parsed_objects = {}
 
     for bucket_name, objs in existing_objects.items():
-        project, site, platform, test_flag = bucket_name.split("-")
+        project, site_str, platform, test_flag = bucket_name.split("-")
+
+        if "." in site_str:
+            site = site_str.split(".")[-2]
+        else:
+            site = site_str
 
         for obj in objs:
             # Ignore test key, s3_controller uses it to check if the bucket is correctly configured
             if obj["Key"] == "test":
                 continue
+
             extension, parsed_object_key = parse_object_key(
                 object_key=obj["Key"],
                 config_dict=config_dict,
@@ -159,6 +165,11 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
                 (artifact, project, site, platform, test_flag),
                 {"files": {}, "objects": {}},
             )
+
+            if extension == ".csv":
+                parsed_objects[(artifact, project, site, platform, test_flag)][
+                    "raw_site"
+                ] = site_str
 
             parsed_objects[(artifact, project, site, platform, test_flag)]["files"][
                 extension
@@ -271,6 +282,9 @@ def parse_new_object_message(
 
     existing_object_dict[index_tuple]["objects"][extension] = record
 
+    if extension == ".csv":
+        existing_object_dict[index_tuple]["raw_site"] = site_str
+
     return (
         is_artifact_dict_complete(
             (artifact, project, site, platform, test_flag),
@@ -313,6 +327,7 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
     payload = {
         "uuid": unique,
         "site": site,
+        "raw_site": artifact_dict["raw_site"],
         "uploaders": list(set(x["submitter"] for x in artifact_dict["files"].values())),
         "match_timestamp": ts,
         "artifact": artifact,

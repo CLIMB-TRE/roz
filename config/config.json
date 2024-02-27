@@ -26,6 +26,14 @@
             "uploader": "site_ingest"
           },
           "owner": "{site}"
+        },
+        "results": {
+          "name_layout": "{project}-{site}-results",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
         }
       },
       "notification_bucket_configs": {
@@ -63,6 +71,11 @@
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
+          "policy": { "analysis": "project_read" },
+          "owner": "admin"
+        },
+        "public_results": {
+          "name_layout": "{project}-public-results",
           "policy": { "analysis": "project_read" },
           "owner": "admin"
         }

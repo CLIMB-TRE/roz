@@ -23,6 +23,7 @@ from roz_scripts.utils.utils import (
     onyx_update,
     ensure_file_unseen,
     onyx_reconcile,
+    put_result_json,
 )
 from varys import Varys
 
@@ -79,6 +80,8 @@ class worker_pool_handler:
                 queue_suffix="validator",
             )
 
+            put_result_json(payload, self._log)
+
             if not payload["test_flag"]:
                 new_artifact_payload = {
                     "publish_timestamp": time.time_ns(),
@@ -123,6 +126,8 @@ class worker_pool_handler:
                         queue_suffix="validator",
                     )
 
+                    put_result_json(payload, self._log)
+
                     self._varys_client.nack_message(message, requeue=False)
                 else:
                     self._log.info(
@@ -138,6 +143,8 @@ class worker_pool_handler:
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="validator",
                 )
+
+                put_result_json(payload, self._log)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
@@ -959,17 +966,6 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (True, alert, payload, message)
 
-    scylla_version_fail, alert, payload = onyx_update(
-        payload=payload,
-        fields={"scylla_version": payload["scylla_version"]},
-        log=log,
-    )
-
-    if scylla_version_fail:
-        log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
-        ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
-
     # Spot if metadata disagrees anywhere, don't act on it yet though
     sample_reconcile_success, alert, payload = onyx_reconcile(
         payload=payload,
@@ -1029,6 +1025,17 @@ def validate(
 
     payload["onyx_create_status"] = True
     payload["created"] = True
+
+    scylla_version_fail, alert, payload = onyx_update(
+        payload=payload,
+        fields={"scylla_version": payload["scylla_version"]},
+        log=log,
+    )
+
+    if scylla_version_fail:
+        log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, payload, message)
 
     if payload["platform"] == "illumina":
         etag_fail, alert, payload = onyx_update(
