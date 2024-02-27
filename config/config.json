@@ -108,7 +108,7 @@
       "artifact_layout": "project|sample_id|run_id",
       "sites": {
         "ukhsa.pathsafe": "uploader",
-        "ssscrdl.pathsafe": "uploader",
+        "ssscdrl.pathsafe": "uploader",
         "aphl.pathsafe": "uploader",
         "fss.pathsafe": "uploader",
         "fsa.pathsafe": "uploader",
