@@ -405,6 +405,9 @@ def main():
 
         message_dict = json.loads(message.body)
 
+        if message_dict["Records"][0]["s3"]["object"]["key"] == "test":
+            continue
+
         artifact_complete, existing_object_dict, index_tuple = parse_new_object_message(
             existing_object_dict=existing_object_dict,
             new_object_message=message_dict,
