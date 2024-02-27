@@ -214,6 +214,7 @@ example_match_message = {
     "uuid": "42c3796d-d767-4293-97a8-c4906bb5cca8",
     "payload_version": 1,
     "site": "birm",
+    "raw_site": "subteam1.birm.mscape",
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
     "artifact": "mscape|sample-test|run-test",
