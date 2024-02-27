@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-import time
 
 import varys
 
@@ -19,6 +18,7 @@ from roz_scripts.utils.utils import (
     csv_create,
     csv_field_checks,
     valid_character_checks,
+    put_result_json,
 )
 
 
@@ -80,6 +80,7 @@ def main():
                 exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                 queue_suffix="s3_matcher",
             )
+            put_result_json(payload=payload, log=log)
             continue
 
         log.info(
@@ -106,6 +107,7 @@ def main():
                 exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                 queue_suffix="s3_matcher",
             )
+            put_result_json(payload=payload, log=log)
             continue
 
         log.info(
@@ -135,6 +137,7 @@ def main():
                 exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                 queue_suffix="s3_matcher",
             )
+            put_result_json(payload=payload, log=log)
             continue
 
         payload["onyx_test_create_status"] = True

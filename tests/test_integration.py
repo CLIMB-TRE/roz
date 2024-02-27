@@ -214,6 +214,7 @@ example_match_message = {
     "uuid": "42c3796d-d767-4293-97a8-c4906bb5cca8",
     "payload_version": 1,
     "site": "birm",
+    "raw_site": "subteam1.birm.mscape",
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
     "artifact": "mscape|sample-test|run-test",
@@ -223,12 +224,12 @@ example_match_message = {
     "platform": "ont",
     "files": {
         ".fastq.gz": {
-            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.fastq.gz",
+            "uri": "s3://mscape-subteam1.birm.mscape-ont-prod/mscape.sample-test.run-test.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "mscape-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
+            "uri": "s3://mscape-subteam1.birm.mscape-ont-prod/mscape.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
             "key": "mscape.sample-test.run-test.csv",
         },
@@ -688,7 +689,8 @@ class Test_ingest(unittest.TestCase):
         os.environ["UNIT_TESTING"] = "True"
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
-        self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
+        self.s3_client.create_bucket(Bucket="mscape-subteam1.birm.mscape-ont-prod")
+        self.s3_client.create_bucket(Bucket="mscape-subteam1.birm.mscape-results")
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("sample_id,run_id,project,platform,site\n")
@@ -696,12 +698,12 @@ class Test_ingest(unittest.TestCase):
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
-            "mscape-birm-ont-prod",
+            "mscape-subteam1.birm.mscape-ont-prod",
             "mscape.sample-test.run-test.csv",
         )
 
         resp = self.s3_client.head_object(
-            Bucket="mscape-birm-ont-prod",
+            Bucket="mscape-subteam1.birm.mscape-ont-prod",
             Key="mscape.sample-test.run-test.csv",
         )
 
@@ -792,6 +794,7 @@ class Test_ingest(unittest.TestCase):
             self.assertEqual(message_dict["project"], "mscape")
             self.assertEqual(message_dict["platform"], "ont")
             self.assertEqual(message_dict["site"], "birm")
+            self.assertEqual(message_dict["raw_site"], "subteam1.birm.mscape")
             self.assertEqual(message_dict["uploaders"], ["testuser"])
             self.assertEqual(
                 message_dict["files"][".csv"]["key"],
@@ -826,6 +829,7 @@ class Test_mscape_validator(unittest.TestCase):
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
         self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
+        self.s3_client.create_bucket(Bucket="mscape-birm-results")
         self.s3_client.create_bucket(Bucket="mscape-published-reads")
         self.s3_client.create_bucket(Bucket="mscape-published-reports")
         self.s3_client.create_bucket(Bucket="mscape-published-taxon-reports")

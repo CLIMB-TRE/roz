@@ -1,4 +1,5 @@
 import boto3
+from botocore.exceptions import ClientError
 from collections import namedtuple
 import configparser
 import os
@@ -11,6 +12,7 @@ from types import SimpleNamespace
 import time
 import csv
 import regex as re
+import json
 
 from onyx import (
     OnyxClient,
@@ -164,6 +166,35 @@ def init_logger(name, log_path, log_level):
         )
         log.addHandler(logging_fh)
     return log
+
+
+def put_result_json(payload: dict, log: logging.getLogger):
+    """Send the result payload to S3
+
+    Args:
+        payload (dict): The payload to send to S3
+        log (logging.getLogger): Logger object
+    """
+
+    s3_credentials = get_s3_credentials()
+
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=s3_credentials.endpoint,
+        aws_access_key_id=s3_credentials.access_key,
+        region_name=s3_credentials.region,
+        aws_secret_access_key=s3_credentials.secret_key,
+    )
+
+    try:
+        response = s3_client.put_object(
+            Bucket=f"{payload['project']}-{payload['raw_site']}-results",
+            Key=f"{payload['project']}.{payload['sample_id']}.{payload['run_id']}.result.json",
+            Body=json.dumps(payload),
+        )
+    except ClientError as e:
+        log.error(f"Failed to upload result JSON to S3: {e}")
+        raise e
 
 
 def csv_create(
