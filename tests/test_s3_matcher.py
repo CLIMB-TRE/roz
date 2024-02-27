@@ -612,6 +612,7 @@ class test_s3_matcher(unittest.TestCase):
                     },
                 },
                 "objects": {},
+                "raw_site": "site1",
             }
         }
 
