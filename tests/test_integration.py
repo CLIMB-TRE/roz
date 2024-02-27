@@ -224,12 +224,12 @@ example_match_message = {
     "platform": "ont",
     "files": {
         ".fastq.gz": {
-            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.fastq.gz",
+            "uri": "s3://mscape-subteam1.birm.mscape-ont-prod/mscape.sample-test.run-test.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
             "key": "mscape-test.run-test.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://mscape-birm-ont-prod/mscape.sample-test.run-test.csv",
+            "uri": "s3://mscape-subteam1.birm.mscape-ont-prod/mscape.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
             "key": "mscape.sample-test.run-test.csv",
         },
