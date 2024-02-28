@@ -227,61 +227,42 @@ def add_taxon_records(
     binned_read_fail = False
     alert = False
 
-    with open(
-        os.path.join(result_path, "reads_by_taxa/reads_summary_combined.json"), "rt"
-    ) as read_summary_fh:
-        summary = json.load(read_summary_fh)
+    try:
+        with open(
+            os.path.join(result_path, "reads_by_taxa/reads_summary_combined.json"), "rt"
+        ) as read_summary_fh:
+            summary = json.load(read_summary_fh)
 
-        for taxa in summary:
-            taxon_dict = {
-                "taxon_id": taxa["taxon"],
-                "human_readable": taxa["human_readable"],
-                "n_reads": taxa["qc_metrics"]["num_reads"],
-                "avg_quality": taxa["qc_metrics"]["avg_qual"],
-                "mean_len": taxa["qc_metrics"]["mean_len"],
-                "rank": taxa["tax_level"],
-            }
+    except FileNotFoundError as e:
+        log.info(
+            f"Could not find reads_summary_combined.json, this probably means that there are insufficient binned taxa produced by scylla for UUID: {payload['uuid']}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Could not find reads_summary_combined.json, this probably means that no taxa were present above binning thresholds by scylla"
+        )
+        return (binned_read_fail, alert, payload)
 
-            if payload["platform"] == "illumina":
-                for i in (1, 2):
-                    fastq_path = os.path.join(
-                        result_path,
-                        f"reads_by_taxa/{taxa['filenames'][i - 1]}.gz",
-                    )
+    for taxa in summary:
+        taxon_dict = {
+            "taxon_id": taxa["taxon"],
+            "human_readable": taxa["human_readable"],
+            "n_reads": taxa["qc_metrics"]["num_reads"],
+            "avg_quality": taxa["qc_metrics"]["avg_qual"],
+            "mean_len": taxa["qc_metrics"]["mean_len"],
+            "rank": taxa["tax_level"],
+        }
 
-                    try:
-                        s3_bucket = "mscape-published-binned-reads"
-                        s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}_{i}.fastq.gz"
-                        s3_uri = f"s3://{s3_bucket}/{s3_key}"
-
-                        s3_client.upload_file(
-                            fastq_path,
-                            s3_bucket,
-                            s3_key,
-                        )
-
-                        taxon_dict[f"fastq_{i}"] = s3_uri
-
-                    except Exception as add_taxon_record_exception:
-                        log.error(
-                            f"Failed to upload binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
-                        )
-                        payload.setdefault("ingest_errors", [])
-                        payload["ingest_errors"].append(
-                            f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
-                        )
-                        binned_read_fail = True
-                        alert = True
-                        continue
-
-            elif payload["platform"] == "ont":
+        if payload["platform"] == "illumina":
+            for i in (1, 2):
                 fastq_path = os.path.join(
-                    result_path, f"reads_by_taxa/{taxa['filenames'][0]}.gz"
+                    result_path,
+                    f"reads_by_taxa/{taxa['filenames'][i - 1]}.gz",
                 )
 
                 try:
                     s3_bucket = "mscape-published-binned-reads"
-                    s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}.fastq.gz"
+                    s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}_{i}.fastq.gz"
                     s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
                     s3_client.upload_file(
@@ -290,11 +271,11 @@ def add_taxon_records(
                         s3_key,
                     )
 
-                    taxon_dict[f"fastq_1"] = s3_uri
+                    taxon_dict[f"fastq_{i}"] = s3_uri
 
                 except Exception as add_taxon_record_exception:
                     log.error(
-                        f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
+                        f"Failed to upload binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
                     )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
@@ -304,16 +285,44 @@ def add_taxon_records(
                     alert = True
                     continue
 
-            else:
-                log.error(f"Unknown platform: {payload['platform']}")
+        elif payload["platform"] == "ont":
+            fastq_path = os.path.join(
+                result_path, f"reads_by_taxa/{taxa['filenames'][0]}.gz"
+            )
+
+            try:
+                s3_bucket = "mscape-published-binned-reads"
+                s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}.fastq.gz"
+                s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
+                s3_client.upload_file(
+                    fastq_path,
+                    s3_bucket,
+                    s3_key,
+                )
+
+                taxon_dict[f"fastq_1"] = s3_uri
+
+            except Exception as add_taxon_record_exception:
+                log.error(
+                    f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
+                )
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
-                    f"Unknown platform: {payload['platform']}"
+                    f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
                 )
                 binned_read_fail = True
+                alert = True
                 continue
 
-            nested_records.append(taxon_dict)
+        else:
+            log.error(f"Unknown platform: {payload['platform']}")
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(f"Unknown platform: {payload['platform']}")
+            binned_read_fail = True
+            continue
+
+        nested_records.append(taxon_dict)
 
     if not binned_read_fail:
         update_fail, update_alert, payload = onyx_update(
@@ -672,7 +681,7 @@ def read_fraction_upload(
                     s3_key,
                 )
 
-            except (ClientError, FileNotFoundError) as add_read_fraction_exception:
+            except ClientError as add_read_fraction_exception:
                 log.error(
                     f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CLIMB-ID: {payload['climb_id']} due to client error: {add_read_fraction_exception}"
                 )
@@ -682,6 +691,17 @@ def read_fraction_upload(
                 )
                 read_fraction_fail = True
                 alert = True
+                continue
+
+            except FileNotFoundError:
+                log.info(
+                    "Could not find read fraction file, probably because no reads were present in the fraction"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Could not find read fraction file: {fraction_prefix}, probably because no reads were present in the fraction"
+                )
+                # This doesn't mean anything has actually failed, just that there were no reads in the fraction
                 continue
 
         if not read_fraction_fail:

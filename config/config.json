@@ -71,7 +71,7 @@
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
-          "policy": { "analysis": "project_read" },
+          "policy": { "analysis": "project_ingest" },
           "owner": "admin"
         },
         "public_results": {
