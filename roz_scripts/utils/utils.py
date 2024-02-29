@@ -231,6 +231,7 @@ def csv_create(
                     test=test_submission,
                     fields={
                         "site": payload["site"],
+                        "platform": payload["platform"],
                         "is_published": False,
                     },
                     multiline=False,
@@ -593,14 +594,6 @@ def onyx_reconcile(
                 )
 
                 if len(response) == 0:
-                    # log.error(
-                    #     f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
-                    # )
-                    # payload.setdefault("onyx_errors", {})
-                    # payload["onyx_errors"].setdefault("onyx_errors", [])
-                    # payload["onyx_errors"]["onyx_errors"].append(
-                    #     f"Failed to find records with Onyx {identifier} for: {payload[f'climb_{identifier}']} despite successful identification by Onyx"
-                    # )
                     return (False, True, payload)
 
                 fields_of_concern = []
@@ -617,6 +610,16 @@ def onyx_reconcile(
                     to_reconcile = [x[field] for x in response]
 
                     if metadata.get(field):
+                        if metadata[field].startswith("is_"):
+                            metadata[field] = str(metadata[field]).lower() in (
+                                "t",
+                                "y",
+                                "yes",
+                                "true",
+                                "on",
+                                "1",
+                            )
+
                         to_reconcile.append(metadata[field])
 
                     if len(set(to_reconcile)) > 1:

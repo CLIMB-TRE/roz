@@ -1021,6 +1021,7 @@ def validate(
             "library_protocol",
             "sequencing_protocol",
             "study_centre_id",
+            "platform",
         ],
         log=log,
     )
