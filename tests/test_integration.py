@@ -2157,6 +2157,8 @@ class Test_pathsafe_validator(unittest.TestCase):
                 in_message, args, pipeline
             )
 
+            print(payload)
+
             self.assertTrue(Success)
 
             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
@@ -2319,6 +2321,8 @@ class Test_pathsafe_validator(unittest.TestCase):
                 in_message, args, pipeline
             )
 
+            print(payload)
+
             self.assertFalse(Success)
 
             self.assertFalse(payload["created"])
@@ -2420,7 +2424,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "hello": "goodbye"
             }
 
-            mock_util_client.return_value.__enter__.return_value._csv_create = Mock(
+            mock_util_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
                     message="test csv_create exception",
                     response=MockResponse(
@@ -2485,6 +2489,8 @@ class Test_pathsafe_validator(unittest.TestCase):
             Success, payload, message = pathsafe_validation.validate(
                 in_message, args, pipeline
             )
+
+            print(payload)
 
             self.assertFalse(Success)
 
