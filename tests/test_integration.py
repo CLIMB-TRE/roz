@@ -479,6 +479,11 @@ example_execution_trace_human = """task_id	hash	native_id	name	status	exit	submi
 19	8c/292cce	nf-8c292cce85d72effaa636db6ad0098ab	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (3)	COMPLETED	0	2023-12-14 22:14:12.692	3m 34s	3m 21s	476.5%	13.3 MB	585.3 MB	18.6 GB	9.4 GB
 """
 
+example_pathsafe_execution_trace = """task_id	hash	native_id	name	status	exit	submit	duration	realtime	%cpu	peak_rss	peak_vmem	rchar	wchar
+1	c8/ff67a6	nf-c8ff67a652a85eda6287589d2e7cd49f	ingest:get_params_and_versions:get_params	COMPLETED	0	2023-12-14 21:27:52.842	13.2s	84ms	55.8%	3.3 MB	5.6 MB	65.2 KB	4.9 KB
+3	80/6be72c	nf-806be72cd3bb8ac04caa16b2e232e757	ingest:get_params_and_versions:get_versions	COMPLETED	0	2023-12-14 21:27:53.449	14.6s	1.8s	97.2%	43 MB	56.7 MB	13.8 MB	9 KB
+"""
+
 example_reads_summary = [
     {
         "human_readable": "Pseudomonas",
@@ -2128,7 +2133,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 ),
                 "w",
             ) as f:
-                f.write(example_execution_trace)
+                f.write(example_pathsafe_execution_trace)
 
             args = SimpleNamespace(
                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
