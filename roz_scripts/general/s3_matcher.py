@@ -325,14 +325,6 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
         x["parsed_fname"]["run_id"] for x in artifact_dict["files"].values()
     )
 
-    with s3_to_fh(
-        artifact_dict["files"][".csv"]["uri"],
-        artifact_dict["files"][".csv"]["etag"],
-    ) as csv_fh:
-        reader = csv.DictReader(csv_fh, delimiter=",")
-
-        metadata = next(reader)
-
     payload = {
         "uuid": unique,
         "site": site,
@@ -342,7 +334,6 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
         "artifact": artifact,
         "run_index": run_index,
         "run_id": run_id,
-        "source_id": metadata["source_id"],
         "project": project,
         "platform": platform,
         "files": artifact_dict["files"],

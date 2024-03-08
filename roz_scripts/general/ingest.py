@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import csv
 
 import varys
 
@@ -19,6 +20,7 @@ from roz_scripts.utils.utils import (
     csv_field_checks,
     valid_character_checks,
     put_result_json,
+    s3_to_fh,
 )
 
 
@@ -142,6 +144,16 @@ def main():
 
         payload["onyx_test_create_status"] = True
         payload["validate"] = True
+
+        with s3_to_fh(
+            payload["files"][".csv"]["uri"],
+            payload["files"][".csv"]["etag"],
+        ) as csv_fh:
+            reader = csv.DictReader(csv_fh, delimiter=",")
+
+            metadata = next(reader)
+
+        payload["source_id"] = metadata["source_id"]
 
         varys_client.acknowledge_message(message)
 

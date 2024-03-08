@@ -699,8 +699,8 @@ class Test_ingest(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-subteam1.birm.mscape-results")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("run_index,run_id,project,platform,site\n")
-            f.write("sample-test,run-test,mscape,ont,birm")
+            f.write("run_index,run_id,source_id,project,platform,site\n")
+            f.write("sample-test,run-test,test-source,mscape,ont,birm")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
