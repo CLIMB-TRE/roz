@@ -2106,6 +2106,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             mock_util_client.return_value.__enter__.return_value.csv_create.return_value = {
                 "climb_id": "test_climb_id",
                 "run_index": "test_run_index",
+                "run_id": "test_run_id",
                 "source_id": "test_source_id",
                 "biosample_source_id": "",
             }
