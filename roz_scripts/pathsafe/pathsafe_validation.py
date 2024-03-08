@@ -203,7 +203,7 @@ def assembly_to_s3(
         s3_fail = True
 
     if not s3_fail:
-        update_fail, payload = onyx_update(
+        update_fail, alert, payload = onyx_update(
             payload=payload,
             fields={
                 "assembly": f"s3://pathsafe-published-assembly/{payload['climb_id']}.assembly.fasta",
@@ -300,7 +300,7 @@ def pathogenwatch_submission(
 
     pathogenwatch_uuid = r.json()["id"]
 
-    update_fail, payload = onyx_update(
+    update_fail, alert, payload = onyx_update(
         payload=payload, fields={"pathogenwatch_uuid": pathogenwatch_uuid}, log=log
     )
 
