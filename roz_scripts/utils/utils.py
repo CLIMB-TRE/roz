@@ -492,7 +492,7 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
         "biosample_source_id",
     ):
         log.error(
-            f"Invalid identity field: {identity_field}. Must be one of 'source_id', 'run_id', or 'biosample_source_id'"
+            f"Invalid identity field: {identity_field}. Must be one of 'source_id', 'run_id', 'run_index', or 'biosample_source_id'"
         )
         return (False, True, payload)
 

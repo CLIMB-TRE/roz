@@ -1,4 +1,4 @@
-from roz_scripts.utils.utils import get_s3_credentials, init_logger
+from roz_scripts.utils.utils import get_s3_credentials, init_logger, s3_to_fh
 from roz_scripts.general.s3_controller import create_config_map
 from varys import Varys
 
@@ -10,6 +10,7 @@ import time
 import json
 import os
 import sys
+import csv
 
 
 def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:
@@ -324,6 +325,14 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
         x["parsed_fname"]["run_id"] for x in artifact_dict["files"].values()
     )
 
+    with s3_to_fh(
+        artifact_dict["files"][".csv"]["uri"],
+        artifact_dict["files"][".csv"]["etag"],
+    ) as csv_fh:
+        reader = csv.DictReader(csv_fh, delimiter=",")
+
+        metadata = next(reader)
+
     payload = {
         "uuid": unique,
         "site": site,
@@ -333,6 +342,7 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
         "artifact": artifact,
         "run_index": run_index,
         "run_id": run_id,
+        "source_id": metadata["source_id"],
         "project": project,
         "platform": platform,
         "files": artifact_dict["files"],

@@ -567,6 +567,13 @@ class test_s3_matcher(unittest.TestCase):
             "prod",
         )
 
+        self.s3_client.create_bucket(Bucket="project1-site1-illumina-prod")
+        self.s3_client.put_object(
+            Bucket="project1-site1-illumina-prod",
+            Key="project1.sample1.run1.csv",
+            Body="source_id\ntest_source_id",
+        )
+
         existing_object_dict = {
             index_tuple: {
                 "files": {
@@ -615,6 +622,15 @@ class test_s3_matcher(unittest.TestCase):
                 "raw_site": "site1",
             }
         }
+
+        resp = self.s3_client.head_object(
+            Bucket="project1-site1-illumina-prod",
+            Key="project1.sample1.run1.csv",
+        )
+
+        csv_etag = resp["ETag"].replace('"', "")
+
+        existing_object_dict[index_tuple]["files"][".csv"]["etag"] = csv_etag
 
         payload = s3_matcher.generate_payload(
             index_tuple=index_tuple,
