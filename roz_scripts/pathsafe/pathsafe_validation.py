@@ -471,7 +471,7 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    submission_fail, payload = csv_create(
+    submission_fail, alert, payload = csv_create(
         log=log, payload=payload, test_submission=False
     )
 
@@ -508,8 +508,8 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    unsuppress_fail, payload = onyx_update(
-        payload=payload, log=log, fields={"suppressed": False}
+    unsuppress_fail, alert, payload = onyx_update(
+        payload=payload, log=log, fields={"is_published": True}
     )
 
     if unsuppress_fail:
