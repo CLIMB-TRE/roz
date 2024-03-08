@@ -2103,9 +2103,12 @@ class Test_pathsafe_validator(unittest.TestCase):
             mock_util_client.return_value.__enter__.return_value.update.return_value = (
                 {}
             )
-            mock_util_client.return_value.__enter__.return_value.csv_create.return_value = (
-                {}
-            )
+            mock_util_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "climb_id": "test_climb_id",
+                "run_index": "test_run_index",
+                "source_id": "test_source_id",
+                "biosample_source_id": "",
+            }
 
             mock_local_client.return_value.__enter__.return_value.get.return_value = {
                 "hello": "goodbye"
@@ -2265,9 +2268,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 MockResponse(status_code=200)
             )
 
-            mock_util_client.return_value.__enter__.return_value.csv_create.return_value = (
-                {}
-            )
+            mock_util_client.return_value.__enter__.return_value.csv_create = Mock()
 
             mock_local_client.return_value.__enter__.return_value.get.return_value = {
                 "hello": "goodbye"
@@ -2336,6 +2337,8 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertFalse(payload["climb_id"])
             self.assertTrue(payload["test_ingest_result"])
             self.assertFalse(payload["ingest_errors"])
+
+            mock_util_client.assert_not_called()
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="pathsafetest-published-assembly"
