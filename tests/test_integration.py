@@ -1982,6 +1982,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                     "username": "guest",
                     "password": "guest",
                     "amqp_url": "127.0.0.1",
+                    "use_tls": False,
                     "port": 5672,
                 }
             },
@@ -1996,6 +1997,8 @@ class Test_pathsafe_validator(unittest.TestCase):
         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
+        os.environ["PATHOGENWATCH_API_KEY"] = "nonsense"
+        os.environ["PATHOGENWATCH_ENDPOINT_URL"] = "nonsense"
 
         self.varys_client = Varys("roz", TEST_MESSAGE_LOG_FILENAME)
 
