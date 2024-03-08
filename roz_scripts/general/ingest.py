@@ -57,7 +57,7 @@ def main():
         payload["validate"] = False
 
         log.info(
-            f"Checking that sample_id and run_id do not contain invalid characters for match UUID: {payload['uuid']}"
+            f"Checking that run_index and run_id do not contain invalid characters for match UUID: {payload['uuid']}"
         )
 
         valid_character_status, alert, payload = valid_character_checks(payload=payload)
@@ -84,7 +84,7 @@ def main():
             continue
 
         log.info(
-            f"Checking that sample_id and run_id match provided CSV for match UUID: {payload['uuid']}"
+            f"Checking that run_index and run_id match provided CSV for match UUID: {payload['uuid']}"
         )
 
         field_check_status, alert, payload = csv_field_checks(payload=payload)

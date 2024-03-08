@@ -18,6 +18,7 @@ from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
     get_s3_credentials,
+    put_result_json,
 )
 from varys import Varys
 from onyx import OnyxClient
@@ -31,10 +32,16 @@ class worker_pool_handler:
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
+        self._retry_log = {}
+
     def submit_job(self, message, args, ingest_pipe):
         self._log.info(
             f"Submitting job to the worker pool for UUID: {json.loads(message.body)['uuid']}"
         )
+
+        self._retry_log.setdefault(json.loads(message.body)["uuid"], 0)
+
+        self._retry_log[json.loads(message.body)["uuid"]] += 1
 
         self.worker_pool.apply_async(
             func=validate,
@@ -44,7 +51,18 @@ class worker_pool_handler:
         )
 
     def callback(self, validate_result):
-        success, payload, message = validate_result
+        success, alert, payload, message = validate_result
+
+        if alert:
+            self._log.error(
+                f"Alert flag set for UUID: {payload['uuid']}, manual intervention required"
+            )
+            self._varys_client.send(
+                message=payload,
+                exchange="restricted-mscape-announce",
+                queue_suffix="alert",
+            )
+
         if success:
             self._log.info(
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
@@ -52,25 +70,30 @@ class worker_pool_handler:
 
             self._varys_client.acknowledge_message(message)
 
-            new_artifact_payload = {
-                "publish_timestamp": time.time_ns(),
-                "climb_id": payload["climb_id"],
-                "site": payload["site"],
-                "platform": payload["platform"],
-                "match_uuid": payload["uuid"],
-            }
-
-            self._varys_client.send(
-                message=new_artifact_payload,
-                exchange="inbound.new_artifact.pathsafe",
-                queue_suffix="validator",
-            )
-
             self._varys_client.send(
                 message=payload,
-                exchange=f"inbound.results.pathsafe.{payload['site']}",
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                 queue_suffix="validator",
             )
+
+            put_result_json(payload, self._log)
+
+            if not payload["test_flag"]:
+                new_artifact_payload = {
+                    "publish_timestamp": time.time_ns(),
+                    "climb_id": payload["climb_id"],
+                    "source_id": payload["source_id"],
+                    "run_id": payload["climb_run_id"],
+                    "site": payload["site"],
+                    "platform": payload["platform"],
+                    "match_uuid": payload["uuid"],
+                }
+
+                self._varys_client.send(
+                    message=new_artifact_payload,
+                    exchange="inbound-new_artifact-pathsafe",
+                    queue_suffix="validator",
+                )
 
         else:
             self._log.info(
@@ -78,25 +101,28 @@ class worker_pool_handler:
             )
 
             if payload["rerun"]:
-                if message.basic_deliver.redelivered:
+                if self._retry_log[payload["uuid"]] >= 3:
                     self._log.error(
-                        f"Message for UUID: {payload['uuid']} has been redelivered already, sending to dead letter queue"
+                        f"Message for UUID: {payload['uuid']} failed after {self._retry_log[payload['uuid']]} attempts, sending to dead letter queue"
                     )
+                    payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Validation failed for UUID: {payload['uuid']} unrecoverably"
                     )
 
                     self._varys_client.send(
                         message=payload,
-                        exchange="pathsafe.restricted.announce",
+                        exchange="pathsafe-restricted-announce",
                         queue_suffix="dead_letter",
                     )
 
                     self._varys_client.send(
                         message=payload,
-                        exchange=f"inbound.results.pathsafe.{payload['site']}",
+                        exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                         queue_suffix="validator",
                     )
+
+                    put_result_json(payload, self._log)
 
                     self._varys_client.nack_message(message, requeue=False)
                 else:
@@ -110,15 +136,17 @@ class worker_pool_handler:
 
                 self._varys_client.send(
                     message=payload,
-                    exchange=f"inbound.results.pathsafe.{payload['site']}",
+                    exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="validator",
                 )
+
+                put_result_json(payload, self._log)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
         self._varys_client.send(
             message=f"Pathsafe ingest worker failed with unhandled exception: {exception}",
-            exchange="pathsafe.restricted.announce",
+            exchange="pathsafe-restricted-announce",
             queue_suffix="dead_worker",
         )
 
@@ -178,7 +206,7 @@ def assembly_to_s3(
         update_fail, payload = onyx_update(
             payload=payload,
             fields={
-                "assembly": f"s3://pathsafetest-published-assembly/{payload['climb_id']}.assembly.fasta",
+                "assembly": f"s3://pathsafe-published-assembly/{payload['climb_id']}.assembly.fasta",
             },
             log=log,
         )
@@ -206,39 +234,78 @@ def pathogenwatch_submission(
 
     with OnyxClient(env_password=True) as client:
         record = client.get(
-            "pathsafetest",
+            "pathsafe",
             payload["climb_id"],
-            scope=["admin"],
         )
 
-        ignore_fields = ["suppressed", "sample_id", "run_id"]
+    ignore_fields = ["is_published", "published_date", "pathogenwatch_uuid"]
 
-        fields = {k: v for k, v in record.items() if v and k not in ignore_fields}
+    headers = {
+        "X-API-Key": os.getenv("PATHOGENWATCH_API_KEY"),
+        "content-type": "application/json",
+    }
 
-        body = {
-            "url": payload["assembly_presigned_url"],
-            "collectionId": 41,
-            "metadata": fields,
-        }
+    base_url = os.getenv("PATHOGENWATCH_ENDPOINT_URL")
 
-        headers = {"X-API-Key": os.getenv("PATHOGENWATCH_API_KEY")}
+    resp = requests.get(f"{base_url}/folders/list?user_owned=true", headers=headers)
 
-        endpoint_url = os.getenv("PATHOGENWATCH_ENDPOINT_URL")
-
-        r = requests.post(url=endpoint_url, headers=headers, json=body)
-
-        if r.status_code != 201:
-            log.error(
-                f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {r.text}"
-            )
-            payload["ingest_errors"].append(
-                f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
-            )
-            pathogenwatch_fail = True
-
-        update_fail, payload = onyx_update(
-            payload=payload, fields={"pathogenwatch_uuid": r.json()["id"]}, log=log
+    if resp.status_code != 200:
+        log.error(f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}")
+        payload["ingest_errors"].append(
+            f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}"
         )
+        pathogenwatch_fail = True
+        return (pathogenwatch_fail, payload)
+
+    folders = resp.json()
+
+    folder_id = False
+
+    for folder in folders:
+        if folder["name"].lower() == payload["site"]:
+            id = folder["id"]
+            break
+
+    if not id:
+        log.error(
+            f"Failed to retrieve Pathogenwatch folder ID for site: {payload['site']}"
+        )
+        payload["ingest_errors"].append(
+            f"Failed to retrieve Pathogenwatch folder ID for site: {payload['site']}"
+        )
+        pathogenwatch_fail = True
+        return (pathogenwatch_fail, payload)
+
+    fields = {k: v for k, v in record.items() if v and k not in ignore_fields}
+
+    # change site to submit_org for pathogenwatch benefit
+    fields["submit_org"] = fields.pop("site")
+
+    body = {
+        "url": payload["assembly_presigned_url"],
+        "folderId": folder_id,
+        "metadata": fields,
+    }
+
+    r = requests.post(url=f"{base_url}/api/genomes/create", headers=headers, json=body)
+
+    if r.status_code != 201:
+        log.error(
+            f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {r.text}"
+        )
+        payload["ingest_errors"].append(
+            f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
+        )
+        pathogenwatch_fail = True
+
+    pathogenwatch_uuid = r.json()["id"]
+
+    update_fail, payload = onyx_update(
+        payload=payload, fields={"pathogenwatch_uuid": pathogenwatch_uuid}, log=log
+    )
+
+    if update_fail:
+        pathogenwatch_fail = True
 
     return (pathogenwatch_fail, payload)
 
@@ -347,7 +414,7 @@ def validate(
     payload["rerun"] = False
 
     # This client is purely for pathsafe, ignore all other messages
-    if to_validate["project"] != "pathsafetest":
+    if to_validate["project"] != "pathsafe":
         log.info(
             f"Ignoring file set with UUID: {to_validate['uuid']} due non-pathsafe project ID"
         )

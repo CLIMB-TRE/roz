@@ -189,7 +189,7 @@ def put_result_json(payload: dict, log: logging.getLogger):
     try:
         response = s3_client.put_object(
             Bucket=f"{payload['project']}-{payload['raw_site']}-results",
-            Key=f"{payload['project']}.{payload['sample_id']}.{payload['run_id']}.result.json",
+            Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.result.json",
             Body=json.dumps(payload),
         )
     except ClientError as e:
@@ -239,8 +239,11 @@ def csv_create(
 
                 if not test_submission:
                     payload["climb_id"] = response["climb_id"]
-                    payload["climb_sample_id"] = response["sample_id"]
-                    payload["climb_run_id"] = response["run_id"]
+                    payload["anonymised_run_index"] = response["run_index"]
+                    payload["anonymised_run_id"] = response["run_id"]
+                    payload["anonymised_source_id"] = response["source_id"]
+                    if response["anonymised_biosample_source_id"]:
+                        payload["biosample_source_id"] = response["biosample_source_id"]
 
                 return (True, False, payload)
 
@@ -412,7 +415,7 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
             metadata = next(reader)
 
             name_matches = {
-                x: metadata[x] == payload[x] for x in ("sample_id", "run_id")
+                x: metadata[x] == payload[x] for x in ("run_index", "run_id")
             }
 
             for k, v in name_matches.items():
@@ -446,7 +449,7 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
 
 
 def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
-    """Function to check that the sample_id and run_id contain only valid characters
+    """Function to check that the run_index and run_id contain only valid characters
 
     Args:
         payload (dict): Payload dict for the current artifact
@@ -456,14 +459,14 @@ def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
     """
     pattern = re.compile(r"^[A-Za-z0-9_-]*$")
 
-    sample_id_match = pattern.match(payload["sample_id"])
+    run_index_match = pattern.match(payload["run_index"])
     run_id_match = pattern.match(payload["run_id"])
 
-    if not sample_id_match:
+    if not run_index_match:
         payload.setdefault("onyx_test_create_errors", {})
-        payload["onyx_test_create_errors"].setdefault("sample_id", [])
-        payload["onyx_test_create_errors"]["sample_id"].append(
-            "sample_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores"
+        payload["onyx_test_create_errors"].setdefault("run_index", [])
+        payload["onyx_test_create_errors"]["run_index"].append(
+            "run_index contains invalid characters, must be alphanumeric and contain only hyphens and underscores"
         )
 
     if not run_id_match:
@@ -473,16 +476,16 @@ def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
             "run_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores"
         )
 
-    if not sample_id_match or not run_id_match:
+    if not run_index_match or not run_id_match:
         return (False, False, payload)
 
     return (True, False, payload)
 
 
 def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
-    if identity_field not in ("sample_id", "run_id"):
+    if identity_field not in ("source_id", "run_id", "biosample_source_id"):
         log.error(
-            f"Invalid identity field: {identity_field}. Must be one of 'sample_id' or 'run_id'"
+            f"Invalid identity field: {identity_field}. Must be one of 'source_id', 'run_id', or 'biosample_source_id'"
         )
         return (False, True, payload)
 
@@ -497,7 +500,7 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
                     payload["project"], identity_field, payload[identity_field]
                 )
 
-                payload[f"climb_{identity_field}"] = response["identifier"]
+                payload[f"anonymised_{identity_field}"] = response["identifier"]
 
                 return (True, False, payload)
 
@@ -589,7 +592,7 @@ def onyx_reconcile(
                 response = list(
                     client.filter(
                         payload["project"],
-                        fields={identifier: payload[f"climb_{identifier}"]},
+                        fields={identifier: payload[f"anonymised_{identifier}"]},
                     )
                 )
 
@@ -629,7 +632,7 @@ def onyx_reconcile(
                     payload.setdefault("onyx_errors", {})
                     payload["onyx_errors"].setdefault("reconcile_errors", [])
                     payload["onyx_errors"]["reconcile_errors"].append(
-                        f"Onyx records for {identifier}: {payload[f'climb_{identifier}']} disagree for the following fields: {', '.join(fields_of_concern)}"
+                        f"Onyx records for {identifier}: {payload[f'anonymised_{identifier}']} disagree for the following fields: {', '.join(fields_of_concern)}"
                     )
                     return (False, False, payload)
 
@@ -797,12 +800,12 @@ def ensure_file_unseen(
 def check_artifact_published(
     payload: dict, log: logging.getLogger
 ) -> tuple[bool, bool, dict]:
-    sample_success, sample_alert, payload = onyx_identify(
-        payload=payload, identity_field="sample_id", log=log
+    run_index_success, run_index_alert, payload = onyx_identify(
+        payload=payload, identity_field="run_index", log=log
     )
 
-    if not sample_success:
-        return (False, sample_alert, payload)
+    if not run_index_success:
+        return (False, run_index_alert, payload)
 
     run_success, run_alert, payload = onyx_identify(
         payload=payload, identity_field="run_id", log=log
@@ -819,8 +822,8 @@ def check_artifact_published(
                     client.filter(
                         project=payload["project"],
                         fields={
-                            "sample_id": payload["climb_sample_id"],
-                            "run_id": payload["climb_run_id"],
+                            "run_index": payload["anonymised_run_index"],
+                            "run_id": payload["anonymised_run_id"],
                         },
                     )
                 )
