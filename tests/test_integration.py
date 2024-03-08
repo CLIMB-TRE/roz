@@ -2297,7 +2297,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 ),
                 "w",
             ) as f:
-                f.write(example_execution_trace)
+                f.write(example_pathsafe_execution_trace)
 
             args = SimpleNamespace(
                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
@@ -2466,7 +2466,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 ),
                 "w",
             ) as f:
-                f.write(example_execution_trace)
+                f.write(example_pathsafe_execution_trace)
 
             args = SimpleNamespace(
                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
