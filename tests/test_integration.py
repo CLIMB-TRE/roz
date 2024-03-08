@@ -2135,7 +2135,6 @@ class Test_pathsafe_validator(unittest.TestCase):
                 pipe="test",
                 config="test",
                 nxf_executable="test",
-                config="test",
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
