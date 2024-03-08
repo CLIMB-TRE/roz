@@ -305,11 +305,11 @@ example_validator_message = {
 
 example_pathsafe_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "pathsafetest|sample-test|run-test",
+    "artifact": "pathsafe|sample-test|run-test",
     "run_index": "sample-test",
     "run_id": "run-test",
     "source_id": "test-source",
-    "project": "pathsafetest",
+    "project": "pathsafe",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
     "ingest_timestamp": 1694780451766213337,
@@ -348,11 +348,11 @@ example_pathsafe_validator_message = {
 
 example_pathsafe_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "pathsafetest|sample-test|run-test",
+    "artifact": "pathsafe|sample-test|run-test",
     "run_index": "sample-test",
     "run_id": "run-test",
     "source_id": "test-source",
-    "project": "pathsafetest",
+    "project": "pathsafe",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
     "ingest_timestamp": 1694780451766213337,
