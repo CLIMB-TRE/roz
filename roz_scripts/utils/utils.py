@@ -242,8 +242,10 @@ def csv_create(
                     payload["anonymised_run_index"] = response["run_index"]
                     payload["anonymised_run_id"] = response["run_id"]
                     payload["anonymised_source_id"] = response["source_id"]
-                    if response["anonymised_biosample_source_id"]:
-                        payload["biosample_source_id"] = response["biosample_source_id"]
+                    if response["biosample_source_id"]:
+                        payload["anonymised_biosample_source_id"] = response[
+                            "biosample_source_id"
+                        ]
 
                 return (True, False, payload)
 
@@ -483,7 +485,12 @@ def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
 
 
 def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
-    if identity_field not in ("source_id", "run_id", "biosample_source_id"):
+    if identity_field not in (
+        "source_id",
+        "run_id",
+        "run_index",
+        "biosample_source_id",
+    ):
         log.error(
             f"Invalid identity field: {identity_field}. Must be one of 'source_id', 'run_id', or 'biosample_source_id'"
         )

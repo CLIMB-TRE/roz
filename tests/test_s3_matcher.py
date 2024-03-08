@@ -17,7 +17,7 @@ fake_roz_cfg_dict = {
     "pathogen_configs": ["project1", "project2"],
     "configs": {
         "project1": {
-            "artifact_layout": "project|sample_id|run_id",
+            "artifact_layout": "project|run_index|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": ["subsite1.site1.project1", "site2.project1"],
             "bucket_policies": {
@@ -45,27 +45,27 @@ fake_roz_cfg_dict = {
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
-                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
+                        "layout": "project.run_index.run_id.direction.ftype.gzip",
                     },
                     ".2.fastq.gz": {
-                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
+                        "layout": "project.run_index.run_id.direction.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_id.ftype",
+                        "layout": "project.run_index.run_id.ftype",
                     },
                 },
                 "ont": {
                     ".fastq.gz": {
-                        "layout": "project.sample_id.run_id.ftype.gzip",
+                        "layout": "project.run_index.run_id.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_id.ftype",
+                        "layout": "project.run_index.run_id.ftype",
                     },
                 },
             },
         },
         "project2": {
-            "artifact_layout": "project|sample_id|run_id",
+            "artifact_layout": "project|run_index|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
             "sites": ["subsite1.site1.project2", "site2.project2"],
             "bucket_policies": {
@@ -93,29 +93,29 @@ fake_roz_cfg_dict = {
             "file_specs": {
                 "illumina": {
                     ".1.fastq.gz": {
-                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
+                        "layout": "project.run_index.run_id.direction.ftype.gzip",
                     },
                     ".2.fastq.gz": {
-                        "layout": "project.sample_id.run_id.direction.ftype.gzip",
+                        "layout": "project.run_index.run_id.direction.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_id.ftype",
+                        "layout": "project.run_index.run_id.ftype",
                     },
                 },
                 "ont": {
                     ".fastq.gz": {
-                        "layout": "project.sample_id.run_id.ftype.gzip",
+                        "layout": "project.run_index.run_id.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_id.ftype",
+                        "layout": "project.run_index.run_id.ftype",
                     },
                 },
                 "pacbio": {
                     ".fastq.gz": {
-                        "layout": "project.sample_id.run_id.ftype.gzip",
+                        "layout": "project.run_index.run_id.ftype.gzip",
                     },
                     ".csv": {
-                        "layout": "project.sample_id.run_id.ftype",
+                        "layout": "project.run_index.run_id.ftype",
                     },
                 },
             },
@@ -301,7 +301,7 @@ class test_s3_matcher(unittest.TestCase):
         self.assertFalse(parsed_key)
 
     def test_generate_artifact(self):
-        artifact_layout = "project|sample_id|run_id"
+        artifact_layout = "project|run_index|run_id"
         parsed_key = {
             "project": "project1",
             "run_index": "sample1",

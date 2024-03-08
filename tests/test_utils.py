@@ -90,7 +90,7 @@ class test_utils(unittest.TestCase):
         self.s3_client.put_object(
             Bucket="mscape-birm-ont-prod",
             Key="mscape.sample-test.run-test.csv",
-            Body=b"sample_id,run_id\nsample-test,run-test",
+            Body=b"run_index,run_id\nsample-test,run-test",
         )
         resp = self.s3_client.head_object(
             Bucket="mscape-birm-ont-prod",
@@ -123,7 +123,13 @@ class test_utils(unittest.TestCase):
         self.example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "climb_id": "test_climb_id",
+                "run_index": "test_sample_id",
+                "run_id": "test_run_id",
+                "source_id": "test_source_id",
+                "biosample_source_id": "",
+            }
 
             success, alert, payload = csv_create(
                 payload=self.example_match,
@@ -141,6 +147,8 @@ class test_utils(unittest.TestCase):
                 "climb_id": "test_climb_id",
                 "run_index": "test_sample_id",
                 "run_id": "test_run_id",
+                "source_id": "test_source_id",
+                "biosample_source_id": "test_biosample_source_id",
             }
 
             success, alert, payload = csv_create(
@@ -416,7 +424,7 @@ class test_utils(unittest.TestCase):
 
             self.assertTrue(success)
             self.assertFalse(alert)
-            self.assertEqual("S-1234567890", payload["climb_run_index"])
+            self.assertEqual("S-1234567890", payload["anonymised_run_index"])
 
     def test_onyx_identify_failure(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
@@ -441,13 +449,13 @@ class test_utils(unittest.TestCase):
 
             self.assertFalse(success)
             self.assertFalse(alert)
-            self.assertFalse("climb_sample_id" in payload)
+            self.assertFalse("anonymised_run_index" in payload)
 
     def test_onyx_reconcile(self):
         self.s3_client.put_object(
             Bucket="mscape-birm-ont-prod",
             Key="mscape.sample-test.run-test.csv",
-            Body=b"sample_id,run_id,adm1_country,adm2_region,study_centre_id\nsample-test,run-test,GB,GB-ENG,1234567890",
+            Body=b"run_index,run_id,adm1_country,adm2_region,study_centre_id\nsample-test,run-test,GB,GB-ENG,1234567890",
         )
         resp = self.s3_client.head_object(
             Bucket="mscape-birm-ont-prod",
@@ -534,7 +542,7 @@ class test_utils(unittest.TestCase):
             self.assertFalse(success)
             self.assertFalse(alert)
             self.assertIn(
-                "Onyx records for sample_id: S-1234567890 disagree for the following fields: adm1_country",
+                "Onyx records for run_index: S-1234567890 disagree for the following fields: adm1_country",
                 payload["onyx_errors"]["reconcile_errors"],
             )
 
@@ -582,7 +590,7 @@ class test_utils(unittest.TestCase):
         self.assertFalse(success)
         self.assertFalse(alert)
         self.assertIn(
-            "sample_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
+            "run_index contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
             payload["onyx_test_create_errors"]["run_index"],
         )
         self.assertIn(
