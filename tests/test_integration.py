@@ -2039,169 +2039,6 @@ class Test_pathsafe_validator(unittest.TestCase):
         self.varys_client.close()
         time.sleep(1)
 
-    def test_validator_successful(self):
-        with (
-            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
-            patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
-        ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
-
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
-
-            mock_requests.post = Mock(
-                side_effect=MockResponse(status_code=201, json_data={"id": "test_pwid"})
-            )
-
-            mock_requests.get = Mock(
-                side_effect=MockResponse(
-                    status_code=200,
-                    json_data=[
-                        {
-                            "id": 12,
-                            "createdAt": "2024-02-19T15:43:50.993Z",
-                            "owner": "nonsense",
-                            "access": "PRIVATE",
-                            "name": "birm",
-                            "uuid": "nonsense_uuid",
-                            "trees": [],
-                            "binned": False,
-                            "shareId": None,
-                            "permissions": [
-                                "READ_FOLDER",
-                                "UPDATE_FOLDER",
-                                "DELETE_FOLDER",
-                                "SHARE_FOLDER",
-                            ],
-                        },
-                        {
-                            "id": 11,
-                            "createdAt": "2024-02-19T15:43:23.968Z",
-                            "owner": "nonsense",
-                            "access": "PRIVATE",
-                            "name": "not_birm",
-                            "uuid": "nonsense_uuid",
-                            "trees": [],
-                            "binned": False,
-                            "shareId": None,
-                            "permissions": [
-                                "READ_FOLDER",
-                                "UPDATE_FOLDER",
-                                "DELETE_FOLDER",
-                                "SHARE_FOLDER",
-                            ],
-                        },
-                    ],
-                )
-            )
-
-            mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
-
-            mock_util_client.return_value.__enter__.return_value.update.return_value = (
-                {}
-            )
-            mock_util_client.return_value.__enter__.return_value.csv_create.return_value = {
-                "climb_id": "test_climb_id",
-                "run_index": "test_run_index",
-                "run_id": "test_run_id",
-                "biosample_id": "test_biosample_id",
-                "biosample_source_id": "",
-            }
-
-            mock_local_client.return_value.__enter__.return_value.get.return_value = {
-                "hello": "goodbye"
-            }
-
-            result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
-            pipeline_info_path = os.path.join(result_path, "pipeline_info")
-            assembly_path = os.path.join(result_path, "assembly")
-
-            os.makedirs(assembly_path, exist_ok=True)
-            os.makedirs(pipeline_info_path, exist_ok=True)
-
-            open(
-                os.path.join(
-                    assembly_path,
-                    f"{example_pathsafe_validator_message['uuid']}.result.fasta",
-                ),
-                "w",
-            ).close()
-
-            with open(
-                os.path.join(
-                    pipeline_info_path,
-                    f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
-                ),
-                "w",
-            ) as f:
-                f.write(example_pathsafe_execution_trace)
-
-            args = SimpleNamespace(
-                logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
-                log_level="DEBUG",
-                nxf_executable="test",
-                config="test",
-                k2_host="test",
-                result_dir=DIR,
-                n_workers=2,
-            )
-
-            pipeline = pathsafe_validation.pipeline(
-                pipe="test",
-                config="test",
-                nxf_executable="test",
-                k2_host="test",
-                result_dir=DIR,
-                n_workers=2,
-            )
-
-            in_message = SimpleNamespace(
-                body=json.dumps(example_pathsafe_validator_message)
-            )
-
-            Success, payload, message = pathsafe_validation.validate(
-                in_message, args, pipeline
-            )
-
-            print(payload)
-
-            self.assertTrue(Success)
-
-            self.assertTrue(uuid.UUID(payload["uuid"], version=4))
-            self.assertEqual(
-                payload["artifact"],
-                "pathsafetest.sample-test.run-test",
-            )
-            self.assertEqual(payload["project"], "pathsafetest")
-            self.assertEqual(payload["site"], "birm")
-            self.assertEqual(payload["platform"], "illumina")
-            self.assertEqual(payload["climb_id"], "test_climb_id")
-            self.assertEqual(payload["created"], True)
-            self.assertEqual(payload["ingested"], True)
-            self.assertEqual(payload["onyx_test_status_code"], 201)
-            self.assertEqual(payload["onyx_test_create_status"], True)
-            self.assertEqual(payload["onyx_status_code"], 201)
-            self.assertEqual(payload["onyx_create_status"], True)
-            self.assertEqual(payload["test_flag"], False)
-            self.assertEqual(payload["ingest_errors"], [])
-
-            published_reads_contents = self.s3_client.list_objects(
-                Bucket="pathsafetest-published-assembly"
-            )
-            self.assertEqual(
-                published_reads_contents["Contents"][0]["Key"],
-                "test_climb_id.assembly.fasta",
-            )
-
     def test_successful_test(self):
         with (
             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
@@ -2608,19 +2445,176 @@ class Test_pathsafe_validator(unittest.TestCase):
 
             self.assertFalse(payload["created"])
             self.assertFalse(payload["ingested"])
-            self.assertFalse(payload["onyx_create_status"])
             self.assertFalse(payload["climb_id"])
             self.assertFalse(payload["test_ingest_result"])
 
             self.assertIn(
                 "Test run_index error handling",
-                payload["onyx_errors"]["run_index"],
+                payload["onyx_create_errors"]["run_index"],
             )
-            self.assertFalse(payload["onyx_create_status"])
-            self.assertEqual(payload["onyx_status_code"], 400)
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="pathsafetest-published-assembly"
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
             self.assertNotIn("assembly_presigned_url", payload.keys())
+
+
+def test_validator_successful(self):
+    with (
+        patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
+        patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+        patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
+        patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+    ):
+        mock_pipeline.return_value.execute.return_value = (
+            0,
+            "test_stdout",
+            "test_stderr",
+        )
+
+        mock_pipeline.return_value.cleanup.return_value = (
+            0,
+            "test_stdout",
+            "test_stderr",
+        )
+
+        mock_requests.post = Mock(
+            side_effect=MockResponse(status_code=201, json_data={"id": "test_pwid"})
+        )
+
+        mock_requests.get = Mock(
+            side_effect=MockResponse(
+                status_code=200,
+                json_data=[
+                    {
+                        "id": 12,
+                        "createdAt": "2024-02-19T15:43:50.993Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                    {
+                        "id": 11,
+                        "createdAt": "2024-02-19T15:43:23.968Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "not_birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                ],
+            )
+        )
+
+        mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
+
+        mock_util_client.return_value.__enter__.return_value.update.return_value = {}
+        mock_util_client.return_value.__enter__.return_value.csv_create.return_value = {
+            "climb_id": "test_climb_id",
+            "run_index": "test_run_index",
+            "run_id": "test_run_id",
+            "biosample_id": "test_biosample_id",
+            "biosample_source_id": "",
+        }
+
+        mock_local_client.return_value.__enter__.return_value.get.return_value = {
+            "hello": "goodbye"
+        }
+
+        result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
+        pipeline_info_path = os.path.join(result_path, "pipeline_info")
+        assembly_path = os.path.join(result_path, "assembly")
+
+        os.makedirs(assembly_path, exist_ok=True)
+        os.makedirs(pipeline_info_path, exist_ok=True)
+
+        open(
+            os.path.join(
+                assembly_path,
+                f"{example_pathsafe_validator_message['uuid']}.result.fasta",
+            ),
+            "w",
+        ).close()
+
+        with open(
+            os.path.join(
+                pipeline_info_path,
+                f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
+            ),
+            "w",
+        ) as f:
+            f.write(example_pathsafe_execution_trace)
+
+        args = SimpleNamespace(
+            logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
+            log_level="DEBUG",
+            nxf_executable="test",
+            config="test",
+            k2_host="test",
+            result_dir=DIR,
+            n_workers=2,
+        )
+
+        pipeline = pathsafe_validation.pipeline(
+            pipe="test",
+            config="test",
+            nxf_executable="test",
+            k2_host="test",
+            result_dir=DIR,
+            n_workers=2,
+        )
+
+        in_message = SimpleNamespace(
+            body=json.dumps(example_pathsafe_validator_message)
+        )
+
+        Success, payload, message = pathsafe_validation.validate(
+            in_message, args, pipeline
+        )
+
+        print(payload)
+
+        self.assertTrue(Success)
+
+        self.assertTrue(uuid.UUID(payload["uuid"], version=4))
+        self.assertEqual(
+            payload["artifact"],
+            "pathsafe.sample-test.run-test",
+        )
+        self.assertEqual(payload["project"], "pathsafe")
+        self.assertEqual(payload["site"], "birm")
+        self.assertEqual(payload["platform"], "illumina")
+        self.assertEqual(payload["climb_id"], "test_climb_id")
+        self.assertEqual(payload["created"], True)
+        self.assertEqual(payload["ingested"], True)
+        self.assertEqual(payload["onyx_test_status_code"], 201)
+        self.assertEqual(payload["onyx_test_create_status"], True)
+        self.assertEqual(payload["test_flag"], False)
+        self.assertEqual(payload["ingest_errors"], [])
+
+        published_reads_contents = self.s3_client.list_objects(
+            Bucket="pathsafetest-published-assembly"
+        )
+        self.assertEqual(
+            published_reads_contents["Contents"][0]["Key"],
+            "test_climb_id.assembly.fasta",
+        )

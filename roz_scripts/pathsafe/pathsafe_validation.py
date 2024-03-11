@@ -471,11 +471,11 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
-    submission_fail, alert, payload = csv_create(
+    submission_success, alert, payload = csv_create(
         log=log, payload=payload, test_submission=False
     )
 
-    if submission_fail:
+    if not submission_success:
         log.error(
             f"Submission to Onyx failed for UUID: {payload['uuid']}, sending result"
         )
