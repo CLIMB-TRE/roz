@@ -3,7 +3,7 @@
   "pathogen_configs": ["mscape"],
   "configs": {
     "mscape": {
-      "artifact_layout": "project|sample_id|run_id",
+      "artifact_layout": "project|run_index|run_id",
       "sites": {
         "bham.mscape": "analysis",
         "gpha.ukhsa.mscape": "analysis",
@@ -83,29 +83,29 @@
       "file_specs": {
         "illumina": {
           ".1.fastq.gz": {
-            "layout": "project.sample_id.run_id.direction.ftype.gzip"
+            "layout": "project.run_index.run_id.direction.ftype.gzip"
           },
           ".2.fastq.gz": {
-            "layout": "project.sample_id.run_id.direction.ftype.gzip"
+            "layout": "project.run_index.run_id.direction.ftype.gzip"
           },
           ".csv": {
-            "layout": "project.sample_id.run_id.ftype"
+            "layout": "project.run_index.run_id.ftype"
           }
         },
         "ont": {
           ".fastq.gz": {
             "sections": 5,
-            "layout": "project.sample_id.run_id.ftype.gzip"
+            "layout": "project.run_index.run_id.ftype.gzip"
           },
           ".csv": {
             "sections": 4,
-            "layout": "project.sample_id.run_id.ftype"
+            "layout": "project.run_index.run_id.ftype"
           }
         }
       }
     },
     "pathsafe": {
-      "artifact_layout": "project|sample_id|run_id",
+      "artifact_layout": "project|run_index|run_id",
       "sites": {
         "ukhsa.pathsafe": "uploader",
         "ssscdrl.pathsafe": "uploader",
@@ -155,13 +155,13 @@
       "file_specs": {
         "illumina": {
           ".1.fastq.gz": {
-            "layout": "project.sample_id.run_id.direction.ftype.gzip"
+            "layout": "project.run_index.run_id.direction.ftype.gzip"
           },
           ".2.fastq.gz": {
-            "layout": "project.sample_id.run_id.direction.ftype.gzip"
+            "layout": "project.run_index.run_id.direction.ftype.gzip"
           },
           ".csv": {
-            "layout": "project.sample_id.run_id.ftype"
+            "layout": "project.run_index.run_id.ftype"
           }
         }
       }

@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import csv
 
 import varys
 
@@ -19,6 +20,7 @@ from roz_scripts.utils.utils import (
     csv_field_checks,
     valid_character_checks,
     put_result_json,
+    s3_to_fh,
 )
 
 
@@ -57,7 +59,7 @@ def main():
         payload["validate"] = False
 
         log.info(
-            f"Checking that sample_id and run_id do not contain invalid characters for match UUID: {payload['uuid']}"
+            f"Checking that run_index and run_id do not contain invalid characters for match UUID: {payload['uuid']}"
         )
 
         valid_character_status, alert, payload = valid_character_checks(payload=payload)
@@ -84,7 +86,7 @@ def main():
             continue
 
         log.info(
-            f"Checking that sample_id and run_id match provided CSV for match UUID: {payload['uuid']}"
+            f"Checking that run_index and run_id match provided CSV for match UUID: {payload['uuid']}"
         )
 
         field_check_status, alert, payload = csv_field_checks(payload=payload)
@@ -142,6 +144,16 @@ def main():
 
         payload["onyx_test_create_status"] = True
         payload["validate"] = True
+
+        with s3_to_fh(
+            payload["files"][".csv"]["uri"],
+            payload["files"][".csv"]["etag"],
+        ) as csv_fh:
+            reader = csv.DictReader(csv_fh, delimiter=",")
+
+            metadata = next(reader)
+
+        payload["biosample_id"] = metadata["biosample_id"]
 
         varys_client.acknowledge_message(message)
 

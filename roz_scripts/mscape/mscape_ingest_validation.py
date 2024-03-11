@@ -86,7 +86,6 @@ class worker_pool_handler:
                 new_artifact_payload = {
                     "publish_timestamp": time.time_ns(),
                     "climb_id": payload["climb_id"],
-                    "sample_id": payload["climb_sample_id"],
                     "run_id": payload["climb_run_id"],
                     "site": payload["site"],
                     "platform": payload["platform"],
@@ -987,16 +986,16 @@ def validate(
         return (True, alert, payload, message)
 
     # Spot if metadata disagrees anywhere, don't act on it yet though
-    sample_reconcile_success, alert, payload = onyx_reconcile(
+    source_reconcile_success, alert, payload = onyx_reconcile(
         payload=payload,
-        identifier="sample_id",
+        identifier="biosample_id",
         fields_to_reconcile=[
             "adm1_country",
             "adm2_region",
             "study_centre_id",
-            "biosample_source_id",
             "input_type",
             "input_type_details",
+            "biosample_source_id",
             "is_approximate_date",
             "is_public_dataset",
             "received_date",
@@ -1118,7 +1117,12 @@ def validate(
 
     fraction_fail_outer = False
 
-    for fraction in ("dehumanised", "unclassified", "viral_and_unclassified", "viral"):
+    for fraction in (
+        "human_filtered",
+        "unclassified",
+        "viral_and_unclassified",
+        "viral",
+    ):
         fraction_fail_inner, fraction_alert, payload = read_fraction_upload(
             payload=payload,
             s3_client=s3_client,

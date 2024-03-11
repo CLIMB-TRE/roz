@@ -68,7 +68,7 @@ class test_utils(unittest.TestCase):
             "uploaders": ["testuser"],
             "match_timestamp": 1697036668222422871,
             "artifact": "mscape|sample-test|run-test",
-            "sample_id": "sample-test",
+            "run_index": "sample-test",
             "run_id": "run-test",
             "project": "mscape",
             "platform": "ont",
@@ -90,7 +90,7 @@ class test_utils(unittest.TestCase):
         self.s3_client.put_object(
             Bucket="mscape-birm-ont-prod",
             Key="mscape.sample-test.run-test.csv",
-            Body=b"sample_id,run_id\nsample-test,run-test",
+            Body=b"run_index,run_id\nsample-test,run-test",
         )
         resp = self.s3_client.head_object(
             Bucket="mscape-birm-ont-prod",
@@ -105,8 +105,8 @@ class test_utils(unittest.TestCase):
 
     def test_csv_create(self):
 
-        self.example_match["sample_id"] = "test:sample-test-2"
-        self.example_match["run_id"] = "test:run-test-2"
+        self.example_match["run_index"] = "sample-test-2"
+        self.example_match["run_id"] = "run-test-2"
 
         self.s3_client.put_object(
             Bucket="mscape-birm-ont-prod",
@@ -123,7 +123,13 @@ class test_utils(unittest.TestCase):
         self.example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
-            mock_client.return_value.__enter__.return_value.csv_create.return_value = {}
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "climb_id": "test_climb_id",
+                "run_index": "test_sample_id",
+                "run_id": "test_run_id",
+                "biosample_id": "test_biosample_id",
+                "biosample_source_id": "",
+            }
 
             success, alert, payload = csv_create(
                 payload=self.example_match,
@@ -139,8 +145,10 @@ class test_utils(unittest.TestCase):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
                 "climb_id": "test_climb_id",
-                "sample_id": "test_sample_id",
+                "run_index": "test_sample_id",
                 "run_id": "test_run_id",
+                "biosample_id": "test_biosample_id",
+                "biosample_source_id": "test_biosample_source_id",
             }
 
             success, alert, payload = csv_create(
@@ -165,7 +173,7 @@ class test_utils(unittest.TestCase):
                         json_data={
                             "data": [],
                             "messages": {
-                                "sample_id": ["Test sample_id error handling"]
+                                "run_index": ["Test sample_id error handling"]
                             },
                         },
                     ),
@@ -193,7 +201,7 @@ class test_utils(unittest.TestCase):
                         json_data={
                             "data": [],
                             "messages": {
-                                "sample_id": ["Test sample_id error handling"]
+                                "run_index": ["Test sample_id error handling"]
                             },
                         },
                     ),
@@ -241,7 +249,7 @@ class test_utils(unittest.TestCase):
                         json_data={
                             "data": [],
                             "messages": {
-                                "sample_id": ["Test sample_id error handling"]
+                                "run_index": ["Test sample_id error handling"]
                             },
                         },
                     ),
@@ -258,7 +266,7 @@ class test_utils(unittest.TestCase):
             self.assertFalse(alert)
             self.assertIn(
                 "Test sample_id error handling",
-                payload["onyx_test_create_errors"]["sample_id"],
+                payload["onyx_test_create_errors"]["run_index"],
             )
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
@@ -323,7 +331,7 @@ class test_utils(unittest.TestCase):
 
     def test_csv_field_check_failure(self):
 
-        self.example_match["sample_id"] = "sample-test-2"
+        self.example_match["run_index"] = "sample-test-2"
         self.example_match["run_id"] = "run-test-2"
 
         success, alert, payload = csv_field_checks(payload=self.example_match)
@@ -334,7 +342,7 @@ class test_utils(unittest.TestCase):
         self.assertFalse(alert)
         self.assertIn(
             "Field does not match filename.",
-            payload["onyx_test_create_errors"]["sample_id"],
+            payload["onyx_test_create_errors"]["run_index"],
         )
         self.assertIn(
             "Field does not match filename.",
@@ -347,7 +355,7 @@ class test_utils(unittest.TestCase):
                 ({"yeet": "yeet", "climb_id": "test_id", "is_published": True},)
             )
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -364,7 +372,7 @@ class test_utils(unittest.TestCase):
         # Test artifact is not published
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -385,7 +393,7 @@ class test_utils(unittest.TestCase):
     def test_published_check_error(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -404,19 +412,19 @@ class test_utils(unittest.TestCase):
     def test_onyx_identify_true(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
 
             success, alert, payload = onyx_identify(
-                payload=self.example_match, log=self.log, identity_field="sample_id"
+                payload=self.example_match, log=self.log, identity_field="run_index"
             )
             print(payload)
 
             self.assertTrue(success)
             self.assertFalse(alert)
-            self.assertEqual("S-1234567890", payload["climb_sample_id"])
+            self.assertEqual("S-1234567890", payload["anonymised_run_index"])
 
     def test_onyx_identify_failure(self):
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
@@ -427,27 +435,27 @@ class test_utils(unittest.TestCase):
                         status_code=404,
                         json_data={
                             "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
+                            "messages": {"run_index": "Test sample_id error handling"},
                         },
                     ),
                 )
             )
 
             success, alert, payload = onyx_identify(
-                payload=self.example_match, log=self.log, identity_field="sample_id"
+                payload=self.example_match, log=self.log, identity_field="run_index"
             )
 
             print(payload)
 
             self.assertFalse(success)
             self.assertFalse(alert)
-            self.assertFalse("climb_sample_id" in payload)
+            self.assertFalse("anonymised_run_index" in payload)
 
     def test_onyx_reconcile(self):
         self.s3_client.put_object(
             Bucket="mscape-birm-ont-prod",
             Key="mscape.sample-test.run-test.csv",
-            Body=b"sample_id,run_id,adm1_country,adm2_region,study_centre_id\nsample-test,run-test,GB,GB-ENG,1234567890",
+            Body=b"run_index,run_id,adm1_country,adm2_region,study_centre_id\nsample-test,run-test,GB,GB-ENG,1234567890",
         )
         resp = self.s3_client.head_object(
             Bucket="mscape-birm-ont-prod",
@@ -458,7 +466,7 @@ class test_utils(unittest.TestCase):
         # Test
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -466,14 +474,14 @@ class test_utils(unittest.TestCase):
             mock_client.return_value.__enter__.return_value.filter.return_value = iter(
                 (
                     {
-                        "sample_id": "S-1234567890",
+                        "run_index": "S-1234567890",
                         "run_id": "R-12354453",
                         "adm1_country": "GB",
                         "adm2_region": "GB-ENG",
                         "study_centre_id": "1234567890",
                     },
                     {
-                        "sample_id": "S-1234567890",
+                        "run_index": "S-1234567890",
                         "run_id": "R-12354412312353",
                         "adm1_country": "GB",
                         "adm2_region": "GB-ENG",
@@ -485,7 +493,7 @@ class test_utils(unittest.TestCase):
             success, alert, payload = onyx_reconcile(
                 payload=self.example_match,
                 log=self.log,
-                identifier="sample_id",
+                identifier="run_index",
                 fields_to_reconcile=["adm1_country", "adm2_region", "study_centre_id"],
             )
 
@@ -498,7 +506,7 @@ class test_utils(unittest.TestCase):
         # Test failure
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -506,14 +514,14 @@ class test_utils(unittest.TestCase):
             mock_client.return_value.__enter__.return_value.filter.return_value = iter(
                 (
                     {
-                        "sample_id": "S-1234567890",
+                        "run_index": "S-1234567890",
                         "run_id": "R-12354453",
                         "adm1_country": "ES",
                         "adm2_region": "GB-ENG",
                         "study_centre_id": "1234567890",
                     },
                     {
-                        "sample_id": "S-1234567890",
+                        "run_index": "S-1234567890",
                         "run_id": "R-12354412312353",
                         "adm1_country": "GB",
                         "adm2_region": "GB-ENG",
@@ -525,7 +533,7 @@ class test_utils(unittest.TestCase):
             success, alert, payload = onyx_reconcile(
                 payload=self.example_match,
                 log=self.log,
-                identifier="sample_id",
+                identifier="run_index",
                 fields_to_reconcile=["adm1_country", "adm2_region", "study_centre_id"],
             )
 
@@ -534,7 +542,7 @@ class test_utils(unittest.TestCase):
             self.assertFalse(success)
             self.assertFalse(alert)
             self.assertIn(
-                "Onyx records for sample_id: S-1234567890 disagree for the following fields: adm1_country",
+                "Onyx records for run_index: S-1234567890 disagree for the following fields: adm1_country",
                 payload["onyx_errors"]["reconcile_errors"],
             )
 
@@ -542,7 +550,7 @@ class test_utils(unittest.TestCase):
         # Test no filter return
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -554,7 +562,7 @@ class test_utils(unittest.TestCase):
             success, alert, payload = onyx_reconcile(
                 payload=self.example_match,
                 log=self.log,
-                identifier="sample_id",
+                identifier="run_index",
                 fields_to_reconcile=["adm1_country", "adm2_region", "study_centre_id"],
             )
 
@@ -572,7 +580,7 @@ class test_utils(unittest.TestCase):
         self.assertFalse(alert)
 
     def test_valid_character_check_failure(self):
-        self.example_match["sample_id"] = "test:sample-test-2"
+        self.example_match["run_index"] = "test:sample-test-2"
         self.example_match["run_id"] = "test:run-test-2"
 
         success, alert, payload = valid_character_checks(payload=self.example_match)
@@ -582,8 +590,8 @@ class test_utils(unittest.TestCase):
         self.assertFalse(success)
         self.assertFalse(alert)
         self.assertIn(
-            "sample_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
-            payload["onyx_test_create_errors"]["sample_id"],
+            "run_index contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
+            payload["onyx_test_create_errors"]["run_index"],
         )
         self.assertIn(
             "run_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",

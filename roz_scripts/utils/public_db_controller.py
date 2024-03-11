@@ -106,10 +106,25 @@ def get_ncbi_blast():
 
     ftp.cwd("blast/db")
 
-    segments = ftp.nlst()
+    resp = ftp.nlst()
+
+    segments = [x for x in resp if x.endswith(".tar.gz")]
+
+    ftp.quit()
+
+    to_dl = {}
 
     for segment in segments:
         db = segment.split(".")[0]
+        if db not in ("nr", "nt"):
+            continue
+
+        if os.path.exists(os.path.join(base_db_path, "blast", db)):
+            continue
+
+        to_dl.setdefault(db, []).append(segment)
+
+    for db, segments in to_dl.items():
         if not os.path.exists(os.path.join(base_db_path, "blast", db)):
             if dry_run:
                 print(f"Would make dir: {os.path.join(base_db_path, 'blast', db)}")
@@ -117,32 +132,35 @@ def get_ncbi_blast():
             else:
                 os.makedirs(os.path.join(base_db_path, "blast", db))
 
-        if segment.endswith(".tar.gz") and db in ("nt", "nr"):
-            if dry_run:
-                print(
-                    f"Would get: {segment} to path: {str(os.path.join(base_db_path, 'blast', db))}"
-                )
-                continue
+        for segment in segments:
 
-            retry_count = 0
-            while retry_count < 3:
-                try:
-                    urllib.request.urlretrieve(
-                        f"ftp://ftp.ncbi.nlm.nih.gov/blast/db/{segment}",
-                        f"{base_db_path}/{segment}",
+            if segment.endswith(".tar.gz") and db in ("nt", "nr"):
+                if dry_run:
+                    print(
+                        f"Would get: {segment} to path: {str(os.path.join(base_db_path, 'blast', db))}"
                     )
-                except:
-                    retry_count += 1
                     continue
 
-            if retry_count == 3:
-                raise URLError("Failed to download file")
+                retry_count = 0
+                while retry_count < 3:
+                    if retry_count == 3:
+                        raise URLError("Failed to download file")
 
-            os.system(f"tar -xvf {base_db_path}/{segment} -C {base_db_path}/blast/{db}")
+                    try:
+                        urllib.request.urlretrieve(
+                            f"ftp://ftp.ncbi.nlm.nih.gov/blast/db/{segment}",
+                            f"{base_db_path}/{segment}",
+                        )
+                        break
+                    except:
+                        retry_count += 1
+                        continue
 
-            os.system(f"rm {base_db_path}/{segment}")
+                os.system(
+                    f"tar -xvf {base_db_path}/{segment} -C {base_db_path}/blast/{db}"
+                )
 
-    ftp.quit()
+                os.system(f"rm {base_db_path}/{segment}")
 
 
 def run():
@@ -173,6 +191,12 @@ def run():
                 continue
 
             get_k2_db(db, date, key)
+
+            try:
+                os.remove(os.path.join(base_db_path, "kraken2", db, "latest"))
+            except OSError:
+                pass
+
             os.symlink(
                 date,
                 os.path.join(base_db_path, "kraken2", db, "latest"),
@@ -205,6 +229,10 @@ def run():
             get_ncbi_taxonomy(
                 taxonomy_to_get[0], taxonomy_to_get[1], taxonomy_to_get[2]
             )
+            try:
+                os.remove(os.path.join(base_db_path, "taxonomy", "latest"))
+            except OSError:
+                pass
 
             os.symlink(
                 taxonomy_to_get[2],

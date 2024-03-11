@@ -1,4 +1,4 @@
-from roz_scripts.utils.utils import get_s3_credentials, init_logger
+from roz_scripts.utils.utils import get_s3_credentials, init_logger, s3_to_fh
 from roz_scripts.general.s3_controller import create_config_map
 from varys import Varys
 
@@ -10,6 +10,7 @@ import time
 import json
 import os
 import sys
+import csv
 
 
 def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:
@@ -315,9 +316,9 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
 
     ts = time.time_ns()
 
-    # Raise error if there's more than one sample id or run name (unpack the set like a tuple)
-    (sample_id,) = set(
-        x["parsed_fname"]["sample_id"] for x in artifact_dict["files"].values()
+    # Raise error if there's more than one run_index or run name (unpack the set like a tuple)
+    (run_index,) = set(
+        x["parsed_fname"]["run_index"] for x in artifact_dict["files"].values()
     )
 
     (run_id,) = set(
@@ -331,7 +332,7 @@ def generate_payload(index_tuple: tuple, existing_object_dict: dict) -> dict:
         "uploaders": list(set(x["submitter"] for x in artifact_dict["files"].values())),
         "match_timestamp": ts,
         "artifact": artifact,
-        "sample_id": sample_id,
+        "run_index": run_index,
         "run_id": run_id,
         "project": project,
         "platform": platform,

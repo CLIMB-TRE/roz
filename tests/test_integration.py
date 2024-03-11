@@ -218,8 +218,9 @@ example_match_message = {
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
     "artifact": "mscape|sample-test|run-test",
-    "sample_id": "sample-test",
+    "run_index": "sample-test",
     "run_id": "run-test",
+    "biosample_id": "test-source",
     "project": "mscape",
     "platform": "ont",
     "files": {
@@ -244,8 +245,9 @@ example_mismatch_match_message = {
     "uploaders": ["testuser"],
     "match_timestamp": 1697036668222422871,
     "artifact": "mscape|sample-test-2|run-test-2",
-    "sample_id": "sample-test-2",
+    "run_index": "sample-test-2",
     "run_id": "run-test-2",
+    "biosample_id": "test-source",
     "project": "mscape",
     "platform": "ont",
     "files": {
@@ -266,8 +268,9 @@ example_mismatch_match_message = {
 example_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
     "artifact": "mscape|sample-test|run-test",
-    "sample_id": "sample-test",
+    "run_index": "sample-test",
     "run_id": "run-test",
+    "biosample_id": "test-source",
     "project": "mscape",
     "uploaders": ["mscape-testuser"],
     "platform": "ont",
@@ -302,10 +305,11 @@ example_validator_message = {
 
 example_pathsafe_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "pathsafetest|sample-test|run-test",
-    "sample_id": "sample-test",
+    "artifact": "pathsafe|sample-test|run-test",
+    "run_index": "sample-test",
     "run_id": "run-test",
-    "project": "pathsafetest",
+    "biosample_id": "test-source",
+    "project": "pathsafe",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
     "ingest_timestamp": 1694780451766213337,
@@ -344,10 +348,11 @@ example_pathsafe_validator_message = {
 
 example_pathsafe_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
-    "artifact": "pathsafetest|sample-test|run-test",
-    "sample_id": "sample-test",
+    "artifact": "pathsafe|sample-test|run-test",
+    "run_index": "sample-test",
     "run_id": "run-test",
-    "project": "pathsafetest",
+    "biosample_id": "test-source",
+    "project": "pathsafe",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
     "ingest_timestamp": 1694780451766213337,
@@ -387,8 +392,9 @@ example_pathsafe_test_validator_message = {
 example_test_validator_message = {
     "uuid": "b7a4bf27-9305-40e4-9b6b-ed4eb8f5dca6",
     "artifact": "mscape|sample_test|run-test",
-    "sample_id": "sample-test",
+    "run_index": "sample-test",
     "run_id": "run-test",
+    "biosample_id": "test-source",
     "project": "mscape",
     "uploaders": ["mscape-testuser"],
     "platform": "ont",
@@ -471,6 +477,11 @@ example_execution_trace_human = """task_id	hash	native_id	name	status	exit	submi
 22	55/6248c5	nf-556248c5bf00e5694d83b81b36eb019d	ingest:extract_all:extract_fractions:bgzip_extracted_taxa (2)	COMPLETED	0	2023-12-14 22:14:13.061	1m 38s	181ms	87.9%	3.1 MB	5.6 MB	1.7 MB	838.3 KB
 21	19/d1c288	nf-19d1c28844e360082ae73ef34ee95b52	ingest:extract_all:extract_fractions:bgzip_extracted_taxa (1)	COMPLETED	0	2023-12-14 22:14:12.919	2m 41s	2m 32s	497.5%	13.1 MB	522.5 MB	17.2 GB	8.7 GB
 19	8c/292cce	nf-8c292cce85d72effaa636db6ad0098ab	ingest:extract_all:extract_taxa:bgzip_extracted_taxa (3)	COMPLETED	0	2023-12-14 22:14:12.692	3m 34s	3m 21s	476.5%	13.3 MB	585.3 MB	18.6 GB	9.4 GB
+"""
+
+example_pathsafe_execution_trace = """task_id	hash	native_id	name	status	exit	submit	duration	realtime	%cpu	peak_rss	peak_vmem	rchar	wchar
+1	c8/ff67a6	nf-c8ff67a652a85eda6287589d2e7cd49f	ingest:get_params_and_versions:get_params	COMPLETED	0	2023-12-14 21:27:52.842	13.2s	84ms	55.8%	3.3 MB	5.6 MB	65.2 KB	4.9 KB
+3	80/6be72c	nf-806be72cd3bb8ac04caa16b2e232e757	ingest:get_params_and_versions:get_versions	COMPLETED	0	2023-12-14 21:27:53.449	14.6s	1.8s	97.2%	43 MB	56.7 MB	13.8 MB	9 KB
 """
 
 example_reads_summary = [
@@ -594,7 +605,7 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertIsNotNone(message)
         message_dict = json.loads(message.body)
 
-        self.assertEqual(message_dict["sample_id"], "sample-test")
+        self.assertEqual(message_dict["run_index"], "sample-test")
         self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
         self.assertEqual(message_dict["run_id"], "run-test")
         self.assertEqual(message_dict["project"], "mscape")
@@ -656,7 +667,7 @@ class Test_S3_matcher(unittest.TestCase):
 
         message_dict = json.loads(message_2.body)
 
-        self.assertEqual(message_dict["sample_id"], "sample-test")
+        self.assertEqual(message_dict["run_index"], "sample-test")
         self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
         self.assertEqual(message_dict["run_id"], "run-test")
         self.assertEqual(message_dict["project"], "mscape")
@@ -693,8 +704,8 @@ class Test_ingest(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-subteam1.birm.mscape-results")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("sample_id,run_id,project,platform,site\n")
-            f.write("sample-test,run-test,mscape,ont,birm")
+            f.write("run_index,run_id,biosample_id,project,platform,site\n")
+            f.write("sample-test,run-test,test-source,mscape,ont,birm")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
@@ -788,7 +799,7 @@ class Test_ingest(unittest.TestCase):
 
             message_dict = json.loads(message.body)
 
-            self.assertEqual(message_dict["sample_id"], "sample-test")
+            self.assertEqual(message_dict["run_index"], "sample-test")
             self.assertEqual(message_dict["artifact"], "mscape|sample-test|run-test")
             self.assertEqual(message_dict["run_id"], "run-test")
             self.assertEqual(message_dict["project"], "mscape")
@@ -837,7 +848,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-published-read-fractions")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("sample_id,run_id,project,platform,site\n")
+            f.write("run_index,run_id,project,platform,site\n")
             f.write("sample-test,run-test,mscape,ont,birm")
 
         self.s3_client.upload_file(
@@ -931,8 +942,10 @@ class Test_mscape_validator(unittest.TestCase):
 
             mock_client.return_value.__enter__.return_value.csv_create.return_value = {
                 "climb_id": "test_climb_id",
-                "sample_id": "sample-test",
+                "run_index": "sample-test",
                 "run_id": "run-test",
+                "biosample_id": "test_biosample_id",
+                "biosample_source_id": "test_biosample_source_id",
             }
 
             mock_client.return_value.__enter__.return_value.identify = Mock(
@@ -942,7 +955,7 @@ class Test_mscape_validator(unittest.TestCase):
                         status_code=404,
                         json_data={
                             "data": [],
-                            "messages": {"sample_id": "Test sample_id error handling"},
+                            "messages": {"run_index": "Test run_index error handling"},
                         },
                     ),
                 )
@@ -972,7 +985,9 @@ class Test_mscape_validator(unittest.TestCase):
                 ),
                 "w",
             ).close()
-            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
             open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
             open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
             open(
@@ -1136,7 +1151,9 @@ class Test_mscape_validator(unittest.TestCase):
             os.makedirs(binned_reads_path, exist_ok=True)
             os.makedirs(read_fraction_path, exist_ok=True)
 
-            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
             open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
             open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
             open(
@@ -1426,7 +1443,7 @@ class Test_mscape_validator(unittest.TestCase):
                         json_data={
                             "data": [],
                             "messages": {
-                                "sample_id": ["Test sample_id error handling"]
+                                "run_index": ["Test run_index error handling"]
                             },
                         },
                     ),
@@ -1526,7 +1543,7 @@ class Test_mscape_validator(unittest.TestCase):
             )
 
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -1624,8 +1641,8 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual("test_version", payload["scylla_version"])
 
             self.assertIn(
-                "Test sample_id error handling",
-                payload["onyx_create_errors"]["sample_id"],
+                "Test run_index error handling",
+                payload["onyx_create_errors"]["run_index"],
             )
             self.assertFalse(payload["onyx_create_status"])
 
@@ -1677,7 +1694,7 @@ class Test_mscape_validator(unittest.TestCase):
                         json_data={
                             "data": [],
                             "messages": {
-                                "sample_id": ["Test sample_id error handling"]
+                                "run_index": ["Test run_index error handling"]
                             },
                         },
                     ),
@@ -1777,7 +1794,7 @@ class Test_mscape_validator(unittest.TestCase):
             )
 
             mock_client.return_value.__enter__.return_value.identify.return_value = {
-                "field": "sample_id",
+                "field": "run_index",
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
@@ -1802,7 +1819,9 @@ class Test_mscape_validator(unittest.TestCase):
                 ),
                 "w",
             ).close()
-            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
             open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
             open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
             open(
@@ -1932,429 +1951,667 @@ class Test_mscape_validator(unittest.TestCase):
             )
 
 
-# class Test_pathsafe_validator(unittest.TestCase):
-#     def setUp(self):
-#         self.server = ThreadedMotoServer()
-#         self.server.start()
-
-#         os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-#         os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-#         os.environ["AWS_SECURITY_TOKEN"] = "testing"
-#         os.environ["AWS_SESSION_TOKEN"] = "testing"
-#         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-
-#         os.environ["UNIT_TESTING"] = "True"
-
-#         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
-#         self.s3_client.create_bucket(Bucket="pathsafetest-birm-illumina-prod")
-#         self.s3_client.create_bucket(Bucket="pathsafetest-published-assembly")
-
-#         with open(TEST_CSV_FILENAME, "w") as f:
-#             f.write("sample_id,run_id,project,platform,site\n")
-#             f.write("sample-test,run-test,pathsafetest,ont,birm")
-
-#         self.s3_client.upload_file(
-#             TEST_CSV_FILENAME,
-#             "pathsafetest-birm-illumina-prod",
-#             "pathsafetest.sample-test.run-test.csv",
-#         )
-
-#         resp = self.s3_client.head_object(
-#             Bucket="pathsafetest-birm-illumina-prod",
-#             Key="pathsafetest.sample-test.run-test.csv",
-#         )
-
-#         self.log = utils.init_logger(
-#             "pathsafe.validate", PATHSAFE_VALIDATION_LOG_FILENAME, "DEBUG"
-#         )
-
-#         csv_etag = resp["ETag"].replace('"', "")
-
-#         example_pathsafe_validator_message["files"][".csv"]["etag"] = csv_etag
-#         example_pathsafe_test_validator_message["files"][".csv"]["etag"] = csv_etag
-
-#         config = {
-#             "version": "0.1",
-#             "profiles": {
-#                 "roz": {
-#                     "username": "guest",
-#                     "password": "guest",
-#                     "amqp_url": "127.0.0.1",
-#                     "port": 5672,
-#                 }
-#             },
-#         }
-
-#         with open(VARYS_CFG_PATH, "w") as f:
-#             json.dump(config, f, ensure_ascii=False)
-
-#         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
-#         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
-#         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-#         os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
-#         os.environ["ONYX_ROZ_PASSWORD"] = "password"
-#         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
-
-#         self.varys_client = Varys("roz", TEST_MESSAGE_LOG_FILENAME)
-
-#     def tearDown(self):
-#         credentials = pika.PlainCredentials("guest", "guest")
-
-#         connection = pika.BlockingConnection(
-#             pika.ConnectionParameters("localhost", credentials=credentials)
-#         )
-#         channel = connection.channel()
-
-#         channel.queue_delete(queue="inbound.to_validate.pathsafetest")
-#         channel.queue_delete(queue="inbound.new_artifact.pathsafe")
-#         channel.queue_delete(queue="inbound.results.pathsafe.birm")
-
-#         connection.close()
-
-#         os.remove(TEST_CSV_FILENAME)
-
-#         self.server.stop()
-#         self.varys_client.close()
-#         time.sleep(1)
-
-#     def test_validator_successful(self):
-#         with (
-#             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-#             patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
-#             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-#             patch("roz_scripts.pathsafe_validation.requests.post") as mock_requests,
-#         ):
-#             mock_pipeline.return_value.execute.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_pipeline.return_value.cleanup.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_requests.return_value = MockResponse(
-#                 status_code=201, json_data={"id": "test_pwid"}
-#             )
-
-#             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
-
-#             mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
-#                 status_code=200
-#             )
-
-#             mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-#                 status_code=201, json_data={"data": {"climb_id": "test_climb_id"}}
-#             )
-
-#             mock_local_client.return_value.__enter__.return_value.get.return_value = {
-#                 "hello": "goodbye"
-#             }
-
-#             result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
-#             pipeline_info_path = os.path.join(result_path, "pipeline_info")
-#             assembly_path = os.path.join(result_path, "assembly")
-
-#             os.makedirs(assembly_path, exist_ok=True)
-#             os.makedirs(pipeline_info_path, exist_ok=True)
-
-#             open(
-#                 os.path.join(
-#                     assembly_path,
-#                     f"{example_pathsafe_validator_message['uuid']}.result.fasta",
-#                 ),
-#                 "w",
-#             ).close()
-
-#             with open(
-#                 os.path.join(
-#                     pipeline_info_path,
-#                     f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
-#                 ),
-#                 "w",
-#             ) as f:
-#                 f.write(example_execution_trace)
-
-#             args = SimpleNamespace(
-#                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
-#                 log_level="DEBUG",
-#                 nxf_executable="test",
-#                 config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             pipeline = pathsafe_validation.pipeline(
-#                 pipe="test",
-#                 config="test",
-#                 nxf_executable="test",
-#                 config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             in_message = SimpleNamespace(
-#                 body=json.dumps(example_pathsafe_validator_message)
-#             )
-
-#             Success, payload, message = pathsafe_validation.validate(
-#                 in_message, args, pipeline
-#             )
-
-#             self.assertTrue(Success)
-
-#             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
-#             self.assertEqual(
-#                 payload["artifact"],
-#                 "pathsafetest.sample-test.run-test",
-#             )
-#             self.assertEqual(payload["project"], "pathsafetest")
-#             self.assertEqual(payload["site"], "birm")
-#             self.assertEqual(payload["platform"], "illumina")
-#             self.assertEqual(payload["climb_id"], "test_climb_id")
-#             self.assertEqual(payload["created"], True)
-#             self.assertEqual(payload["ingested"], True)
-#             self.assertEqual(payload["onyx_test_status_code"], 201)
-#             self.assertEqual(payload["onyx_test_create_status"], True)
-#             self.assertEqual(payload["onyx_status_code"], 201)
-#             self.assertEqual(payload["onyx_create_status"], True)
-#             self.assertEqual(payload["test_flag"], False)
-#             self.assertEqual(payload["ingest_errors"], [])
-
-#             published_reads_contents = self.s3_client.list_objects(
-#                 Bucket="pathsafetest-published-assembly"
-#             )
-#             self.assertEqual(
-#                 published_reads_contents["Contents"][0]["Key"],
-#                 "test_climb_id.assembly.fasta",
-#             )
-
-#             resp = requests.get(payload["assembly_presigned_url"])
-
-#             self.assertTrue(resp.ok)
-
-#     def test_successful_test(self):
-#         with (
-#             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-#             patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
-#             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-#             patch("roz_scripts.pathsafe_validation.requests.post") as mock_requests,
-#         ):
-#             mock_pipeline.return_value.execute.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_pipeline.return_value.cleanup.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_requests.return_value = MockResponse(
-#                 status_code=201, json_data={"id": "test_pwid"}
-#             )
-
-#             mock_pipeline.return_value.cmd.return_value.__str__.return_value = (
-#                 "Hello pytest :)"
-#             )
-
-#             mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
-#                 status_code=200
-#             )
-
-#             mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-#                 status_code=201, json_data={"data": {"climb_id": "test_climb_id"}}
-#             )
-
-#             mock_local_client.return_value.__enter__.return_value.get.return_value = {
-#                 "hello": "goodbye"
-#             }
-
-#             result_path = os.path.join(
-#                 DIR, example_pathsafe_test_validator_message["uuid"]
-#             )
-#             pipeline_info_path = os.path.join(result_path, "pipeline_info")
-#             assembly_path = os.path.join(result_path, "assembly")
-
-#             os.makedirs(assembly_path, exist_ok=True)
-#             os.makedirs(pipeline_info_path, exist_ok=True)
-
-#             open(
-#                 os.path.join(
-#                     assembly_path,
-#                     f"{example_pathsafe_test_validator_message['uuid']}.result.fasta",
-#                 ),
-#                 "w",
-#             ).close()
-
-#             with open(
-#                 os.path.join(
-#                     pipeline_info_path,
-#                     f"execution_trace_{example_pathsafe_test_validator_message['uuid']}.txt",
-#                 ),
-#                 "w",
-#             ) as f:
-#                 f.write(example_execution_trace)
-
-#             args = SimpleNamespace(
-#                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
-#                 log_level="DEBUG",
-#                 nxf_executable="test",
-#                 config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             pipeline = pathsafe_validation.pipeline(
-#                 pipe="test",
-#                 config="test",
-#                 nxf_executable="test",
-#                 config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             in_message = SimpleNamespace(
-#                 body=json.dumps(example_pathsafe_test_validator_message)
-#             )
-
-#             Success, payload, message = pathsafe_validation.validate(
-#                 in_message, args, pipeline
-#             )
-
-#             self.assertFalse(Success)
-
-#             self.assertFalse(payload["created"])
-#             self.assertFalse(payload["ingested"])
-#             self.assertFalse(payload["onyx_create_status"])
-#             self.assertFalse(payload["climb_id"])
-#             self.assertTrue(payload["test_ingest_result"])
-#             self.assertFalse(payload["ingest_errors"])
-
-#             published_reads_contents = self.s3_client.list_objects(
-#                 Bucket="pathsafetest-published-assembly"
-#             )
-#             self.assertNotIn("Contents", published_reads_contents.keys())
-#             self.assertNotIn("assembly_presigned_url", payload.keys())
-
-#     def test_onyx_fail(self):
-#         with (
-#             patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-#             patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
-#             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-#             patch("roz_scripts.pathsafe_validation.requests.post") as mock_requests,
-#         ):
-#             mock_pipeline.return_value.execute.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_pipeline.return_value.cleanup.return_value = (
-#                 0,
-#                 "test_stdout",
-#                 "test_stderr",
-#             )
-
-#             mock_requests.return_value = MockResponse(
-#                 status_code=201, json_data={"id": "test_pwid"}
-#             )
-#             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
-
-#             mock_util_client.return_value.__enter__.return_value._update.return_value = MockResponse(
-#                 status_code=400
-#             )
-
-#             mock_local_client.return_value.__enter__.return_value.get.return_value = {
-#                 "hello": "goodbye"
-#             }
-
-#             mock_util_client.return_value.__enter__.return_value._csv_create.return_value.__next__.return_value = MockResponse(
-#                 status_code=400,
-#                 json_data={
-#                     "data": [],
-#                     "messages": {"sample_id": "Test sample_id error handling"},
-#                 },
-#                 ok=False,
-#             )
-
-#             result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
-#             pipeline_info_path = os.path.join(result_path, "pipeline_info")
-#             assembly_path = os.path.join(result_path, "assembly")
-
-#             os.makedirs(assembly_path, exist_ok=True)
-#             os.makedirs(pipeline_info_path, exist_ok=True)
-
-#             open(
-#                 os.path.join(
-#                     assembly_path,
-#                     f"{example_pathsafe_validator_message['uuid']}.result.fasta",
-#                 ),
-#                 "w",
-#             ).close()
-
-#             with open(
-#                 os.path.join(
-#                     pipeline_info_path,
-#                     f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
-#                 ),
-#                 "w",
-#             ) as f:
-#                 f.write(example_execution_trace)
-
-#             args = SimpleNamespace(
-#                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
-#                 log_level="DEBUG",
-#                 nxf_executable="test",
-#                 nxf_config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             pipeline = pathsafe_validation.pipeline(
-#                 pipe="test",
-#                 nxf_executable="test",
-#                 config="test",
-#                 k2_host="test",
-#                 result_dir=DIR,
-#                 n_workers=2,
-#             )
-
-#             in_message = SimpleNamespace(
-#                 body=json.dumps(example_pathsafe_validator_message)
-#             )
-
-#             Success, payload, message = pathsafe_validation.validate(
-#                 in_message, args, pipeline
-#             )
-
-#             self.assertFalse(Success)
-
-#             self.assertFalse(payload["created"])
-#             self.assertFalse(payload["ingested"])
-#             self.assertFalse(payload["onyx_create_status"])
-#             self.assertFalse(payload["climb_id"])
-#             self.assertFalse(payload["test_ingest_result"])
-
-#             self.assertIn(
-#                 "Test sample_id error handling",
-#                 payload["onyx_errors"]["sample_id"],
-#             )
-#             self.assertFalse(payload["onyx_create_status"])
-#             self.assertEqual(payload["onyx_status_code"], 400)
-
-#             published_reads_contents = self.s3_client.list_objects(
-#                 Bucket="pathsafetest-published-assembly"
-#             )
-#             self.assertNotIn("Contents", published_reads_contents.keys())
-#             self.assertNotIn("assembly_presigned_url", payload.keys())
+class Test_pathsafe_validator(unittest.TestCase):
+    def setUp(self):
+        self.server = ThreadedMotoServer()
+        self.server.start()
+
+        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+        os.environ["AWS_SECURITY_TOKEN"] = "testing"
+        os.environ["AWS_SESSION_TOKEN"] = "testing"
+        os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+
+        os.environ["UNIT_TESTING"] = "True"
+
+        self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
+        self.s3_client.create_bucket(Bucket="pathsafetest-birm-illumina-prod")
+        self.s3_client.create_bucket(Bucket="pathsafetest-published-assembly")
+
+        with open(TEST_CSV_FILENAME, "w") as f:
+            f.write("run_index,run_id,project,platform,site\n")
+            f.write("sample-test,run-test,pathsafetest,ont,birm")
+
+        self.s3_client.upload_file(
+            TEST_CSV_FILENAME,
+            "pathsafetest-birm-illumina-prod",
+            "pathsafetest.sample-test.run-test.csv",
+        )
+
+        resp = self.s3_client.head_object(
+            Bucket="pathsafetest-birm-illumina-prod",
+            Key="pathsafetest.sample-test.run-test.csv",
+        )
+
+        self.log = utils.init_logger(
+            "pathsafe.validate", PATHSAFE_VALIDATION_LOG_FILENAME, "DEBUG"
+        )
+
+        csv_etag = resp["ETag"].replace('"', "")
+
+        example_pathsafe_validator_message["files"][".csv"]["etag"] = csv_etag
+        example_pathsafe_test_validator_message["files"][".csv"]["etag"] = csv_etag
+
+        config = {
+            "version": "0.1",
+            "profiles": {
+                "roz": {
+                    "username": "guest",
+                    "password": "guest",
+                    "amqp_url": "127.0.0.1",
+                    "use_tls": False,
+                    "port": 5672,
+                }
+            },
+        }
+
+        with open(VARYS_CFG_PATH, "w") as f:
+            json.dump(config, f, ensure_ascii=False)
+
+        os.environ["VARYS_CFG"] = VARYS_CFG_PATH
+        os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
+        os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
+        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ONYX_ROZ_PASSWORD"] = "password"
+        os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
+        os.environ["PATHOGENWATCH_API_KEY"] = "nonsense"
+        os.environ["PATHOGENWATCH_ENDPOINT_URL"] = "nonsense"
+
+        self.varys_client = Varys("roz", TEST_MESSAGE_LOG_FILENAME)
+
+    def tearDown(self):
+        credentials = pika.PlainCredentials("guest", "guest")
+
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters("localhost", credentials=credentials)
+        )
+        channel = connection.channel()
+
+        channel.queue_delete(queue="inbound.to_validate.pathsafetest")
+        channel.queue_delete(queue="inbound.new_artifact.pathsafe")
+        channel.queue_delete(queue="inbound.results.pathsafe.birm")
+
+        connection.close()
+
+        os.remove(TEST_CSV_FILENAME)
+
+        self.server.stop()
+        self.varys_client.close()
+        time.sleep(1)
+
+    def test_successful_test(self):
+        with (
+            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
+            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_requests.post.return_value = MockResponse(
+                status_code=201, json_data={"id": "test_pwid"}
+            )
+
+            mock_requests.get.return_value = MockResponse(
+                status_code=200,
+                json_data=[
+                    {
+                        "id": 12,
+                        "createdAt": "2024-02-19T15:43:50.993Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                    {
+                        "id": 11,
+                        "createdAt": "2024-02-19T15:43:23.968Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "not_birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                ],
+            )
+
+            mock_pipeline.return_value.cmd.return_value.__str__.return_value = (
+                "Hello pytest :)"
+            )
+
+            mock_util_client.return_value.__enter__.return_value.update.return_value = (
+                MockResponse(status_code=200)
+            )
+
+            mock_util_client.return_value.__enter__.return_value.csv_create = Mock()
+
+            mock_local_client.return_value.__enter__.return_value.get.return_value = {
+                "hello": "goodbye"
+            }
+
+            result_path = os.path.join(
+                DIR, example_pathsafe_test_validator_message["uuid"]
+            )
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            assembly_path = os.path.join(result_path, "assembly")
+
+            os.makedirs(assembly_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    assembly_path,
+                    f"{example_pathsafe_test_validator_message['uuid']}.result.fasta",
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_pathsafe_test_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_pathsafe_execution_trace)
+
+            args = SimpleNamespace(
+                logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = pathsafe_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            in_message = SimpleNamespace(
+                body=json.dumps(example_pathsafe_test_validator_message)
+            )
+
+            Success, payload, message = pathsafe_validation.validate(
+                in_message, args, pipeline
+            )
+
+            print(payload)
+
+            self.assertFalse(Success)
+
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["onyx_create_status"])
+            self.assertFalse(payload["climb_id"])
+            self.assertTrue(payload["test_ingest_result"])
+            self.assertFalse(payload["ingest_errors"])
+
+            mock_util_client.assert_not_called()
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="pathsafetest-published-assembly"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
+            self.assertNotIn("assembly_presigned_url", payload.keys())
+
+    def test_onyx_fail(self):
+        with (
+            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
+            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_requests.post = Mock(
+                side_effect=MockResponse(status_code=201, json_data={"id": "test_pwid"})
+            )
+
+            mock_requests.get = Mock(
+                side_effect=MockResponse(
+                    status_code=200,
+                    json_data=[
+                        {
+                            "id": 12,
+                            "createdAt": "2024-02-19T15:43:50.993Z",
+                            "owner": "nonsense",
+                            "access": "PRIVATE",
+                            "name": "birm",
+                            "uuid": "nonsense_uuid",
+                            "trees": [],
+                            "binned": False,
+                            "shareId": None,
+                            "permissions": [
+                                "READ_FOLDER",
+                                "UPDATE_FOLDER",
+                                "DELETE_FOLDER",
+                                "SHARE_FOLDER",
+                            ],
+                        },
+                        {
+                            "id": 11,
+                            "createdAt": "2024-02-19T15:43:23.968Z",
+                            "owner": "nonsense",
+                            "access": "PRIVATE",
+                            "name": "not_birm",
+                            "uuid": "nonsense_uuid",
+                            "trees": [],
+                            "binned": False,
+                            "shareId": None,
+                            "permissions": [
+                                "READ_FOLDER",
+                                "UPDATE_FOLDER",
+                                "DELETE_FOLDER",
+                                "SHARE_FOLDER",
+                            ],
+                        },
+                    ],
+                )
+            )
+
+            mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
+
+            mock_util_client.return_value.__enter__.return_value.update = Mock(
+                side_effect=OnyxRequestError(
+                    message="test csv_create exception",
+                    response=MockResponse(
+                        status_code=400,
+                        json_data={
+                            "data": [],
+                            "messages": {
+                                "run_index": ["Test run_index error handling"]
+                            },
+                        },
+                    ),
+                )
+            )
+
+            mock_local_client.return_value.__enter__.return_value.get.return_value = {
+                "hello": "goodbye"
+            }
+
+            mock_util_client.return_value.__enter__.return_value.csv_create = Mock(
+                side_effect=OnyxRequestError(
+                    message="test csv_create exception",
+                    response=MockResponse(
+                        status_code=400,
+                        json_data={
+                            "data": [],
+                            "messages": {
+                                "run_index": ["Test run_index error handling"]
+                            },
+                        },
+                    ),
+                )
+            )
+
+            mock_util_client.return_value.__enter__.return_value.filter = Mock(
+                side_effect=[
+                    iter(
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "adm1_country": "GB-ENG",
+                                "adm2_region": "Some Region",
+                                "study_centre_id": "Some Study Centre ID",
+                                "biosample_source_id": "Some Biosample Source ID",
+                                "input_type": "Some Input Type",
+                                "input_type_details": "Some Input Type Details",
+                                "is_approximate_date": True,
+                                "is_public_dataset": True,
+                                "received_date": "Some Received Date",
+                                "collection_date": "Some Collection Date",
+                                "sample_latitude": "Some Sample Latitude",
+                                "sample_longitude": "Some Sample Longitude",
+                                "sample_source": "Some Sample Source",
+                                "sample_type": "Some Sample Type",
+                                "sequence_purpose": "Some Sequence Purpose",
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "adm1_country": "GB-ENG",
+                                "adm2_region": "Some Region",
+                                "study_centre_id": "Some Study Centre ID",
+                                "biosample_source_id": "Some Biosample Source ID",
+                                "input_type": "Some Input Type",
+                                "input_type_details": "Some Input Type Details",
+                                "is_approximate_date": True,
+                                "is_public_dataset": True,
+                                "received_date": "Some Received Date",
+                                "collection_date": "Some Collection Date",
+                                "sample_latitude": "Some Sample Latitude",
+                                "sample_longitude": "Some Sample Longitude",
+                                "sample_source": "Some Sample Source",
+                                "sample_type": "Some Sample Type",
+                                "sequence_purpose": "Some Sequence Purpose",
+                            },
+                        ]
+                    ),
+                    iter(
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            },
+                        ]
+                    ),
+                    iter(
+                        (
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                        )
+                    ),
+                ]
+            )
+
+            mock_util_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "run_index",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
+
+            result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            assembly_path = os.path.join(result_path, "assembly")
+
+            os.makedirs(assembly_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    assembly_path,
+                    f"{example_pathsafe_validator_message['uuid']}.result.fasta",
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_pathsafe_execution_trace)
+
+            args = SimpleNamespace(
+                logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                nxf_config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = pathsafe_validation.pipeline(
+                pipe="test",
+                nxf_executable="test",
+                config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            in_message = SimpleNamespace(
+                body=json.dumps(example_pathsafe_validator_message)
+            )
+
+            Success, payload, message = pathsafe_validation.validate(
+                in_message, args, pipeline
+            )
+
+            print(payload)
+
+            self.assertFalse(Success)
+
+            self.assertFalse(payload["created"])
+            self.assertFalse(payload["ingested"])
+            self.assertFalse(payload["climb_id"])
+            self.assertFalse(payload["test_ingest_result"])
+
+            self.assertIn(
+                "Test run_index error handling",
+                payload["onyx_create_errors"]["run_index"],
+            )
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="pathsafetest-published-assembly"
+            )
+            self.assertNotIn("Contents", published_reads_contents.keys())
+            self.assertNotIn("assembly_presigned_url", payload.keys())
+
+    def test_validator_successful(self):
+        with (
+            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
+            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_requests.post.return_value = MockResponse(
+                status_code=201, json_data={"id": "test_pwid"}
+            )
+
+            mock_requests.get.return_value = MockResponse(
+                status_code=200,
+                json_data=[
+                    {
+                        "id": 12,
+                        "createdAt": "2024-02-19T15:43:50.993Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                    {
+                        "id": 11,
+                        "createdAt": "2024-02-19T15:43:23.968Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "not_birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                ],
+            )
+
+            mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
+
+            mock_util_client.return_value.__enter__.return_value.update.return_value = (
+                {}
+            )
+            mock_util_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "climb_id": "test_climb_id",
+                "run_index": "test_run_index",
+                "run_id": "test_run_id",
+                "biosample_id": "test_biosample_id",
+                "biosample_source_id": "",
+            }
+
+            mock_local_client.return_value.__enter__.return_value.get.return_value = {
+                "site": "birm"
+            }
+
+            result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            assembly_path = os.path.join(result_path, "assembly")
+
+            os.makedirs(assembly_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    assembly_path,
+                    f"{example_pathsafe_validator_message['uuid']}.result.fasta",
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_pathsafe_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_pathsafe_execution_trace)
+
+            args = SimpleNamespace(
+                logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            pipeline = pathsafe_validation.pipeline(
+                pipe="test",
+                config="test",
+                nxf_executable="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+            )
+
+            in_message = SimpleNamespace(
+                body=json.dumps(example_pathsafe_validator_message)
+            )
+
+            Success, payload, message = pathsafe_validation.validate(
+                in_message, args, pipeline
+            )
+
+            print(payload)
+
+            self.assertTrue(Success)
+
+            self.assertTrue(uuid.UUID(payload["uuid"], version=4))
+            self.assertEqual(
+                payload["artifact"],
+                "pathsafe|sample-test|run-test",
+            )
+            self.assertEqual(payload["project"], "pathsafe")
+            self.assertEqual(payload["site"], "birm")
+            self.assertEqual(payload["platform"], "illumina")
+            self.assertEqual(payload["climb_id"], "test_climb_id")
+            self.assertEqual(payload["created"], True)
+            self.assertEqual(payload["published"], True)
+            self.assertEqual(payload["onyx_test_status_code"], 201)
+            self.assertEqual(payload["onyx_test_create_status"], True)
+            self.assertEqual(payload["test_flag"], False)
+            self.assertEqual(payload["ingest_errors"], [])
+
+            published_reads_contents = self.s3_client.list_objects(
+                Bucket="pathsafetest-published-assembly"
+            )
+            self.assertEqual(
+                published_reads_contents["Contents"][0]["Key"],
+                "test_climb_id.assembly.fasta",
+            )
