@@ -2456,7 +2456,6 @@ class Test_pathsafe_validator(unittest.TestCase):
 
             mock_util_client.return_value.__enter__.return_value.filter = Mock(
                 side_effect=[
-                    iter(()),
                     iter(
                         [
                             {
