@@ -2534,7 +2534,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             }
 
             mock_local_client.return_value.__enter__.return_value.get.return_value = {
-                "hello": "goodbye"
+                "site": "birm"
             }
 
             result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
