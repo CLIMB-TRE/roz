@@ -2595,7 +2595,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
             self.assertEqual(
                 payload["artifact"],
-                "pathsafe.sample-test.run-test",
+                "pathsafe|sample-test|run-test",
             )
             self.assertEqual(payload["project"], "pathsafe")
             self.assertEqual(payload["site"], "birm")
