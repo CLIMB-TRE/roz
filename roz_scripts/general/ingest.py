@@ -153,7 +153,7 @@ def main():
 
             metadata = next(reader)
 
-        payload["source_id"] = metadata["source_id"]
+        payload["biosample_id"] = metadata["biosample_id"]
 
         varys_client.acknowledge_message(message)
 

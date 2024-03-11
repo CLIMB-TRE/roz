@@ -127,7 +127,7 @@ class test_utils(unittest.TestCase):
                 "climb_id": "test_climb_id",
                 "run_index": "test_sample_id",
                 "run_id": "test_run_id",
-                "source_id": "test_source_id",
+                "biosample_id": "test_biosample_id",
                 "biosample_source_id": "",
             }
 
@@ -147,7 +147,7 @@ class test_utils(unittest.TestCase):
                 "climb_id": "test_climb_id",
                 "run_index": "test_sample_id",
                 "run_id": "test_run_id",
-                "source_id": "test_source_id",
+                "biosample_id": "test_biosample_id",
                 "biosample_source_id": "test_biosample_source_id",
             }
 

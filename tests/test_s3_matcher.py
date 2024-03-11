@@ -571,7 +571,7 @@ class test_s3_matcher(unittest.TestCase):
         self.s3_client.put_object(
             Bucket="project1-site1-illumina-prod",
             Key="project1.sample1.run1.csv",
-            Body="source_id\ntest_source_id",
+            Body="biosample_id\ntest_biosample_id",
         )
 
         existing_object_dict = {

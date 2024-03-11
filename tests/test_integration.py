@@ -220,7 +220,7 @@ example_match_message = {
     "artifact": "mscape|sample-test|run-test",
     "run_index": "sample-test",
     "run_id": "run-test",
-    "source_id": "test-source",
+    "biosample_id": "test-source",
     "project": "mscape",
     "platform": "ont",
     "files": {
@@ -247,7 +247,7 @@ example_mismatch_match_message = {
     "artifact": "mscape|sample-test-2|run-test-2",
     "run_index": "sample-test-2",
     "run_id": "run-test-2",
-    "source_id": "test-source",
+    "biosample_id": "test-source",
     "project": "mscape",
     "platform": "ont",
     "files": {
@@ -270,7 +270,7 @@ example_validator_message = {
     "artifact": "mscape|sample-test|run-test",
     "run_index": "sample-test",
     "run_id": "run-test",
-    "source_id": "test-source",
+    "biosample_id": "test-source",
     "project": "mscape",
     "uploaders": ["mscape-testuser"],
     "platform": "ont",
@@ -308,7 +308,7 @@ example_pathsafe_validator_message = {
     "artifact": "pathsafe|sample-test|run-test",
     "run_index": "sample-test",
     "run_id": "run-test",
-    "source_id": "test-source",
+    "biosample_id": "test-source",
     "project": "pathsafe",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
@@ -351,7 +351,7 @@ example_pathsafe_test_validator_message = {
     "artifact": "pathsafe|sample-test|run-test",
     "run_index": "sample-test",
     "run_id": "run-test",
-    "source_id": "test-source",
+    "biosample_id": "test-source",
     "project": "pathsafe",
     "uploaders": ["mscape-testuser"],
     "platform": "illumina",
@@ -394,7 +394,7 @@ example_test_validator_message = {
     "artifact": "mscape|sample_test|run-test",
     "run_index": "sample-test",
     "run_id": "run-test",
-    "source_id": "test-source",
+    "biosample_id": "test-source",
     "project": "mscape",
     "uploaders": ["mscape-testuser"],
     "platform": "ont",
@@ -704,7 +704,7 @@ class Test_ingest(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-subteam1.birm.mscape-results")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("run_index,run_id,source_id,project,platform,site\n")
+            f.write("run_index,run_id,biosample_id,project,platform,site\n")
             f.write("sample-test,run-test,test-source,mscape,ont,birm")
 
         self.s3_client.upload_file(
@@ -944,7 +944,7 @@ class Test_mscape_validator(unittest.TestCase):
                 "climb_id": "test_climb_id",
                 "run_index": "sample-test",
                 "run_id": "run-test",
-                "source_id": "test_source_id",
+                "biosample_id": "test_biosample_id",
                 "biosample_source_id": "test_biosample_source_id",
             }
 
@@ -985,7 +985,9 @@ class Test_mscape_validator(unittest.TestCase):
                 ),
                 "w",
             ).close()
-            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
             open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
             open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
             open(
@@ -1149,7 +1151,9 @@ class Test_mscape_validator(unittest.TestCase):
             os.makedirs(binned_reads_path, exist_ok=True)
             os.makedirs(read_fraction_path, exist_ok=True)
 
-            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
             open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
             open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
             open(
@@ -1815,7 +1819,9 @@ class Test_mscape_validator(unittest.TestCase):
                 ),
                 "w",
             ).close()
-            open(os.path.join(read_fraction_path, "dehumanised.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
             open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
             open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
             open(
@@ -2107,7 +2113,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "climb_id": "test_climb_id",
                 "run_index": "test_run_index",
                 "run_id": "test_run_id",
-                "source_id": "test_source_id",
+                "biosample_id": "test_biosample_id",
                 "biosample_source_id": "",
             }
 
@@ -2447,6 +2453,104 @@ class Test_pathsafe_validator(unittest.TestCase):
                     ),
                 )
             )
+
+            mock_util_client.return_value.__enter__.return_value.filter = Mock(
+                side_effect=[
+                    iter(()),
+                    iter(
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "adm1_country": "GB-ENG",
+                                "adm2_region": "Some Region",
+                                "study_centre_id": "Some Study Centre ID",
+                                "biosample_source_id": "Some Biosample Source ID",
+                                "input_type": "Some Input Type",
+                                "input_type_details": "Some Input Type Details",
+                                "is_approximate_date": True,
+                                "is_public_dataset": True,
+                                "received_date": "Some Received Date",
+                                "collection_date": "Some Collection Date",
+                                "sample_latitude": "Some Sample Latitude",
+                                "sample_longitude": "Some Sample Longitude",
+                                "sample_source": "Some Sample Source",
+                                "sample_type": "Some Sample Type",
+                                "sequence_purpose": "Some Sequence Purpose",
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "adm1_country": "GB-ENG",
+                                "adm2_region": "Some Region",
+                                "study_centre_id": "Some Study Centre ID",
+                                "biosample_source_id": "Some Biosample Source ID",
+                                "input_type": "Some Input Type",
+                                "input_type_details": "Some Input Type Details",
+                                "is_approximate_date": True,
+                                "is_public_dataset": True,
+                                "received_date": "Some Received Date",
+                                "collection_date": "Some Collection Date",
+                                "sample_latitude": "Some Sample Latitude",
+                                "sample_longitude": "Some Sample Longitude",
+                                "sample_source": "Some Sample Source",
+                                "sample_type": "Some Sample Type",
+                                "sequence_purpose": "Some Sequence Purpose",
+                            },
+                        ]
+                    ),
+                    iter(
+                        [
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                                "batch_id": "Some Batch ID",
+                                "bioinformatics_protocol": "Some Bioinformatics Protocol",
+                                "dehumanisation_protocol": "Some Dehumanisation Protocol",
+                                "extraction_enrichment_protocol": "Some Extraction Enrichment Protocol",
+                                "library_protocol": "Some Library Protocol",
+                                "sequencing_protocol": "Some Sequencing Protocol",
+                                "study_centre_id": "Some Study Centre ID",
+                            },
+                        ]
+                    ),
+                    iter(
+                        (
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                            {
+                                "yeet": "yeet",
+                                "climb_id": "test_id",
+                                "is_published": True,
+                            },
+                        )
+                    ),
+                ]
+            )
+
+            mock_util_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "run_index",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
 
             result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
             pipeline_info_path = os.path.join(result_path, "pipeline_info")

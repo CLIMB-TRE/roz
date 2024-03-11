@@ -988,7 +988,7 @@ def validate(
     # Spot if metadata disagrees anywhere, don't act on it yet though
     source_reconcile_success, alert, payload = onyx_reconcile(
         payload=payload,
-        identifier="source_id",
+        identifier="biosample_id",
         fields_to_reconcile=[
             "adm1_country",
             "adm2_region",
@@ -1117,7 +1117,12 @@ def validate(
 
     fraction_fail_outer = False
 
-    for fraction in ("dehumanised", "unclassified", "viral_and_unclassified", "viral"):
+    for fraction in (
+        "human_filtered",
+        "unclassified",
+        "viral_and_unclassified",
+        "viral",
+    ):
         fraction_fail_inner, fraction_alert, payload = read_fraction_upload(
             payload=payload,
             s3_client=s3_client,
