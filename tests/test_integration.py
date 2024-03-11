@@ -2602,7 +2602,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertEqual(payload["platform"], "illumina")
             self.assertEqual(payload["climb_id"], "test_climb_id")
             self.assertEqual(payload["created"], True)
-            self.assertEqual(payload["ingested"], True)
+            self.assertEqual(payload["published"], True)
             self.assertEqual(payload["onyx_test_status_code"], 201)
             self.assertEqual(payload["onyx_test_create_status"], True)
             self.assertEqual(payload["test_flag"], False)
