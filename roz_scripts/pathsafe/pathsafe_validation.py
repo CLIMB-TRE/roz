@@ -482,6 +482,8 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
+    payload["created"] = True
+
     s3_fail, payload = assembly_to_s3(
         payload=payload,
         s3_client=s3_client,
