@@ -2476,50 +2476,48 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "test_stderr",
             )
 
-            mock_requests.post = Mock(
-                side_effect=MockResponse(status_code=201, json_data={"id": "test_pwid"})
+            mock_requests.post.return_value = MockResponse(
+                status_code=201, json_data={"id": "test_pwid"}
             )
 
-            mock_requests.get = Mock(
-                side_effect=MockResponse(
-                    status_code=200,
-                    json_data=[
-                        {
-                            "id": 12,
-                            "createdAt": "2024-02-19T15:43:50.993Z",
-                            "owner": "nonsense",
-                            "access": "PRIVATE",
-                            "name": "birm",
-                            "uuid": "nonsense_uuid",
-                            "trees": [],
-                            "binned": False,
-                            "shareId": None,
-                            "permissions": [
-                                "READ_FOLDER",
-                                "UPDATE_FOLDER",
-                                "DELETE_FOLDER",
-                                "SHARE_FOLDER",
-                            ],
-                        },
-                        {
-                            "id": 11,
-                            "createdAt": "2024-02-19T15:43:23.968Z",
-                            "owner": "nonsense",
-                            "access": "PRIVATE",
-                            "name": "not_birm",
-                            "uuid": "nonsense_uuid",
-                            "trees": [],
-                            "binned": False,
-                            "shareId": None,
-                            "permissions": [
-                                "READ_FOLDER",
-                                "UPDATE_FOLDER",
-                                "DELETE_FOLDER",
-                                "SHARE_FOLDER",
-                            ],
-                        },
-                    ],
-                )
+            mock_requests.get.return_value = MockResponse(
+                status_code=200,
+                json_data=[
+                    {
+                        "id": 12,
+                        "createdAt": "2024-02-19T15:43:50.993Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                    {
+                        "id": 11,
+                        "createdAt": "2024-02-19T15:43:23.968Z",
+                        "owner": "nonsense",
+                        "access": "PRIVATE",
+                        "name": "not_birm",
+                        "uuid": "nonsense_uuid",
+                        "trees": [],
+                        "binned": False,
+                        "shareId": None,
+                        "permissions": [
+                            "READ_FOLDER",
+                            "UPDATE_FOLDER",
+                            "DELETE_FOLDER",
+                            "SHARE_FOLDER",
+                        ],
+                    },
+                ],
             )
 
             mock_pipeline.return_value.cmd.return_value.__str__ = "Hello pytest :)"
