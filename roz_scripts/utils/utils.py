@@ -504,7 +504,10 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
             try:
                 # Consider making this a bit more versatile (explicitly input the identifier)
                 response = client.identify(
-                    payload["project"], identity_field, payload[identity_field]
+                    project=payload["project"],
+                    field=identity_field,
+                    value=payload[identity_field],
+                    site=payload["site"],
                 )
 
                 payload[f"anonymised_{identity_field}"] = response["identifier"]
