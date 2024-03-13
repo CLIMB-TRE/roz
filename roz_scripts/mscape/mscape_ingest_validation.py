@@ -1091,6 +1091,7 @@ def validate(
         log.error(
             f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
         )
+        payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
@@ -1223,12 +1224,21 @@ def validate(
         log.error(
             f"Failed to upload files to S3 or update Onyx for CID: {payload['climb_id']} with match UUID: {payload['uuid']}"
         )
+        payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
     publish_fail, alert, payload = onyx_update(
         payload=payload, log=log, fields={"is_published": True}
     )
+
+    if alert:
+        log.error(
+            f"Failed to update Onyx record for UUID: {payload['uuid']} with CID: {payload['climb_id']}"
+        )
+        payload["rerun"] = True
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, hcid_alerts, payload, message)
 
     if publish_fail:
         ingest_pipe.cleanup(stdout=stdout)
