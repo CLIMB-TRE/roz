@@ -102,7 +102,7 @@ class worker_pool_handler:
             )
 
             if payload["rerun"]:
-                if self._retry_log[payload["uuid"]] >= 3:
+                if self._retry_log[payload["uuid"]] >= 5:
                     self._log.error(
                         f"Message for UUID: {payload['uuid']} failed after {self._retry_log[payload['uuid']]} attempts, sending to dead letter queue"
                     )
