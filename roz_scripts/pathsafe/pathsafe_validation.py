@@ -280,6 +280,7 @@ def pathogenwatch_submission(
 
     # change site to submit_org for pathogenwatch benefit
     fields["submit_org"] = fields.pop("site")
+    fields["sequencing_platform"] = fields.pop("platform")
 
     body = {
         "url": payload["assembly_presigned_url"],
