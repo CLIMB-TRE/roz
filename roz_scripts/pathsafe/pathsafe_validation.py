@@ -583,7 +583,7 @@ def run(args):
     try:
         while True:
             message = varys_client.receive(
-                exchange="inbound.to_validate.pathsafetest",
+                exchange="inbound.to_validate.pathsafe",
                 queue_suffix="validator",
                 prefetch_count=args.n_workers,
             )
