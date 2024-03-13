@@ -154,35 +154,9 @@ def run(args):
         end_timestamp = datetime.datetime.now(datetime.timezone.utc).replace(
             microsecond=0
         )
-        for project, project_config in config_map.items():
-            for bucket, bucket_arn in project_config["project_buckets"]:
-                if bucket == "ingest":
-                    objects = get_bucket_objects(
-                        s3_client=s3_client, bucket_arn=bucket_arn
-                    )
-                    sent_etags.setdefault(bucket_arn, set())
-
-                    for obj in objects:
-                        last_modified = obj["LastModified"]
-                        if start_timestamp <= last_modified <= end_timestamp:
-                            if (obj["Key"], obj["ETag"]) not in sent_etags[bucket_arn]:
-                                log.info(f"New object: {obj['Key']}")
-
-                                message = obj_to_message(obj)
-                                log.info(
-                                    f"Sending message for new object: {obj['Key']}: {message}"
-                                )
-                                varys_client.send(
-                                    message=message,
-                                    exchange="inbound-s3",
-                                    queue_suffix="ingest",
-                                )
-                                sent_etags[bucket_arn].add((obj["Key"], obj["ETag"]))
-                            else:
-                                log.info(f"Object already sent: {obj['Key']}")
-
-            for site, site_config in project_config["sites"].items():
-                for bucket, bucket_arn in site_config["site_buckets"]:
+        try:
+            for project, project_config in config_map.items():
+                for bucket, bucket_arn in project_config["project_buckets"]:
                     if bucket == "ingest":
                         objects = get_bucket_objects(
                             s3_client=s3_client, bucket_arn=bucket_arn
@@ -196,11 +170,15 @@ def run(args):
                                     bucket_arn
                                 ]:
                                     log.info(f"New object: {obj['Key']}")
+
                                     message = obj_to_message(obj)
+                                    log.info(
+                                        f"Sending message for new object: {obj['Key']}: {message}"
+                                    )
                                     varys_client.send(
                                         message=message,
                                         exchange="inbound-s3",
-                                        queue_suffix="s3_matcher",
+                                        queue_suffix="ingest",
                                     )
                                     sent_etags[bucket_arn].add(
                                         (obj["Key"], obj["ETag"])
@@ -208,7 +186,38 @@ def run(args):
                                 else:
                                     log.info(f"Object already sent: {obj['Key']}")
 
-        start_timestamp = end_timestamp
+                for site, site_config in project_config["sites"].items():
+                    for bucket, bucket_arn in site_config["site_buckets"]:
+                        if bucket == "ingest":
+                            objects = get_bucket_objects(
+                                s3_client=s3_client, bucket_arn=bucket_arn
+                            )
+                            sent_etags.setdefault(bucket_arn, set())
+
+                            for obj in objects:
+                                last_modified = obj["LastModified"]
+                                if start_timestamp <= last_modified <= end_timestamp:
+                                    if (obj["Key"], obj["ETag"]) not in sent_etags[
+                                        bucket_arn
+                                    ]:
+                                        log.info(f"New object: {obj['Key']}")
+                                        message = obj_to_message(obj)
+                                        varys_client.send(
+                                            message=message,
+                                            exchange="inbound-s3",
+                                            queue_suffix="s3_matcher",
+                                        )
+                                        sent_etags[bucket_arn].add(
+                                            (obj["Key"], obj["ETag"])
+                                        )
+                                    else:
+                                        log.info(f"Object already sent: {obj['Key']}")
+
+            start_timestamp = end_timestamp
+
+        except Exception as e:
+            log.error(f"S3 Notifications exception: {e}")
+            continue
 
 
 def main():
