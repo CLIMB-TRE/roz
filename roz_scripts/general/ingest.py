@@ -59,6 +59,36 @@ def main():
         payload["validate"] = False
 
         log.info(
+            f"Attempting to test create metadata record in onyx for match with UUID: {payload['uuid']}"
+        )
+        test_create_status, alert, payload = csv_create(
+            payload=payload, log=log, test_submission=True
+        )
+
+        if alert:
+            log.error(
+                "Something went wrong with the test create, more details available in the alert channel"
+            )
+            varys_client.send(
+                message=payload,
+                exchange=f"restricted-{payload['project']}-alert",
+                queue_suffix="ingest",
+            )
+            varys_client.nack_message(message)
+            continue
+
+        if not test_create_status:
+            log.info(f"Test create failed for UUID: {payload['uuid']}")
+            varys_client.acknowledge_message(message)
+            varys_client.send(
+                message=payload,
+                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                queue_suffix="s3_matcher",
+            )
+            put_result_json(payload=payload, log=log)
+            continue
+
+        log.info(
             f"Checking that run_index and run_id do not contain invalid characters for match UUID: {payload['uuid']}"
         )
 
@@ -103,36 +133,6 @@ def main():
         if not field_check_status:
             payload["validate"] = False
             log.info(f"Field checks failed for UUID: {payload['uuid']}")
-            varys_client.acknowledge_message(message)
-            varys_client.send(
-                message=payload,
-                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                queue_suffix="s3_matcher",
-            )
-            put_result_json(payload=payload, log=log)
-            continue
-
-        log.info(
-            f"Attempting to test create metadata record in onyx for match with UUID: {payload['uuid']}"
-        )
-        test_create_status, alert, payload = csv_create(
-            payload=payload, log=log, test_submission=True
-        )
-
-        if alert:
-            log.error(
-                "Something went wrong with the test create, more details available in the alert channel"
-            )
-            varys_client.send(
-                message=payload,
-                exchange=f"restricted-{payload['project']}-alert",
-                queue_suffix="ingest",
-            )
-            varys_client.nack_message(message)
-            continue
-
-        if not test_create_status:
-            log.info(f"Test create failed for UUID: {payload['uuid']}")
             varys_client.acknowledge_message(message)
             varys_client.send(
                 message=payload,
