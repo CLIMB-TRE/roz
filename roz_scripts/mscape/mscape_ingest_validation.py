@@ -55,7 +55,7 @@ class worker_pool_handler:
         )
 
     def callback(self, validate_result):
-        success, alert, payload, message = validate_result
+        success, alert, hcid_alerts, payload, message = validate_result
 
         if alert:
             self._log.error(

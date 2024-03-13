@@ -1061,8 +1061,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
-            Success, alert, payload, message = mscape_ingest_validation.validate(
-                in_message, args, pipeline
+            Success, alert, hcid_alerts, payload, message = (
+                mscape_ingest_validation.validate(in_message, args, pipeline)
             )
 
             print(payload)
@@ -1234,8 +1234,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
-            Success, alert, payload, message = mscape_ingest_validation.validate(
-                in_message, args, pipeline
+            Success, alert, hcid_alerts, payload, message = (
+                mscape_ingest_validation.validate(in_message, args, pipeline)
             )
 
             self.assertFalse(Success)
@@ -1376,8 +1376,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
-            Success, alert, payload, message = mscape_ingest_validation.validate(
-                in_message, args, pipeline
+            Success, alert, hcid_alerts, payload, message = (
+                mscape_ingest_validation.validate(in_message, args, pipeline)
             )
 
             print(payload)
@@ -1623,7 +1623,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
-            Success, alert, payload, message = mscape_ingest_validation.validate(
+            Success, alert, hcid_alerts, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
             )
 
@@ -1895,7 +1895,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
-            Success, alert, payload, message = mscape_ingest_validation.validate(
+            Success, alert, hcid_alerts, payload, message = mscape_ingest_validation.validate(
                 in_message, args, pipeline
             )
 
