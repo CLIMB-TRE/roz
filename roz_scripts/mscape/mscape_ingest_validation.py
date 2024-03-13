@@ -86,11 +86,18 @@ class worker_pool_handler:
                 new_artifact_payload = {
                     "publish_timestamp": time.time_ns(),
                     "climb_id": payload["climb_id"],
-                    "run_id": payload["climb_run_id"],
+                    "run_id": payload["anonymised_run_id"],
+                    "run_index": payload["anonymised_run_index"],
+                    "biosample_id": payload["anonymised_biosample_id"],
                     "site": payload["site"],
                     "platform": payload["platform"],
                     "match_uuid": payload["uuid"],
                 }
+
+                if payload.get("anonymised_biosample_source_id"):
+                    new_artifact_payload["biosample_source_id"] = payload[
+                        "anonymised_biosample_source_id"
+                    ]
 
                 self._varys_client.send(
                     message=new_artifact_payload,
@@ -851,6 +858,53 @@ def ret_0_parser(
     return (ingest_fail, payload)
 
 
+def handle_hcid(
+    log: logging.getLogger, payload: dict, result_path: str
+) -> tuple[bool, list, bool, dict]:
+    """Function to handle the parsing of HCID warnings output by the Scylla pipeline
+
+    Args:
+        log (logging.getLogger): Logger object
+        payload (dict): Payload dictionary
+        result_path (str): Path to the results directory
+
+    Returns:
+        tuple[bool, list, bool, dict]: Tuple containing a bool indicating whether the ingest has failed, a list of HCID alerts, a bool indicating whether to squawk in the alert channel and the updated payload dictionary
+    """
+
+    hcid_fail = False
+    alert = False
+
+    hcid_alerts = []
+
+    try:
+        hcid_path = os.path.join(result_path, "qc")
+
+        contents = os.listdir(hcid_path)
+
+        if not any(x.endswith(".warning") for x in contents):
+            return (hcid_fail, hcid_alerts, alert, payload)
+
+        for path in contents:
+            if path.endswith(".warning"):
+
+                hcid_message = json.load(open(os.path.join(hcid_path, path), "rt"))
+
+                hcid_alerts.append(hcid_message)
+
+    except Exception as e:
+        log.error(f"Unhandled exception in hcid warning parsing: {e}")
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Unhandled exception in hcid warning parsing: {e}"
+        )
+        hcid_fail = True
+        alert = True
+        return (hcid_fail, hcid_alerts, alert, payload)
+
+    return (hcid_fail, hcid_alerts, alert, payload)
+
+
 def validate(
     message: namedtuple,
     args: argparse.Namespace,
@@ -884,6 +938,7 @@ def validate(
     payload.setdefault("rerun", False)
 
     alert = False
+    hcid_alerts = False
 
     # This client is purely for Mscape, ignore all other messages
     if to_validate["project"] != "mscape":
@@ -1194,15 +1249,7 @@ def validate(
             f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_rc}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
         )
 
-    return (True, alert, payload, message)
-
-    # except BaseException as e:
-    #     log.error(
-    #         f"Unhandled exception for UUID: {payload['uuid']}, with CID: {payload['climb_id']}, exception: {e}"
-    #     )
-    #     alert = True
-    #     payload["rerun"] = True
-    #     return (False, alert, payload, message)
+    return (True, alert, hcid_alerts, payload, message)
 
 
 def run(args):
