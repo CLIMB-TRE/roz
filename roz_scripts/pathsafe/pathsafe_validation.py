@@ -288,7 +288,7 @@ def pathogenwatch_submission(
         "metadata": fields,
     }
 
-    r = requests.post(url=f"{base_url}/api/genomes/create", headers=headers, json=body)
+    r = requests.post(url=f"{base_url}/genomes/create", headers=headers, json=body)
 
     if r.status_code != 201:
         log.error(
