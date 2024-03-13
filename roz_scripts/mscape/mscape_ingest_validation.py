@@ -945,10 +945,10 @@ def validate(
         log.info(
             f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
         )
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     if to_validate["platform"] == "ont":
         fastq_unseen, alert, payload = ensure_file_unseen(
@@ -966,7 +966,7 @@ def validate(
             payload["ingest_errors"].append(
                 f"Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
             )
-            return (False, alert, payload, message)
+            return (False, alert, hcid_alerts, payload, message)
 
     elif to_validate["platform"] == "illumina":
         fastq_1_unseen, alert, payload = ensure_file_unseen(
@@ -991,7 +991,7 @@ def validate(
             payload["ingest_errors"].append(
                 f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
             )
-            return (False, alert, payload, message)
+            return (False, alert, hcid_alerts, payload, message)
 
     rc, stdout, stderr = execute_validation_pipeline(
         payload=payload, args=args, ingest_pipe=ingest_pipe
@@ -1020,7 +1020,7 @@ def validate(
             f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     ingest_fail, payload = ret_0_parser(
         log=log,
@@ -1030,7 +1030,7 @@ def validate(
 
     if ingest_fail:
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     if payload["test_flag"]:
         log.info(
@@ -1038,7 +1038,7 @@ def validate(
         )
         payload["test_ingest_result"] = True
         ingest_pipe.cleanup(stdout=stdout)
-        return (True, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     # Spot if metadata disagrees anywhere, don't act on it yet though
     source_reconcile_success, alert, payload = onyx_reconcile(
@@ -1091,12 +1091,12 @@ def validate(
             f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
         )
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     if not create_success:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     payload["onyx_create_status"] = True
     payload["created"] = True
@@ -1110,7 +1110,7 @@ def validate(
     if scylla_version_fail:
         log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     if payload["platform"] == "illumina":
         etag_fail, alert, payload = onyx_update(
@@ -1131,7 +1131,7 @@ def validate(
 
     if etag_fail:
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     log.info(
         f"Uploading files to long-term storage buckets for CID: {payload['climb_id']} after sucessful Onyx submission"
@@ -1223,7 +1223,7 @@ def validate(
             f"Failed to upload files to S3 or update Onyx for CID: {payload['climb_id']} with match UUID: {payload['uuid']}"
         )
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     publish_fail, alert, payload = onyx_update(
         payload=payload, log=log, fields={"is_published": True}
@@ -1231,7 +1231,7 @@ def validate(
 
     if publish_fail:
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, payload, message)
+        return (False, alert, hcid_alerts, payload, message)
 
     payload["published"] = True
     log.info(
