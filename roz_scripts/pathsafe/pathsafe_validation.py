@@ -19,6 +19,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
     put_result_json,
+    get_onyx_credentials,
 )
 from varys import Varys
 from onyx import OnyxClient
@@ -232,7 +233,9 @@ def pathogenwatch_submission(
     """
     pathogenwatch_fail = False
 
-    with OnyxClient(env_password=True) as client:
+    onyx_config = get_onyx_credentials()
+
+    with OnyxClient(config=onyx_config) as client:
         record = client.get(
             "pathsafe",
             payload["climb_id"],
