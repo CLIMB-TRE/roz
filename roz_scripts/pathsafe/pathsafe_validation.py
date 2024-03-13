@@ -571,6 +571,7 @@ def run(args):
 
     ingest_pipe = pipeline(
         pipe="CLIMB-TRE/path-safe_assembler",
+        branch="main",
         profile="docker",
         config=args.nxf_config,
         nxf_executable=args.nxf_executable,
@@ -582,7 +583,9 @@ def run(args):
     try:
         while True:
             message = varys_client.receive(
-                exchange="inbound.to_validate.pathsafetest", queue_suffix="validator"
+                exchange="inbound.to_validate.pathsafetest",
+                queue_suffix="validator",
+                prefetch_count=args.n_workers,
             )
 
             worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
