@@ -266,10 +266,10 @@ def pathogenwatch_submission(
 
     for folder in folders:
         if folder["name"].lower() == payload["site"]:
-            id = folder["id"]
+            folder_id = folder["id"]
             break
 
-    if not id:
+    if not folder_id:
         log.error(
             f"Failed to retrieve Pathogenwatch folder ID for site: {payload['site']}"
         )
