@@ -52,17 +52,17 @@ class worker_pool_handler:
         )
 
     def callback(self, validate_result):
-        success, alert, payload, message = validate_result
+        success, payload, message = validate_result
 
-        if alert:
-            self._log.error(
-                f"Alert flag set for UUID: {payload['uuid']}, manual intervention required"
-            )
-            self._varys_client.send(
-                message=payload,
-                exchange="restricted-mscape-announce",
-                queue_suffix="alert",
-            )
+        # if alert:
+        #     self._log.error(
+        #         f"Alert flag set for UUID: {payload['uuid']}, manual intervention required"
+        #     )
+        #     self._varys_client.send(
+        #         message=payload,
+        #         exchange="restricted-mscape-announce",
+        #         queue_suffix="alert",
+        #     )
 
         if success:
             self._log.info(
