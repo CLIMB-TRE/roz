@@ -433,7 +433,7 @@ def validate(
 
     if ingest_pipe.cmd:
         log.info(
-            f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {ingest_pipe.cmd}"
+            f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {" ".join(str(x) for x in ingest_pipe.cmd)}"
         )
 
     args.result_dir = Path(args.result_dir)
@@ -455,6 +455,7 @@ def validate(
         )
         payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
+        time.sleep(args.retry_delay)
         return (False, payload, message)
 
     ingest_fail, payload = ret_0_parser(
@@ -500,6 +501,8 @@ def validate(
             f"Failed to upload assembly to long-term storage bucket for UUID: {payload['uuid']}, sending result"
         )
         ingest_pipe.cleanup(stdout=stdout)
+        payload["rerun"] = True
+        time.sleep(args.retry_delay)
         return (False, payload, message)
 
     pathogenwatch_fail, payload = pathogenwatch_submission(
@@ -511,7 +514,9 @@ def validate(
         log.error(
             f"Pathogenwatch submission failed for UUID: {payload['uuid']}, sending result"
         )
+        payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
+        time.sleep(args.retry_delay)
         return (False, payload, message)
 
     unsuppress_fail, alert, payload = onyx_update(
@@ -522,8 +527,9 @@ def validate(
         log.error(
             f"Failed to unsuppress Onyx record for UUID: {payload['uuid']}, sending result"
         )
-
+        payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
+        time.sleep(args.retry_delay)
         return (False, payload, message)
 
     payload["published"] = True
@@ -622,6 +628,7 @@ def main():
         default=5,
         help="Number of workers to use for concurrent validation",
     )
+    parser.add_argument("--retry-delay", type=int, default=180, help="Time to wait before re-queuing a failed message")
     args = parser.parse_args()
 
     run(args)

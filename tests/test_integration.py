@@ -1049,6 +1049,7 @@ class Test_mscape_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = utils.pipeline(
@@ -1222,6 +1223,7 @@ class Test_mscape_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = utils.pipeline(
@@ -1366,6 +1368,7 @@ class Test_mscape_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = utils.pipeline(
@@ -1611,6 +1614,7 @@ class Test_mscape_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = utils.pipeline(
@@ -1623,8 +1627,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
-            Success, alert, hcid_alerts, payload, message = mscape_ingest_validation.validate(
-                in_message, args, pipeline
+            Success, alert, hcid_alerts, payload, message = (
+                mscape_ingest_validation.validate(in_message, args, pipeline)
             )
 
             print(payload)
@@ -1883,6 +1887,7 @@ class Test_mscape_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = utils.pipeline(
@@ -1895,8 +1900,8 @@ class Test_mscape_validator(unittest.TestCase):
 
             in_message = SimpleNamespace(body=json.dumps(test_message))
 
-            Success, alert, hcid_alerts, payload, message = mscape_ingest_validation.validate(
-                in_message, args, pipeline
+            Success, alert, hcid_alerts, payload, message = (
+                mscape_ingest_validation.validate(in_message, args, pipeline)
             )
 
             print(payload)
@@ -2150,6 +2155,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -2418,6 +2424,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -2570,6 +2577,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
+                retry_delay=2,
             )
 
             pipeline = pathsafe_validation.pipeline(

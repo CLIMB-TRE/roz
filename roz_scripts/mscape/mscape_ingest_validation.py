@@ -815,45 +815,44 @@ def ret_0_parser(
 
         payload["scylla_version"] = version
 
+        for process, trace in trace_dict.items():
+            if trace["exit"] != "0":
+                if (
+                    process.startswith("extract_taxa_reads")
+                    or process.startswith("extract_taxa_paired_reads")
+                ) and trace["exit"] == "2":
+                    payload.setdefault("ingest_errors", [])
+                    payload["ingest_errors"].append(
+                        "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
+                    )
+                    ingest_fail = True
+                elif (
+                    process.startswith("extract_taxa_reads")
+                    or process.startswith("extract_taxa_paired_reads")
+                ) and trace["exit"] == "3":
+                    continue
+                elif process.startswith("fastp") and trace["exit"] == "255":
+                    payload.setdefault("ingest_errors", [])
+                    payload["ingest_errors"].append(
+                        f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the mSCAPE admin team for assistance"
+                    )
+                    ingest_fail = True
+                else:
+                    payload.setdefault("ingest_errors", [])
+                    payload["ingest_errors"].append(
+                        f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
+                    )
+                    ingest_fail = True
+
     except Exception as pipeline_trace_exception:
         log.error(
             f"Could not open pipeline trace for UUID: {payload['uuid']} despite NXF exit code 0 due to error: {pipeline_trace_exception}"
         )
         payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append("Couldn't open nxf ingest pipeline trace")
+        payload["ingest_errors"].append("Could not parse Scylla pipeline trace")
         payload["rerun"] = True
         ingest_fail = True
-        # Wait 120 seconds, hopefully transient errors don't last that long 🙃
-        time.sleep(120)
-
-    for process, trace in trace_dict.items():
-        if trace["exit"] != "0":
-            if (
-                process.startswith("extract_taxa_reads")
-                or process.startswith("extract_taxa_paired_reads")
-            ) and trace["exit"] == "2":
-                payload.setdefault("ingest_errors", [])
-                payload["ingest_errors"].append(
-                    "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
-                )
-                ingest_fail = True
-            elif (
-                process.startswith("extract_taxa_reads")
-                or process.startswith("extract_taxa_paired_reads")
-            ) and trace["exit"] == "3":
-                continue
-            elif process.startswith("fastp") and trace["exit"] == "255":
-                payload.setdefault("ingest_errors", [])
-                payload["ingest_errors"].append(
-                    f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the mSCAPE admin team for assistance"
-                )
-                ingest_fail = True
-            else:
-                payload.setdefault("ingest_errors", [])
-                payload["ingest_errors"].append(
-                    f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
-                )
-                ingest_fail = True
+        time.sleep(args.retry_delay)
 
     return (ingest_fail, payload)
 
@@ -1020,6 +1019,7 @@ def validate(
             f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
+        time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     ingest_fail, payload = ret_0_parser(
@@ -1093,6 +1093,7 @@ def validate(
         )
         payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
+        time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     if not create_success:
@@ -1226,6 +1227,7 @@ def validate(
         )
         payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
+        time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     publish_fail, alert, payload = onyx_update(
@@ -1238,6 +1240,7 @@ def validate(
         )
         payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
+        time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     if publish_fail:
@@ -1312,9 +1315,12 @@ def main():
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)
+    parser.add_argument("--retry-delay", type=int, default=180)
     parser.add_argument(
         "--pipeline_timeout", type=int, default=43200
     )  # 12 hours, might not even be enough for larger datasets (e.g. promethion / N*Seq)
+
+    global args
     args = parser.parse_args()
 
     for i in (
