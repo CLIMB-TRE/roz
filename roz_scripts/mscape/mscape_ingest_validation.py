@@ -1029,6 +1029,7 @@ def validate(
     )
 
     if ingest_fail:
+        log.info(f"Validation pipeline failed for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
@@ -1038,7 +1039,7 @@ def validate(
         )
         payload["test_ingest_result"] = True
         ingest_pipe.cleanup(stdout=stdout)
-        return (False, alert, hcid_alerts, payload, message)
+        return (True, alert, hcid_alerts, payload, message)
 
     # Spot if metadata disagrees anywhere, don't act on it yet though
     source_reconcile_success, alert, payload = onyx_reconcile(
