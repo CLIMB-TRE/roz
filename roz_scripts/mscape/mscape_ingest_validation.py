@@ -134,7 +134,10 @@ class worker_pool_handler:
 
                     put_result_json(payload, self._log)
 
-                    self._varys_client.nack_message(message, requeue=False)
+                    self._varys_client.nack_message(message)
+                    raise ValueError(
+                        "Validation failed after 5 attempts, shutting down worker pool"
+                    )
                 else:
                     self._log.info(
                         f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
