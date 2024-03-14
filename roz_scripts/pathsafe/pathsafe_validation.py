@@ -10,6 +10,7 @@ import csv
 import requests
 import time
 import multiprocessing as mp
+import sys
 
 
 from roz_scripts.utils.utils import (
@@ -152,6 +153,7 @@ class worker_pool_handler:
             exchange="pathsafe-restricted-announce",
             queue_suffix="dead_worker",
         )
+
 
     def close(self):
         self.worker_pool.close()
@@ -603,6 +605,9 @@ def run(args):
     except:
         log.info("Shutting down worker pool")
         worker_pool.close()
+        varys_client.close()
+        time.sleep(1)
+        sys.exit(1)
 
 
 def main():
