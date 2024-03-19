@@ -307,7 +307,7 @@ def pathogenwatch_submission(
         )
         pathogenwatch_fail = True
 
-    pathogenwatch_uuid = r.json()["id"]
+    pathogenwatch_uuid = r.json()["uuid"]
 
     update_fail, alert, payload = onyx_update(
         payload=payload, fields={"pathogenwatch_uuid": pathogenwatch_uuid}, log=log

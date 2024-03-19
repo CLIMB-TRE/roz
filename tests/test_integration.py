@@ -2064,7 +2064,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
 
             mock_requests.post.return_value = MockResponse(
-                status_code=201, json_data={"id": "test_pwid"}
+                status_code=201, json_data={"id": "test_pwid", "uuid": "test_uuid"}
             )
 
             mock_requests.get.return_value = MockResponse(
@@ -2214,7 +2214,9 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
 
             mock_requests.post = Mock(
-                side_effect=MockResponse(status_code=201, json_data={"id": "test_pwid"})
+                side_effect=MockResponse(
+                    status_code=201, json_data={"id": "test_pwid", "uuid": "test_uuid"}
+                )
             )
 
             mock_requests.get = Mock(
@@ -2484,7 +2486,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
 
             mock_requests.post.return_value = MockResponse(
-                status_code=201, json_data={"id": "test_pwid"}
+                status_code=201, json_data={"id": "test_pwid", "uuid": "test_uuid"}
             )
 
             mock_requests.get.return_value = MockResponse(
