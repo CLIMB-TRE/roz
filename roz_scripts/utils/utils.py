@@ -131,8 +131,10 @@ class pipeline:
         try:
             pipeline_id = None
             for line in stdout.split("\n"):
-                if line.startswith("Launching"):
-                    pipeline_id = line.split(" ")[2].replace("[", "").replace("]", "")
+                if "Launching" in line:
+                    matches = re.findall("\[(\w*_\w*)\]", line)
+                    if len(matches) == 1:
+                        pipeline_id = matches[0]
 
             if not pipeline_id:
                 raise ValueError("Could not find pipeline ID in stdout")
