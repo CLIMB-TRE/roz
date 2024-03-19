@@ -239,6 +239,7 @@ def pathogenwatch_submission(
 
     onyx_config = get_onyx_credentials()
 
+    log.info(f"Submitting to Pathogenwatch for UUID: {payload['uuid']}")
     with OnyxClient(config=onyx_config) as client:
         record = client.get(
             "pathsafe",
@@ -343,7 +344,7 @@ def execute_assembly_pipeline(
         "fastq_2": payload["files"][".2.fastq.gz"]["uri"],
     }
 
-    log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}'")
+    log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}")
 
     log_path = Path(args.result_dir, payload["uuid"])
 
@@ -522,6 +523,8 @@ def validate(
         ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, payload, message)
+    
+    log.info(f"Pathogenwatch submission successful for UUID: {payload['uuid']}")
 
     unsuppress_fail, alert, payload = onyx_update(
         payload=payload, log=log, fields={"is_published": True}
