@@ -1051,8 +1051,8 @@ def validate(
         payload=payload,
         identifier="biosample_id",
         fields_to_reconcile=[
-            "adm1_country",
-            "adm2_region",
+            "iso_country",
+            "iso_region",
             "study_centre_id",
             "input_type",
             "input_type_details",
