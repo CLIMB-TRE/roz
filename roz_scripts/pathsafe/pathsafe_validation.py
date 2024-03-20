@@ -394,6 +394,14 @@ def ret_0_parser(
 
     for process, trace in trace_dict.items():
         if trace["exit"] != "0":
+            if process.startswith("etoki_assemble") and trace["exit"] == "155":
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Etoki assembly failed, likely due to insufficient coverage for UUID: {payload['uuid']}")
+                continue
+            
+            payload.setdefault("ingest_errors", [])
+            
             payload["ingest_errors"].append(
                 f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
             )
