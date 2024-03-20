@@ -1061,8 +1061,6 @@ def validate(
             "is_public_dataset",
             "received_date",
             "collection_date",
-            "sample_latitude",
-            "sample_longitude",
             "sample_source",
             "sample_type",
             "sequence_purpose",
