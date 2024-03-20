@@ -92,6 +92,7 @@ class worker_pool_handler:
                     "site": payload["site"],
                     "platform": payload["platform"],
                     "match_uuid": payload["uuid"],
+                    "project": payload["project"],
                 }
 
                 if payload.get("anonymised_biosample_source_id"):

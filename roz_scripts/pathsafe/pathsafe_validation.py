@@ -84,11 +84,13 @@ class worker_pool_handler:
                 new_artifact_payload = {
                     "publish_timestamp": time.time_ns(),
                     "climb_id": payload["climb_id"],
-                    "source_id": payload["source_id"],
-                    "run_id": payload["climb_run_id"],
+                    "run_id": payload["anonymised_run_id"],
+                    "run_index": payload["anonymised_run_index"],
+                    "biosample_id": payload["anonymised_biosample_id"],
                     "site": payload["site"],
                     "platform": payload["platform"],
                     "match_uuid": payload["uuid"],
+                    "project": payload["project"],
                 }
 
                 self._varys_client.send(
