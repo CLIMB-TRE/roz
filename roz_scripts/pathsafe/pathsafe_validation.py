@@ -21,6 +21,7 @@ from roz_scripts.utils.utils import (
     get_s3_credentials,
     put_result_json,
     get_onyx_credentials,
+    ensure_file_unseen,
 )
 from varys import Varys
 from onyx import OnyxClient
@@ -206,7 +207,7 @@ def assembly_to_s3(
         log.error(
             f"Failed to upload assembly to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {e}"
         )
-        payload["ingest_errors"].append(f"Failed to upload assembly to storage bucket")
+        payload["ingest_errors"].append("Failed to upload assembly to storage bucket")
         s3_fail = True
 
     if not s3_fail:
@@ -443,6 +444,30 @@ def validate(
 
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         return (False, payload, message)
+    
+    fastq_1_unseen, alert, payload = ensure_file_unseen(
+        etag_field="fastq_1_etag",
+        etag=to_validate["files"][".1.fastq.gz"]["etag"],
+        log=log,
+        payload=payload,
+    )
+
+    fastq_2_unseen, alert, payload = ensure_file_unseen(
+        etag_field="fastq_2_etag",
+        etag=to_validate["files"][".2.fastq.gz"]["etag"],
+        log=log,
+        payload=payload,
+    )
+
+    if not fastq_1_unseen or not fastq_2_unseen:
+        log.info(
+            f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the pathsafe admin team if you believe this to be in error."
+        )
+        return (False, payload, message)
 
     rc, stdout, stderr = execute_assembly_pipeline(
         payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
@@ -538,6 +563,19 @@ def validate(
     
     log.info(f"Pathogenwatch submission successful for UUID: {payload['uuid']}")
 
+    etag_fail, alert, payload = onyx_update(
+    payload=payload,
+    log=log,
+    fields={
+        "fastq_1_etag": payload["files"][".1.fastq.gz"]["etag"],
+        "fastq_2_etag": payload["files"][".2.fastq.gz"]["etag"],
+        },
+    )
+
+    if etag_fail:
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, payload, message)    
+
     unsuppress_fail, alert, payload = onyx_update(
         payload=payload, log=log, fields={"is_published": True}
     )
@@ -577,26 +615,6 @@ def run(args):
         auto_acknowledge=False,
     )
 
-    validation_payload_template = {
-        "uuid": "",
-        "artifact": "",
-        "project": "",
-        "ingest_timestamp": "",
-        "climb_id": False,
-        "site": "",
-        "created": False,
-        "published": False,
-        "onyx_test_status_code": False,
-        "onyx_test_create_errors": {},  # Dict
-        "onyx_test_create_status": False,
-        "onyx_status_code": False,
-        "onyx_errors": {},  # Dict
-        "onyx_create_status": False,
-        "ingest_errors": [],  # List,
-        "test_flag": True,  # Add this throughout
-        "test_ingest_result": False,
-    }
-
     ingest_pipe = pipeline(
         pipe="CLIMB-TRE/path-safe_assembler",
         branch="main",
@@ -617,8 +635,8 @@ def run(args):
             )
 
             worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
-    except:
-        log.info("Shutting down worker pool")
+    except BaseException as e:
+        log.info(f"Shutting down worker pool due do exception: {e}")
         worker_pool.close()
         varys_client.close()
         time.sleep(1)

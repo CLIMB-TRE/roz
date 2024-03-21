@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, mock_open, patch, MagicMock, call
+from unittest.mock import Mock, patch
 
 from roz_scripts import (
     s3_matcher,
@@ -9,13 +9,7 @@ from roz_scripts import (
     pathsafe_validation,
 )
 
-from onyx.exceptions import (
-    OnyxRequestError,
-    OnyxConnectionError,
-    OnyxServerError,
-    OnyxConfigError,
-    OnyxClientError,
-)
+from onyx.exceptions import OnyxRequestError
 
 from types import SimpleNamespace
 import multiprocessing as mp
@@ -23,7 +17,6 @@ import time
 import os
 import json
 from varys import Varys
-from moto import mock_s3
 from moto.server import ThreadedMotoServer
 import boto3
 import uuid
