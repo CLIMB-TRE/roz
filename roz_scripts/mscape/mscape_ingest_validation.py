@@ -245,13 +245,13 @@ def add_taxon_records(
         ) as read_summary_fh:
             summary = json.load(read_summary_fh)
 
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         log.info(
             f"Could not find reads_summary_combined.json, this probably means that there are insufficient binned taxa produced by scylla for UUID: {payload['uuid']}"
         )
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
-            f"Could not find reads_summary_combined.json, this probably means that no taxa were present above binning thresholds by scylla"
+            "Could not find reads_summary_combined.json, this probably means that no taxa were present above binning thresholds by scylla"
         )
         return (binned_read_fail, alert, payload)
 
@@ -313,7 +313,7 @@ def add_taxon_records(
                     s3_key,
                 )
 
-                taxon_dict[f"fastq_1"] = s3_uri
+                taxon_dict["fastq_1"] = s3_uri
 
             except Exception as add_taxon_record_exception:
                 log.error(
@@ -368,7 +368,7 @@ def push_taxon_reports(
     taxon_report_fail = False
     alert = False
 
-    taxon_report_path = os.path.join(result_path, f"classifications")
+    taxon_report_path = os.path.join(result_path, "classifications")
 
     try:
         reports = os.listdir(taxon_report_path)
@@ -396,7 +396,7 @@ def push_taxon_reports(
         )
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
-            f"Failed to upload taxon classification to storage bucket"
+            "Failed to upload taxon classification to storage bucket"
         )
         taxon_report_fail = True
         alert = True
@@ -464,7 +464,7 @@ def add_classifier_calls(
             f"Failed to add classifier calls for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {add_classifier_calls_exception}"
         )
         payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append(f"Failed to parse classifier calls dict")
+        payload["ingest_errors"].append("Failed to parse classifier calls dict")
         classifier_calls_fail = True
         alert = True
 
@@ -522,7 +522,7 @@ def push_report_file(
         )
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
-            f"Failed to upload scylla report to storage bucket"
+            "Failed to upload scylla report to storage bucket"
         )
         report_fail = True
         alert = True
@@ -574,7 +574,6 @@ def add_reads_record(
 
             try:
                 s3_key = f"{payload['climb_id']}_{i}.fastq.gz"
-                s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
                 s3_client.upload_file(
                     fastq_path,
@@ -588,7 +587,7 @@ def add_reads_record(
                 )
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
-                    f"Failed to upload reads to storage bucket"
+                    "Failed to upload reads to storage bucket"
                 )
                 raw_read_fail = True
                 alert = True
@@ -629,7 +628,7 @@ def add_reads_record(
                 f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_reads_record_exception}"
             )
             payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(f"Failed to upload reads to storage bucket")
+            payload["ingest_errors"].append("Failed to upload reads to storage bucket")
 
             raw_read_fail = True
             alert = True
@@ -673,7 +672,7 @@ def read_fraction_upload(
     read_fraction_fail = False
     alert = False
 
-    s3_bucket = f"mscape-published-read-fractions"
+    s3_bucket = "mscape-published-read-fractions"
 
     if payload["platform"] == "illumina":
         for i in (1, 2):
@@ -685,7 +684,6 @@ def read_fraction_upload(
 
             try:
                 s3_key = f"{payload['climb_id']}/{payload['climb_id']}.{fraction_prefix}_{i}.fastq.gz"
-                s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
                 s3_client.upload_file(
                     fastq_path,
@@ -840,7 +838,7 @@ def ret_0_parser(
                 elif process.startswith("fastp") and trace["exit"] == "255":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
-                        f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the mSCAPE admin team for assistance"
+                        "Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the mSCAPE admin team for assistance"
                     )
                     ingest_fail = True
                 else:
@@ -969,7 +967,7 @@ def validate(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                f"Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
+                "Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
             )
             return (False, alert, hcid_alerts, payload, message)
 
@@ -994,7 +992,7 @@ def validate(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
+                "At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
             )
             return (False, alert, hcid_alerts, payload, message)
 
@@ -1301,8 +1299,8 @@ def run(args):
             )
 
             worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
-    except:
-        log.info("Shutting down worker pool")
+    except BaseException as e:
+        log.info(f"Shutting down worker pool due to exception: {e}")
         worker_pool.close()
         varys_client.close()
         time.sleep(1)

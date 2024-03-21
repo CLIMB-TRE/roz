@@ -1,4 +1,4 @@
-from roz_scripts.utils.utils import get_s3_credentials, init_logger, s3_to_fh
+from roz_scripts.utils.utils import get_s3_credentials, init_logger
 from roz_scripts.general.s3_controller import create_config_map
 from varys import Varys
 
@@ -10,7 +10,6 @@ import time
 import json
 import os
 import sys
-import csv
 
 
 def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:

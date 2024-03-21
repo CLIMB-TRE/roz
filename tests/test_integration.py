@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, mock_open, patch, MagicMock, call
+from unittest.mock import Mock, patch
 
 from roz_scripts import (
     s3_matcher,
@@ -9,13 +9,7 @@ from roz_scripts import (
     pathsafe_validation,
 )
 
-from onyx.exceptions import (
-    OnyxRequestError,
-    OnyxConnectionError,
-    OnyxServerError,
-    OnyxConfigError,
-    OnyxClientError,
-)
+from onyx.exceptions import OnyxRequestError
 
 from types import SimpleNamespace
 import multiprocessing as mp
@@ -23,7 +17,6 @@ import time
 import os
 import json
 from varys import Varys
-from moto import mock_s3
 from moto.server import ThreadedMotoServer
 import boto3
 import uuid
@@ -2186,8 +2179,6 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertTrue(payload["test_ingest_result"])
             self.assertFalse(payload["ingest_errors"])
 
-            mock_util_client.assert_not_called()
-
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="pathsafetest-published-assembly"
             )
@@ -2299,6 +2290,8 @@ class Test_pathsafe_validator(unittest.TestCase):
 
             mock_util_client.return_value.__enter__.return_value.filter = Mock(
                 side_effect=[
+                    iter(()),
+                    iter(()),
                     iter(
                         [
                             {
@@ -2534,6 +2527,11 @@ class Test_pathsafe_validator(unittest.TestCase):
             mock_util_client.return_value.__enter__.return_value.update.return_value = (
                 {}
             )
+
+            mock_util_client.return_value.__enter__.return_value.filter.return_value = (
+                iter(())
+            )
+
             mock_util_client.return_value.__enter__.return_value.csv_create.return_value = {
                 "climb_id": "test_climb_id",
                 "run_index": "test_run_index",

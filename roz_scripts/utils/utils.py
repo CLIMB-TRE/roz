@@ -189,7 +189,7 @@ def put_result_json(payload: dict, log: logging.getLogger):
     )
 
     try:
-        response = s3_client.put_object(
+        s3_client.put_object(
             Bucket=f"{payload['project']}-{payload['raw_site']}-results",
             Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.result.json",
             Body=json.dumps(payload),
@@ -344,7 +344,7 @@ def csv_create(
 
                     return (True, alert, payload)
 
-            except EtagMismatchError as e:
+            except EtagMismatchError:
                 log.error(
                     f"CSV appears to have been modified after upload for artifact: {payload['artifact']}"
                 )
@@ -435,7 +435,7 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
             else:
                 return (True, False, payload)
 
-    except EtagMismatchError as e:
+    except EtagMismatchError:
         payload.setdefault("onyx_test_create_errors", {})
         payload["onyx_test_create_errors"].setdefault("roz_errors", [])
         payload["onyx_test_create_errors"]["roz_errors"].append(
