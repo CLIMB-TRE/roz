@@ -524,9 +524,11 @@ def validate(
 
     if not submission_success:
         log.error(
-            f"Submission to Onyx failed for UUID: {payload['uuid']}, sending result"
+            f"Submission to Onyx failed for UUID: {payload['uuid']}"
         )
+        payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
+        time.sleep(args.retry_delay)
         return (False, payload, message)
 
     payload["created"] = True
@@ -540,7 +542,7 @@ def validate(
 
     if s3_fail:
         log.error(
-            f"Failed to upload assembly to long-term storage bucket for UUID: {payload['uuid']}, sending result"
+            f"Failed to upload assembly to long-term storage bucket for UUID: {payload['uuid']}"
         )
         ingest_pipe.cleanup(stdout=stdout)
         payload["rerun"] = True
@@ -554,7 +556,7 @@ def validate(
 
     if pathogenwatch_fail:
         log.error(
-            f"Pathogenwatch submission failed for UUID: {payload['uuid']}, sending result"
+            f"Pathogenwatch submission failed for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
         ingest_pipe.cleanup(stdout=stdout)
@@ -573,7 +575,10 @@ def validate(
     )
 
     if etag_fail:
+        log.error(f"Failed to update etags for UUID: {payload['uuid']}")
         ingest_pipe.cleanup(stdout=stdout)
+        payload["rerun"] = True
+        time.sleep(args.retry_delay)
         return (False, payload, message)    
 
     unsuppress_fail, alert, payload = onyx_update(
