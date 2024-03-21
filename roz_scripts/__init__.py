@@ -3,4 +3,4 @@ from .pathsafe import pathsafe_validation
 from .utils import utils
 from .general import ingest, s3_controller, s3_matcher, s3_notifications
 
-__version__ = "1.5.0"
+__version__ = "1.7.0"
