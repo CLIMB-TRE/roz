@@ -829,11 +829,11 @@ def create_site_bucket(
         bool: True if the bucket was created, False otherwise
     """
 
+    bryn_url = os.getenv("BRYN_API_URL")
+
     site_slug = site[0:16].replace(".", "-")
 
-    endpoint_url = (
-        f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/"
-    )
+    endpoint_url = f"{bryn_url}/{site_slug}/ceph/s3/buckets/"
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
@@ -864,7 +864,11 @@ def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
     """
     site_slug = site[0:16].replace(".", "-")
 
-    endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+    bryn_url = os.getenv("BRYN_API_URL")
+
+    endpoint_url = (
+        f"{bryn_url}/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+    )
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
@@ -895,7 +899,11 @@ def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
 
     site_slug = site[0:16].replace(".", "-")
 
-    endpoint_url = f"https://bryn-staging.climb.ac.uk/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+    bryn_url = os.getenv("BRYN_API_URL")
+
+    endpoint_url = (
+        f"{bryn_url}/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+    )
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
@@ -1527,7 +1535,13 @@ def audit_bucket_messaging(
 
 def run(args):
     if args.setup_messaging:
-        for env_var in ["AMQP_HOST", "AMQP_USER", "AMQP_PASS", "BRYN_API_TOKEN"]:
+        for env_var in [
+            "AMQP_HOST",
+            "AMQP_USER",
+            "AMQP_PASS",
+            "BRYN_API_TOKEN",
+            "BRYN_API_URL",
+        ]:
             if env_var not in os.environ.keys():
                 print(f"Environment variable {env_var} not set", file=sys.stderr)
                 sys.exit(1)
