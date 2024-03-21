@@ -2104,6 +2104,10 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "Hello pytest :)"
             )
 
+            mock_util_client.return_value.__enter__.return_value.filter.return_value = (
+                iter(())
+            )
+
             mock_util_client.return_value.__enter__.return_value.update.return_value = (
                 MockResponse(status_code=200)
             )
@@ -2527,6 +2531,11 @@ class Test_pathsafe_validator(unittest.TestCase):
             mock_util_client.return_value.__enter__.return_value.update.return_value = (
                 {}
             )
+
+            mock_util_client.return_value.__enter__.return_value.filter.return_value = (
+                iter(())
+            )
+
             mock_util_client.return_value.__enter__.return_value.csv_create.return_value = {
                 "climb_id": "test_climb_id",
                 "run_index": "test_run_index",
