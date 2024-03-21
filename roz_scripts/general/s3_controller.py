@@ -911,7 +911,13 @@ def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
 
     if response.status_code == 200:
         return True
+    elif response.status_code == 404:
+        return False
     else:
+        print(
+            f"Failed to check if bucket {bucket_arn} exists, Bryn response:\n{response.json()}",
+            file=sys.stderr,
+        )
         return False
 
 
