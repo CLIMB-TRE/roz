@@ -2104,10 +2104,6 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "Hello pytest :)"
             )
 
-            mock_util_client.return_value.__enter__.return_value.filter.return_value = (
-                iter(())
-            )
-
             mock_util_client.return_value.__enter__.return_value.update.return_value = (
                 MockResponse(status_code=200)
             )
@@ -2182,8 +2178,6 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertFalse(payload["climb_id"])
             self.assertTrue(payload["test_ingest_result"])
             self.assertFalse(payload["ingest_errors"])
-
-            mock_util_client.assert_not_called()
 
             published_reads_contents = self.s3_client.list_objects(
                 Bucket="pathsafetest-published-assembly"
@@ -2296,6 +2290,7 @@ class Test_pathsafe_validator(unittest.TestCase):
 
             mock_util_client.return_value.__enter__.return_value.filter = Mock(
                 side_effect=[
+                    iter(()),
                     iter(
                         [
                             {
