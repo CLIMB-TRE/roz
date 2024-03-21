@@ -848,7 +848,7 @@ def create_site_bucket(
             f"Failed to create bucket {bucket_arn} - Bryn Response:\n{r.json()}",
             file=sys.stderr,
         )
-        return False
+        sys.exit(r.status_code)
 
 
 def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
@@ -918,7 +918,7 @@ def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
             f"Failed to check if bucket {bucket_arn} exists, Bryn response:\n{response.json()}",
             file=sys.stderr,
         )
-        return False
+        sys.exit(response.status_code)
 
 
 def audit_bucket_policy(
