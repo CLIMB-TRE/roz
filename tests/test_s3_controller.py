@@ -6,6 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 import json
 from unittest.mock import patch, Mock
+from types import SimpleNamespace
 
 import unittest
 
@@ -226,6 +227,7 @@ class mock_response:
         self.data = data
         self.text = json.dumps(data)
         self.url = "nonsense"
+        self.request = SimpleNamespace(body="nonsense")
 
     def json(self):
         return self.data
