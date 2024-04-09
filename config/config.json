@@ -112,10 +112,13 @@
         "apha.pathsafe": "uploader",
         "fss.pathsafe": "uploader",
         "fsa.pathsafe": "uploader",
-        "phs.pathsafe": "uploader"
+        "phs.pathsafe": "uploader",
+        "cgps.pathsafe": "analysis",
+        "pathsafe": "analysis"
       },
       "bucket_policies": {
-        "site_ingest": ["get", "put", "list", "delete"]
+        "site_ingest": ["get", "put", "list", "delete"],
+        "project_read": ["get", "list"]
       },
       "site_buckets": {
         "ingest": {
@@ -142,13 +145,13 @@
       },
       "project_buckets": {
         "published_reads": {
-          "name_layout": "{project}-reads",
-          "policy": {},
+          "name_layout": "{project}-published-reads",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         },
         "published_assemblies": {
-          "name_layout": "{project}-assemblies",
-          "policy": {},
+          "name_layout": "{project}-published-assembly",
+          "policy": { "analysis": "project_read" },
           "owner": "admin"
         }
       },

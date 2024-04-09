@@ -132,6 +132,7 @@ class worker_pool_handler:
                     self._varys_client.nack_message(message)
 
                     raise ValueError("Validation failed after 5 attempts, shutting down worker pool")
+                
                 else:
                     self._log.info(
                         f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
@@ -190,14 +191,14 @@ def assembly_to_s3(
     try:
         s3_client.upload_file(
             assembly_path,
-            "pathsafetest-published-assembly",
+            "pathsafe-published-assembly",
             f"{payload['climb_id']}.assembly.fasta",
         )
 
         payload["assembly_presigned_url"] = s3_client.generate_presigned_url(
             "get_object",
             Params={
-                "Bucket": "pathsafetest-published-assembly",
+                "Bucket": "pathsafe-published-assembly",
                 "Key": f"{payload['climb_id']}.assembly.fasta",
             },
             ExpiresIn=86400,
@@ -641,7 +642,7 @@ def run(args):
 
             worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
     except BaseException as e:
-        log.info(f"Shutting down worker pool due do exception: {e}")
+        log.info(f"Shutting down worker pool due to exception: {e}")
         worker_pool.close()
         varys_client.close()
         time.sleep(1)
