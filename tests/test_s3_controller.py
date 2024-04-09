@@ -343,10 +343,9 @@ class TestS3Controller(unittest.TestCase):
 
             self.assertTrue(create_success)
 
-            create_fail = s3_controller.create_site_bucket(
-                "fake_bucket", "site1.project1", {}
-            )
-            self.assertFalse(create_fail)
+            with self.assertRaises(SystemExit) as caught_exception:
+                s3_controller.create_site_bucket("fake_bucket", "site1.project1", {})
+                self.assertEqual(caught_exception.exception.code, 404)
 
     def test_create_project_bucket(self):
         s3_controller.create_project_bucket(
@@ -477,7 +476,7 @@ class TestS3Controller(unittest.TestCase):
 
         with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
             mock_requests.post.return_value = mock_response(201, {})
-            mock_requests.get.return_value = mock_response(400, {})
+            mock_requests.get.return_value = mock_response(404, {})
 
             s3_controller.check_bucket_exist_and_create(
                 fake_aws_cred_dict, config_map, fake_roz_cfg_dict
