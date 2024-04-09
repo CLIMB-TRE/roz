@@ -224,6 +224,8 @@ class mock_response:
     def __init__(self, status_code, data):
         self.status_code = status_code
         self.data = data
+        self.text = json.dumps(data)
+        self.url = "nonsense"
 
     def json(self):
         return self.data
