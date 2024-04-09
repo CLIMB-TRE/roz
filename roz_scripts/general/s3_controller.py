@@ -845,9 +845,11 @@ def create_site_bucket(
         return True
     else:
         print(
-            f"Failed to create bucket {bucket_arn} - Bryn Response:\n{r.json()}",
+            f"Failed to create bucket {bucket_arn} - Bryn Response:\n{r.text}",
             file=sys.stderr,
         )
+        print(f"URL: {r.url}", file=sys.stderr)
+        print(f"Request: {r.request}", file=sys.stderr)
         sys.exit(r.status_code)
 
 
@@ -880,7 +882,7 @@ def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
         return True
     else:
         print(
-            f"Failed to put policy on bucket {bucket_arn}, Bryn response:\n{response.json()}",
+            f"Failed to put policy on bucket {bucket_arn}, Bryn response:\n{response.text}",
             file=sys.stderr,
         )
         return False
@@ -918,6 +920,8 @@ def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
             f"Failed to check if bucket {bucket_arn} exists, Bryn response:\n{response.json()}",
             file=sys.stderr,
         )
+        print(f"URL: {response.url}", file=sys.stderr)
+        print(f"Request: {response.request.body}", file=sys.stderr)
         sys.exit(response.status_code)
 
 

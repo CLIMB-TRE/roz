@@ -312,19 +312,19 @@ example_pathsafe_validator_message = {
     "ingested": False,
     "files": {
         ".1.fastq.gz": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.1.fastq.gz",
+            "uri": "s3://pathsafe-birm-illumina-prod/pathsafe.sample-test.run-test.1.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "pathsafetest.sample-test.run-test.1.fastq.gz",
+            "key": "pathsafe.sample-test.run-test.1.fastq.gz",
         },
         ".2.fastq.gz": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.2.fastq.gz",
+            "uri": "s3://pathsafe-birm-illumina-prod/pathsafe.sample-test.run-test.2.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "pathsafetest.sample-test.run-test.2.fastq.gz",
+            "key": "pathsafe.sample-test.run-test.2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.csv",
+            "uri": "s3://pathsafe-birm-illumina-prod/pathsafe.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "pathsafetest.sample-test.run-test.csv",
+            "key": "pathsafe.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -355,19 +355,19 @@ example_pathsafe_test_validator_message = {
     "ingested": False,
     "files": {
         ".1.fastq.gz": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.1.fastq.gz",
+            "uri": "s3://pathsafe-birm-illumina-prod/pathsafe.sample-test.run-test.1.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "pathsafetest.sample-test.run-test.1.fastq.gz",
+            "key": "pathsafe.sample-test.run-test.1.fastq.gz",
         },
         ".2.fastq.gz": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.2.fastq.gz",
+            "uri": "s3://pathsafe-birm-illumina-prod/pathsafe.sample-test.run-test.2.fastq.gz",
             "etag": "179d94f8cd22896c2a80a9a7c98463d2-21",
-            "key": "pathsafetest.sample-test.run-test.2.fastq.gz",
+            "key": "pathsafe.sample-test.run-test.2.fastq.gz",
         },
         ".csv": {
-            "uri": "s3://pathsafetest-birm-illumina-prod/pathsafetest.sample-test.run-test.csv",
+            "uri": "s3://pathsafe-birm-illumina-prod/pathsafe.sample-test.run-test.csv",
             "etag": "7022ea6a3adb39323b5039c1d6587d08",
-            "key": "pathsafetest.sample-test.run-test.csv",
+            "key": "pathsafe.sample-test.run-test.csv",
         },
     },
     "onyx_test_status_code": 201,
@@ -1963,22 +1963,22 @@ class Test_pathsafe_validator(unittest.TestCase):
         os.environ["UNIT_TESTING"] = "True"
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
-        self.s3_client.create_bucket(Bucket="pathsafetest-birm-illumina-prod")
-        self.s3_client.create_bucket(Bucket="pathsafetest-published-assembly")
+        self.s3_client.create_bucket(Bucket="pathsafe-birm-illumina-prod")
+        self.s3_client.create_bucket(Bucket="pathsafe-published-assembly")
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("run_index,run_id,project,platform,site\n")
-            f.write("sample-test,run-test,pathsafetest,ont,birm")
+            f.write("sample-test,run-test,pathsafe,ont,birm")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
-            "pathsafetest-birm-illumina-prod",
-            "pathsafetest.sample-test.run-test.csv",
+            "pathsafe-birm-illumina-prod",
+            "pathsafe.sample-test.run-test.csv",
         )
 
         resp = self.s3_client.head_object(
-            Bucket="pathsafetest-birm-illumina-prod",
-            Key="pathsafetest.sample-test.run-test.csv",
+            Bucket="pathsafe-birm-illumina-prod",
+            Key="pathsafe.sample-test.run-test.csv",
         )
 
         self.log = utils.init_logger(
@@ -2025,7 +2025,7 @@ class Test_pathsafe_validator(unittest.TestCase):
         )
         channel = connection.channel()
 
-        channel.queue_delete(queue="inbound.to_validate.pathsafetest")
+        channel.queue_delete(queue="inbound.to_validate.pathsafe")
         channel.queue_delete(queue="inbound.new_artifact.pathsafe")
         channel.queue_delete(queue="inbound.results.pathsafe.birm")
 
@@ -2180,7 +2180,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertFalse(payload["ingest_errors"])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="pathsafetest-published-assembly"
+                Bucket="pathsafe-published-assembly"
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
             self.assertNotIn("assembly_presigned_url", payload.keys())
@@ -2454,7 +2454,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="pathsafetest-published-assembly"
+                Bucket="pathsafe-published-assembly"
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
             self.assertNotIn("assembly_presigned_url", payload.keys())
@@ -2618,7 +2618,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertEqual(payload["ingest_errors"], [])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="pathsafetest-published-assembly"
+                Bucket="pathsafe-published-assembly"
             )
             self.assertEqual(
                 published_reads_contents["Contents"][0]["Key"],
