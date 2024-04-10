@@ -598,12 +598,12 @@ def generate_site_policy(
 
     site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(".", "-")
 
-    admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
+    # admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
 
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
+    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
 
     admin_obj_statement["Action"] = admin_obj_actions_template
 
@@ -615,7 +615,7 @@ def generate_site_policy(
 
     admin_bucket_statement = copy.deepcopy(statement_template)
 
-    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
+    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
 
     admin_bucket_statement["Action"] = admin_bucket_actions_template
 
@@ -687,12 +687,12 @@ def generate_project_policy(
 
     policy = copy.deepcopy(policy_template)
 
-    admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
+    # admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
 
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
+    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
 
     admin_obj_statement["Action"] = admin_obj_actions_template
 
@@ -704,7 +704,7 @@ def generate_project_policy(
 
     admin_bucket_statement = copy.deepcopy(statement_template)
 
-    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{admin_slug}"]
+    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
 
     admin_bucket_statement["Action"] = admin_bucket_actions_template
 
@@ -1671,18 +1671,18 @@ def run(args):
                 file=sys.stdout,
             )
 
-            varys_client = Varys(
-                profile="roz",
-                logfile=os.devnull,
-                log_level="CRITICAL",
-                auto_acknowledge=False,
-            )
+            # varys_client = Varys(
+            #     profile="roz",
+            #     logfile=os.devnull,
+            #     log_level="CRITICAL",
+            #     auto_acknowledge=False,
+            # )
 
-            varys_client.send(
-                message="Bucket controller failed in some manner :(",
-                exchange="mscape.restricted.announce",
-                queue_suffix="slack_integration",
-            )
+            # varys_client.send(
+            #     message="Bucket controller failed in some manner :(",
+            #     exchange="mscape.restricted.announce",
+            #     queue_suffix="slack_integration",
+            # )
         else:
             print("All buckets have correct policies", file=sys.stdout)
 
