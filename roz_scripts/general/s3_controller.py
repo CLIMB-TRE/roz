@@ -833,7 +833,7 @@ def create_site_bucket(
 
     site_slug = site[0:16].replace(".", "-")
 
-    endpoint_url = f"{bryn_url}/{site_slug}/ceph/s3/buckets/"
+    endpoint_url = f"{bryn_url}/admin-api/teams/{site_slug}/ceph/s3/buckets/"
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
