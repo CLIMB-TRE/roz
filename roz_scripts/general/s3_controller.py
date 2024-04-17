@@ -1315,7 +1315,7 @@ def apply_policies(
                     policy_success = put_project_policy(
                         bucket_arn=bucket_arn,
                         project=project,
-                        site=None,
+                        site="admin",
                         aws_credentials_dict=aws_credentials_dict,
                         policy=policy,
                     )
