@@ -14,8 +14,9 @@
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
         "project_ingest": ["get", "put", "list", "delete"],
-        "site_read": ["get", "list"],
-        "project_read": ["get", "list"],
+        "site_read": ["get"],
+        "project_read": ["get"],
+        "project_read_list": ["get", "list"],
         "project_private": []
       },
       "site_buckets": {
@@ -61,7 +62,7 @@
         },
         "published_taxon_reports": {
           "name_layout": "{project}-published-taxon-reports",
-          "policy": { "analysis": "project_ingest" },
+          "policy": { "analysis": "project_read_list" },
           "owner": "admin"
         },
         "published_scylla_reports": {
@@ -118,7 +119,7 @@
       },
       "bucket_policies": {
         "site_ingest": ["get", "put", "list", "delete"],
-        "project_read": ["get", "list"]
+        "project_read": ["get"]
       },
       "site_buckets": {
         "ingest": {
