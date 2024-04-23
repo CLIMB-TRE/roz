@@ -627,6 +627,7 @@ def run(args):
         profile="docker",
         config=args.nxf_config,
         nxf_executable=args.nxf_executable,
+        timeout=21600,
     )
 
     worker_pool = worker_pool_handler(

@@ -47,7 +47,7 @@
       "project_buckets": {
         "published_reads": {
           "name_layout": "{project}-published-reads",
-          "policy": { "analysis": "project_private" },
+          "policy": {},
           "owner": "admin"
         },
         "published_binned_reads": {
