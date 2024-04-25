@@ -6,6 +6,7 @@ import os
 import sys
 from io import StringIO
 import logging
+import logging.handlers
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -162,7 +163,7 @@ def init_logger(name, log_path, log_level):
     log.propagate = False
     log.setLevel(log_level)
     if not (log.hasHandlers()):
-        logging_fh = logging.FileHandler(log_path)
+        logging_fh = logging.handlers.TimedRotatingFileHandler(log_path, when="W0")
         logging_fh.setFormatter(
             logging.Formatter("%(name)s\t::%(levelname)s::%(asctime)s::\t%(message)s")
         )
