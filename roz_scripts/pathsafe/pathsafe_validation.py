@@ -263,6 +263,7 @@ def pathogenwatch_submission(
 
     if resp.status_code != 200:
         log.error(f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}")
+        payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
             f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}"
         )
@@ -282,6 +283,7 @@ def pathogenwatch_submission(
         log.error(
             f"Failed to retrieve Pathogenwatch folder ID for site: {payload['site']}"
         )
+        payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
             f"Failed to retrieve Pathogenwatch folder ID for site: {payload['site']}"
         )
@@ -306,6 +308,7 @@ def pathogenwatch_submission(
         log.error(
             f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {r.text}"
         )
+        payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
             f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
         )
