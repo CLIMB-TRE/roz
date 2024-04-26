@@ -1054,7 +1054,7 @@ def validate(
             "iso_region",
             "study_centre_id",
             "input_type",
-            "input_type_details",
+            "specimen_type_details",
             "biosample_source_id",
             "is_approximate_date",
             "is_public_dataset",
