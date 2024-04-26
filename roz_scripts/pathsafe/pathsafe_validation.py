@@ -399,11 +399,11 @@ def ret_0_parser(
 
     for process, trace in trace_dict.items():
         if trace["exit"] != "0":
-            if process.startswith("etoki_assemble") and trace["exit"] == "155":
-                log.info(f"Etoki assembly failed for UUID: {payload['uuid']}, exit code: 155")
+            if process.startswith("etoki_assemble") and trace["exit"] == "255":
+                log.info(f"Etoki assembly failed for UUID: {payload['uuid']}, exit code: 255")
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
-                    f"Etoki assembly failed, likely due to insufficient coverage for UUID: {payload['uuid']}")
+                    "Etoki assembly (spades) failed with exit code 255, most likely due to mangled quality strings, please check the fastq files and resubmit")
                 ingest_fail = True
                 continue
             
