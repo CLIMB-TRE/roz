@@ -1734,6 +1734,8 @@ def run(args):
                 f"Failed to apply policies to {len(retest_to_fix['site_buckets']) + len(retest_to_fix['project_buckets'])} buckets",
                 file=sys.stdout,
             )
+            print(f"Site Buckets to fix: {retest_to_fix['site_buckets']}", file=sys.stdout)
+            print(f"Project Buckets to fix: {retest_to_fix['project_buckets']}", file=sys.stdout)
 
             # varys_client = Varys(
             #     profile="roz",
