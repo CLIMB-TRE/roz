@@ -1644,7 +1644,7 @@ def run(args):
 
         to_fix = test_policies(audit_dict=audit_dict, config_dict=config_dict)
 
-        if not (to_fix["site_buckets"] and not to_fix["project_buckets"]) or not args.force:
+        if not (to_fix["site_buckets"] and not to_fix["project_buckets"]) and not args.force:
             print("All buckets have correct policies", file=sys.stdout)
         else:
             apply_policies(
