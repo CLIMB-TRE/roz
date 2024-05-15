@@ -207,7 +207,7 @@ def execute_validation_pipeline(
         "taxonomy": taxonomy_path,
     }
 
-    if payload["platform"] in ("ont", "illumina_se"):
+    if payload["platform"] in ("ont", "illumina.se"):
         parameters["fastq"] = payload["files"][".fastq.gz"]["uri"]
 
     elif payload["platform"] == "illumina":
@@ -297,7 +297,7 @@ def add_taxon_records(
                     alert = True
                     continue
 
-        elif payload["platform"] in ("ont", "illumina_se"):
+        elif payload["platform"] in ("ont", "illumina.se"):
             fastq_path = os.path.join(
                 result_path, f"reads_by_taxa/{taxa['filenames'][0]}.gz"
             )
@@ -609,7 +609,7 @@ def add_reads_record(
             if update_alert:
                 alert = True
 
-    elif payload["platform"] in ("ont", "illumina_se"):
+    elif payload["platform"] in ("ont", "illumina.se"):
         fastq_path = os.path.join(
             result_path, f"preprocess/{payload['uuid']}.fastp.fastq.gz"
         )
@@ -737,7 +737,7 @@ def read_fraction_upload(
             if update_alert:
                 alert = True
 
-    elif payload["platform"] in ("ont", "illumina_se"):
+    elif payload["platform"] in ("ont", "illumina.se"):
         fastq_path = os.path.join(
             result_path,
             "read_fractions",
@@ -967,7 +967,7 @@ def validate(
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         return (False, alert, hcid_alerts, payload, message)
 
-    if to_validate["platform"] in ("ont", "illumina_se"):
+    if to_validate["platform"] in ("ont", "illumina.se"):
         fastq_unseen, alert, payload = ensure_file_unseen(
             etag_field="fastq_1_etag",
             etag=to_validate["files"][".fastq.gz"]["etag"],
