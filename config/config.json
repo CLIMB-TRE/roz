@@ -93,6 +93,14 @@
             "layout": "project.run_index.run_id.ftype"
           }
         },
+        "illumina_se": {
+          ".fastq.gz": {
+            "layout": "project.run_index.run_id.ftype.gzip"
+          },
+          ".csv": {
+            "layout": "project.run_index.run_id.ftype"
+          }
+        },
         "ont": {
           ".fastq.gz": {
             "sections": 5,
