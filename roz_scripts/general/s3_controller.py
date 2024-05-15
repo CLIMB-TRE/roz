@@ -1290,7 +1290,7 @@ def apply_policies(
 
                     if not policy_success:
                         print(
-                            f"Policy for bucket {bucket_arn} could not be applied",
+                            f"Policy for bucket {bucket_arn} could not be applied, policy:\n{json.dumps(policy)}",
                             file=sys.stdout,
                         )
                 else:
