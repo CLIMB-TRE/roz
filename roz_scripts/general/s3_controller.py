@@ -1253,6 +1253,7 @@ def apply_policies(
             )
 
             if not dry_run:
+                print(f"Applying policy: {json.dumps(policy)} for bucket {bucket_arn}")
                 policy_success = put_site_policy(
                     bucket_arn=bucket_arn,
                     site=site,
@@ -1280,6 +1281,7 @@ def apply_policies(
                 )
 
                 if not dry_run:
+                    print(f"Applying policy: {json.dumps(policy)} for bucket {bucket_arn}")
                     policy_success = put_project_policy(
                         bucket_arn=bucket_arn,
                         project="admin",
