@@ -1271,35 +1271,35 @@ def apply_policies(
                     file=sys.stdout,
                 )
 
-            for bucket, bucket_arn, project in to_fix["project_buckets"]:
-                policy = generate_project_policy(
-                    bucket_name=bucket,
+        for bucket, bucket_arn, project in to_fix["project_buckets"]:
+            policy = generate_project_policy(
+                bucket_name=bucket,
+                bucket_arn=bucket_arn,
+                project=project,
+                aws_credentials_dict=aws_credentials_dict,
+                config_dict=config_dict,
+            )
+
+            if not dry_run:
+                print(f"Applying policy: {json.dumps(policy)} for bucket {bucket_arn}")
+                policy_success = put_project_policy(
                     bucket_arn=bucket_arn,
-                    project=project,
+                    project="admin",
+                    site=None,
                     aws_credentials_dict=aws_credentials_dict,
-                    config_dict=config_dict,
+                    policy=policy,
                 )
 
-                if not dry_run:
-                    print(f"Applying policy: {json.dumps(policy)} for bucket {bucket_arn}")
-                    policy_success = put_project_policy(
-                        bucket_arn=bucket_arn,
-                        project="admin",
-                        site=None,
-                        aws_credentials_dict=aws_credentials_dict,
-                        policy=policy,
-                    )
-
-                    if not policy_success:
-                        print(
-                            f"Policy for bucket {bucket_arn} could not be applied, policy:\n{json.dumps(policy)}",
-                            file=sys.stdout,
-                        )
-                else:
+                if not policy_success:
                     print(
-                        f"Dry run, not applying policy: {json.dumps(policy)} for bucket {bucket_arn}",
+                        f"Policy for bucket {bucket_arn} could not be applied, policy:\n{json.dumps(policy)}",
                         file=sys.stdout,
                     )
+            else:
+                print(
+                    f"Dry run, not applying policy: {json.dumps(policy)} for bucket {bucket_arn}",
+                    file=sys.stdout,
+                )
     else:
         config_map = create_config_map(config_dict)
 
