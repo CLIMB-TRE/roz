@@ -748,6 +748,8 @@ class Test_ingest(unittest.TestCase):
         self.server.stop()
         self.ingest_process.kill()
 
+        self.s3_client.close()
+
         credentials = pika.PlainCredentials("guest", "guest")
 
         connection = pika.BlockingConnection(
