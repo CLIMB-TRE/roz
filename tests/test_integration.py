@@ -841,8 +841,8 @@ class Test_mscape_validator(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-published-read-fractions")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("run_index,run_id,project,platform,site\n")
-            f.write("sample-test,run-test,mscape,ont,birm")
+            f.write("run_index,run_id,project,platform,site,spike_in\n")
+            f.write("sample-test,run-test,mscape,ont,birm,test_spike_in")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,

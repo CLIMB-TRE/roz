@@ -1055,7 +1055,7 @@ def validate(
     try:
         with s3_to_fh(
             s3_uri=payload["files"][".csv"]["uri"],
-            etag=payload["files"][".csv"]["etag"],
+            eTag=payload["files"][".csv"]["etag"],
         ) as fh:
             reader = csv.DictReader(fh)
 
