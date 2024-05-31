@@ -507,6 +507,10 @@ example_k2_out = {
     }
 }
 
+def reset_moto():
+    import requests
+
+    requests.post("http://localhost:5000/moto-api/reset")
 
 class MockResponse:
     def __init__(self, status_code, json_data=None, ok=True):
@@ -906,6 +910,8 @@ class Test_mscape_validator(unittest.TestCase):
         channel.queue_delete(queue="inbound.results.mscape.birm")
 
         connection.close()
+
+        reset_moto()
 
         os.remove(TEST_CSV_FILENAME)
 
