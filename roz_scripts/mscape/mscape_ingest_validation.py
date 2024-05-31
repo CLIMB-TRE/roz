@@ -256,13 +256,13 @@ def handle_spike_ins(
         spike_counts_path = os.path.join(result_path, "qc", "spike_count_summary.json")
 
         with open(spike_counts_path, "rt") as spike_in_fh:
-            spike_in_summary = json.load(spike_in_fh)
+            spike_in_counts = json.load(spike_in_fh)
 
-            spike_in_results = spike_in_summary[spike_in]
+            spike_in_results = spike_in_counts[spike_in]
 
             spike_in_info = []
 
-            for reference, info in spike_in_results:
+            for reference, info in spike_in_results.items():
                 spike_in_info.append(
                     {
                         "taxon_id": info["taxid"],
