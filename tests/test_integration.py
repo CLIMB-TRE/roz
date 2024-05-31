@@ -842,7 +842,7 @@ class Test_mscape_validator(unittest.TestCase):
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("run_index,run_id,project,platform,site,spike_in\n")
-            f.write("sample-test,run-test,mscape,ont,birm,test_spike_in")
+            f.write("sample-test,run-test,mscape,ont,birm,zymo-mc_D6320")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
@@ -862,6 +862,7 @@ class Test_mscape_validator(unittest.TestCase):
         csv_etag = resp["ETag"].replace('"', "")
 
         example_validator_message["files"][".csv"]["etag"] = csv_etag
+        example_test_validator_message["files"][".csv"]["etag"] = csv_etag
 
         config = {
             "version": "0.1",
