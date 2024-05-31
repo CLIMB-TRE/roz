@@ -1548,16 +1548,39 @@ class Test_mscape_validator(unittest.TestCase):
             #     ()
             # )
 
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
             result_path = os.path.join(DIR, example_validator_message["uuid"])
             preprocess_path = os.path.join(result_path, "preprocess")
             classifications_path = os.path.join(result_path, "classifications")
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            qc_path = os.path.join(result_path, "qc")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
 
             open(
                 os.path.join(
@@ -1598,6 +1621,12 @@ class Test_mscape_validator(unittest.TestCase):
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
