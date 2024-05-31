@@ -24,6 +24,7 @@ from roz_scripts.utils.utils import (
     ensure_file_unseen,
     onyx_reconcile,
     put_result_json,
+    s3_to_fh,
 )
 from varys import Varys
 
@@ -105,6 +106,13 @@ class worker_pool_handler:
                     exchange="inbound-new_artifact-mscape",
                     queue_suffix="validator",
                 )
+
+                for alert in hcid_alerts:
+                    self._varys_client.send(
+                        message=alert,
+                        exchange="restricted-mscape-hcid",
+                        queue_suffix="alert",
+                    )
 
         else:
             self._log.info(
@@ -215,9 +223,93 @@ def execute_validation_pipeline(
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
 
+    if payload["platform"].startswith("illumina"):
+        parameters["read_type"] = "illumina"
+
     log_path = Path(args.result_dir, payload["uuid"])
 
     return ingest_pipe.execute(params=parameters, logdir=log_path)
+
+
+def handle_spike_ins(
+    payload: dict, result_path: str, log: logging.getLogger, spike_in: str
+) -> tuple[bool, bool, dict]:
+    """Function to add spike-in information to an existing Onyx record from the Scylla spike_in_summary.json file
+
+    Args:
+        payload (dict): Dict containing the payload for the current artifact
+        result_path (str): Path to the results directory
+        log (logging.getLogger): Logger object
+        spike_in (str): Spike-in code for the current artifact
+
+    Returns:
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the upload failed, a bool indicating whether to squawk in the alert channel and the updated payload dict
+    """
+
+    spike_in_fail = False
+    alert = False
+
+    if not spike_in:
+        return (spike_in_fail, alert, payload)
+
+    try:
+        spike_counts_path = os.path.join(result_path, "qc", "spike_count_summary.json")
+
+        with open(spike_counts_path, "rt") as spike_in_fh:
+            spike_in_summary = json.load(spike_in_fh)
+
+            spike_in_results = spike_in_summary[spike_in]
+
+            spike_in_info = []
+
+            for reference, info in spike_in_results:
+                spike_in_info.append(
+                    {
+                        "taxon_id": info["taxid"],
+                        "human_readable": info["human_readable"],
+                        "reference_header": reference,
+                        "mapped_count": info["mapped_count"],
+                    }
+                )
+
+            update_fail, update_alert, payload = onyx_update(
+                payload=payload, fields={"spike_in_info": spike_in_info}, log=log
+            )
+
+            if update_fail:
+                spike_in_fail = True
+
+            if update_alert:
+                alert = True
+
+        spike_summary_path = os.path.join(result_path, "qc", "spike_summary.json")
+
+        with open(spike_summary_path, "rt") as spike_summary_fh:
+            spike_summary = json.load(spike_summary_fh)
+
+            result = spike_summary[spike_in]
+
+            update_fail, update_alert, payload = onyx_update(
+                payload=payload, fields={"spike_in_result": result}, log=log
+            )
+
+            if update_fail:
+                spike_in_fail = True
+
+            if update_alert:
+                alert = True
+
+    except FileNotFoundError:
+        log.error("A spike in summary file was not found")
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "No spike-in summary file, this should never happen"
+        )
+        spike_in_fail = True
+        alert = True
+        return (spike_in_fail, alert, payload)
+
+    return (spike_in_fail, alert, payload)
 
 
 def add_taxon_records(
@@ -899,13 +991,16 @@ def handle_hcid(
 
         contents = os.listdir(hcid_path)
 
-        if not any(x.endswith(".warning") for x in contents):
+        if not any(x.endswith(".warning.json") for x in contents):
             return (hcid_fail, hcid_alerts, alert, payload)
 
         for path in contents:
-            if path.endswith(".warning"):
+            if path.endswith(".warning.json"):
 
-                hcid_message = json.load(open(os.path.join(hcid_path, path), "rt"))
+                warning_path = os.path.join(hcid_path, path)
+
+                with open(warning_path, "rt") as hcid_fh:
+                    hcid_message = json.load(hcid_fh)
 
                 hcid_alerts.append(hcid_message)
 
@@ -956,6 +1051,24 @@ def validate(
 
     alert = False
     hcid_alerts = False
+
+    try:
+        with s3_to_fh(
+            s3_uri=payload["files"][".csv"]["uri"],
+            etag=payload["files"][".csv"]["etag"],
+        ) as fh:
+            reader = csv.DictReader(fh)
+
+            artifact_metadata = next(reader)
+    except Exception as e:
+        log.error(
+            f"Could not open CSV file for UUID: {payload['uuid']} due to error: {e}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append("Could not open CSV file")
+        payload["rerun"] = True
+        time.sleep(args.retry_delay)
+        return (False, alert, hcid_alerts, payload, message)
 
     # This client is purely for Mscape, ignore all other messages
     if to_validate["project"] != "mscape":
@@ -1219,6 +1332,17 @@ def validate(
         payload=payload, result_path=result_path, log=log, s3_client=s3_client
     )
 
+    hcid_fail, hcid_alerts, hcid_alert, payload = handle_hcid(
+        log=log, payload=payload, result_path=result_path
+    )
+
+    spike_in_fail, spike_in_alert, payload = handle_spike_ins(
+        payload=payload,
+        result_path=result_path,
+        log=log,
+        spike_in=artifact_metadata.get("spike_in"),
+    )
+
     if (
         reads_alert
         or taxa_alert
@@ -1226,6 +1350,8 @@ def validate(
         or taxa_reports_alert
         or classifier_alert
         or classifier_metadata_alert
+        or hcid_alert
+        or spike_in_alert
     ):
         alert = True
 
@@ -1237,6 +1363,8 @@ def validate(
         or fraction_fail_outer
         or classifier_calls_fail
         or classifier_metadata_fail
+        or hcid_fail
+        or spike_in_fail
     ):
         log.error(
             f"Failed to upload files to S3 or update Onyx for CID: {payload['climb_id']} with match UUID: {payload['uuid']}"
