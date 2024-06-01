@@ -183,6 +183,7 @@ def execute_validation_pipeline(
     payload: dict,
     args: argparse.Namespace,
     ingest_pipe: pipeline,
+    spike_in: str,
 ) -> tuple[int, str, str]:
     """Execute the validation pipeline for a given artifact
 
@@ -214,6 +215,9 @@ def execute_validation_pipeline(
         "database": k2_db_path,
         "taxonomy": taxonomy_path,
     }
+
+    if spike_in:
+        parameters["spike_in"] = spike_in
 
     if payload["platform"] in ("ont", "illumina.se"):
         parameters["fastq"] = payload["files"][".fastq.gz"]["uri"]
@@ -1060,6 +1064,7 @@ def validate(
             reader = csv.DictReader(fh)
 
             artifact_metadata = next(reader)
+
     except Exception as e:
         log.error(
             f"Could not open CSV file for UUID: {payload['uuid']} due to error: {e}"
@@ -1124,7 +1129,10 @@ def validate(
             return (False, alert, hcid_alerts, payload, message)
 
     rc, stdout, stderr = execute_validation_pipeline(
-        payload=payload, args=args, ingest_pipe=ingest_pipe
+        payload=payload,
+        args=args,
+        ingest_pipe=ingest_pipe,
+        spike_in=artifact_metadata.get("spike_in"),
     )
 
     if ingest_pipe.cmd:
