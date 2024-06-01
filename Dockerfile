@@ -7,7 +7,7 @@ RUN apk add --no-cache wget \
     openjdk21-jre-headless \
     bash
 
-RUN wget --directory-prefix /opt/bin/ https://github.com/nextflow-io/nextflow/releases/download/v24.02.0-edge/nextflow
+RUN wget --directory-prefix /opt/bin/ https://github.com/nextflow-io/nextflow/releases/download/v24.04.2/nextflow
 
 RUN addgroup --gid 1000 jovyan && \
     adduser --system --shell /bin/false --ingroup jovyan --disabled-password --uid 1000 jovyan
