@@ -5,15 +5,6 @@ import csv
 
 import varys
 
-from onyx import OnyxClient
-from onyx.exceptions import (
-    OnyxRequestError,
-    OnyxConnectionError,
-    OnyxServerError,
-    OnyxConfigError,
-    OnyxClientError,
-)
-
 from roz_scripts.utils.utils import (
     init_logger,
     csv_create,

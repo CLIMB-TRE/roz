@@ -507,6 +507,10 @@ example_k2_out = {
     }
 }
 
+def reset_moto():
+    import requests
+
+    requests.post("http://localhost:5000/moto-api/reset")
 
 class MockResponse:
     def __init__(self, status_code, json_data=None, ok=True):
@@ -748,6 +752,8 @@ class Test_ingest(unittest.TestCase):
         self.server.stop()
         self.ingest_process.kill()
 
+        self.s3_client.close()
+
         credentials = pika.PlainCredentials("guest", "guest")
 
         connection = pika.BlockingConnection(
@@ -841,8 +847,8 @@ class Test_mscape_validator(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-published-read-fractions")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("run_index,run_id,project,platform,site\n")
-            f.write("sample-test,run-test,mscape,ont,birm")
+            f.write("run_index,run_id,project,platform,site,spike_in\n")
+            f.write("sample-test,run-test,mscape,ont,birm,zymo-mc_D6320")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
@@ -862,6 +868,7 @@ class Test_mscape_validator(unittest.TestCase):
         csv_etag = resp["ETag"].replace('"', "")
 
         example_validator_message["files"][".csv"]["etag"] = csv_etag
+        example_test_validator_message["files"][".csv"]["etag"] = csv_etag
 
         config = {
             "version": "0.1",
@@ -903,6 +910,8 @@ class Test_mscape_validator(unittest.TestCase):
         channel.queue_delete(queue="inbound.results.mscape.birm")
 
         connection.close()
+
+        reset_moto()
 
         os.remove(TEST_CSV_FILENAME)
 
@@ -964,12 +973,14 @@ class Test_mscape_validator(unittest.TestCase):
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
             read_fraction_path = os.path.join(result_path, "read_fractions")
+            qc_path = os.path.join(result_path, "qc")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
             os.makedirs(read_fraction_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
 
             open(
                 os.path.join(
@@ -1033,6 +1044,33 @@ class Test_mscape_validator(unittest.TestCase):
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
+
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1138,12 +1176,14 @@ class Test_mscape_validator(unittest.TestCase):
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
             read_fraction_path = os.path.join(result_path, "read_fractions")
+            qc_path = os.path.join(result_path, "qc")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
             os.makedirs(read_fraction_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
 
             open(
                 os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
@@ -1207,6 +1247,33 @@ class Test_mscape_validator(unittest.TestCase):
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
+
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1309,11 +1376,13 @@ class Test_mscape_validator(unittest.TestCase):
             classifications_path = os.path.join(result_path, "classifications")
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            qc_path = os.path.join(result_path, "qc")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
 
             open(
                 os.path.join(
@@ -1352,6 +1421,33 @@ class Test_mscape_validator(unittest.TestCase):
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
+
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1553,11 +1649,13 @@ class Test_mscape_validator(unittest.TestCase):
             classifications_path = os.path.join(result_path, "classifications")
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            qc_path = os.path.join(result_path, "qc")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
 
             open(
                 os.path.join(
@@ -1598,6 +1696,33 @@ class Test_mscape_validator(unittest.TestCase):
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
+
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1802,12 +1927,14 @@ class Test_mscape_validator(unittest.TestCase):
             pipeline_info_path = os.path.join(result_path, "pipeline_info")
             binned_reads_path = os.path.join(result_path, "reads_by_taxa")
             read_fraction_path = os.path.join(result_path, "read_fractions")
+            qc_path = os.path.join(result_path, "qc")
 
             os.makedirs(preprocess_path, exist_ok=True)
             os.makedirs(classifications_path, exist_ok=True)
             os.makedirs(pipeline_info_path, exist_ok=True)
             os.makedirs(binned_reads_path, exist_ok=True)
             os.makedirs(read_fraction_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
 
             open(
                 os.path.join(
@@ -1871,6 +1998,33 @@ class Test_mscape_validator(unittest.TestCase):
                 os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
             ) as f:
                 json.dump(example_reads_summary, f)
+
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1946,6 +2100,210 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(
                 published_binned_reads_contents["Contents"][0]["Key"],
                 "test_climb_id/test_climb_id_286.fastq.gz",
+            )
+
+    def test_hcid_alerts(self):
+        with (
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+
+            mock_pipeline.return_value.cleanup.return_value = (
+                0,
+                "test_stdout",
+                "test_stderr",
+            )
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
+
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "climb_id": "test_climb_id",
+                "run_index": "sample-test",
+                "run_id": "run-test",
+                "biosample_id": "test_biosample_id",
+                "biosample_source_id": "test_biosample_source_id",
+            }
+
+            mock_client.return_value.__enter__.return_value.identify = Mock(
+                side_effect=OnyxRequestError(
+                    message="test identify exception",
+                    response=MockResponse(
+                        status_code=404,
+                        json_data={
+                            "data": [],
+                            "messages": {"run_index": "Test run_index error handling"},
+                        },
+                    ),
+                )
+            )
+
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+                ()
+            )
+
+            hcid_warning = {
+                "msg": "WARNING: Found 0 classified reads (102 mapped reads) of Ebola virus disease (EVD) and 102 classified reads for the parent taxon.\nMapping details for required references (ref_accession:mapped_read_count:fraction_ref_covered) NC_002549.1:102:1.000000.\n",
+                "taxid": 1570291,
+                "classified_count": 0,
+                "mapped_count": 102,
+                "mapped_details": "ref_accession:mapped_read_count:fraction_ref_covered|NC_002549.1:102:1.000000",
+            }
+
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            read_fraction_path = os.path.join(result_path, "read_fractions")
+            qc_path = os.path.join(result_path, "qc")
+
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(read_fraction_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
+            open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "viral_and_unclassified.fastq.gz"), "w"
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(os.path.join(binned_reads_path, "286.fastq.gz"), "w").close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"params_{example_validator_message['uuid']}.log",
+                ),
+                "w",
+            ) as f:
+                f.write(json.dumps(example_params))
+
+            with open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.json"), "w"
+            ) as f:
+                f.write(json.dumps(example_k2_out))
+
+            with open(
+                os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
+            ) as f:
+                json.dump(example_reads_summary, f)
+
+            with open(os.path.join(qc_path, "1570291.warning.json"), "w") as f:
+                json.dump(hcid_warning, f)
+
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                config="test",
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+                retry_delay=2,
+            )
+
+            pipeline = utils.pipeline(
+                pipe="test",
+                nxf_executable="test",
+                config="test",
+            )
+
+            test_message = copy.deepcopy(example_validator_message)
+
+            in_message = SimpleNamespace(body=json.dumps(test_message))
+
+            Success, alert, hcid_alerts, payload, message = (
+                mscape_ingest_validation.validate(in_message, args, pipeline)
+            )
+
+            print(payload)
+
+            self.assertTrue(Success)
+            self.assertFalse(alert)
+
+            self.assertTrue(hcid_alerts)
+
+            self.assertEqual(
+                {
+                    "msg": "WARNING: Found 0 classified reads (102 mapped reads) of Ebola virus disease (EVD) and 102 classified reads for the parent taxon.\nMapping details for required references (ref_accession:mapped_read_count:fraction_ref_covered) NC_002549.1:102:1.000000.\n",
+                    "taxid": 1570291,
+                    "classified_count": 0,
+                    "mapped_count": 102,
+                    "mapped_details": "ref_accession:mapped_read_count:fraction_ref_covered|NC_002549.1:102:1.000000",
+                },
+                hcid_alerts[0],
             )
 
 
