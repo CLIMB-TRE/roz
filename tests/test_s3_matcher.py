@@ -54,6 +54,14 @@ fake_roz_cfg_dict = {
                         "layout": "project.run_index.run_id.ftype",
                     },
                 },
+                "illumina.se": {
+                    ".fastq.gz": {
+                        "layout": "project.run_index.run_id.ftype.gzip",
+                    },
+                    ".csv": {
+                        "layout": "project.run_index.run_id.ftype",
+                    },
+                },
                 "ont": {
                     ".fastq.gz": {
                         "layout": "project.run_index.run_id.ftype.gzip",
@@ -350,6 +358,13 @@ class test_s3_matcher(unittest.TestCase):
             "prod",
         )
         index_tuple_2 = ("project1|sample1|run1", "project1", "site1", "ont", "prod")
+        index_tuple_3 = (
+            "project1|sample1|run1",
+            "project1",
+            "site1",
+            "illumina.se",
+            "test",
+        )
 
         existing_object_dict = {
             index_tuple_1: {
@@ -386,7 +401,7 @@ class test_s3_matcher(unittest.TestCase):
             index_tuple_2: {
                 "files": {
                     ".fastq.gz": {
-                        "uri": "s3://project1-site1-ont-prod/project1.sample1.run1.fastq.gz",
+                        "uri": "s3://project1-site1-illumina.se-prod/project1.sample1.run1.fastq.gz",
                         "etag": " cfade0850023c5552624423beec6c20f-9422",
                         "key": "project1.sample1.run1.fastq.gz",
                         "submitter": "bryn-site1",
@@ -399,7 +414,37 @@ class test_s3_matcher(unittest.TestCase):
                         },
                     },
                     ".csv": {
-                        "uri": "s3://project1-site1-ont-prod/project1.sample1.run1.csv",
+                        "uri": "s3://project1-site1-illumina.se-prod/project1.sample1.run1.csv",
+                        "etag": " cfade0850023c5552624423beec6c20f-9422",
+                        "key": "project1.sample1.run1.csv",
+                        "submitter": "bryn-site1",
+                        "parsed_fname": {
+                            "project": "project1",
+                            "run_index": "sample1",
+                            "run_id": "run1",
+                            "ftype": "csv",
+                        },
+                    },
+                },
+                "objects": {},
+            },
+            index_tuple_3: {
+                "files": {
+                    ".fastq.gz": {
+                        "uri": "s3://project1-site1-illumina.se-prod/project1.sample1.run1.fastq.gz",
+                        "etag": " cfade0850023c5552624423beec6c20f-9422",
+                        "key": "project1.sample1.run1.fastq.gz",
+                        "submitter": "bryn-site1",
+                        "parsed_fname": {
+                            "project": "project1",
+                            "run_index": "sample1",
+                            "run_id": "run1",
+                            "ftype": "fastq",
+                            "gzip": "gz",
+                        },
+                    },
+                    ".csv": {
+                        "uri": "s3://project1-site1-illumina.se-prod/project1.sample1.run1.csv",
                         "etag": " cfade0850023c5552624423beec6c20f-9422",
                         "key": "project1.sample1.run1.csv",
                         "submitter": "bryn-site1",
@@ -425,6 +470,13 @@ class test_s3_matcher(unittest.TestCase):
         self.assertTrue(
             s3_matcher.is_artifact_dict_complete(
                 index_tuple=index_tuple_2,
+                existing_object_dict=existing_object_dict,
+                config_dict=fake_roz_cfg_dict,
+            )
+        )
+        self.assertTrue(
+            s3_matcher.is_artifact_dict_complete(
+                index_tuple=index_tuple_3,
                 existing_object_dict=existing_object_dict,
                 config_dict=fake_roz_cfg_dict,
             )

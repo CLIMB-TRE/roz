@@ -217,7 +217,7 @@ def execute_validation_pipeline(
     }
 
     if spike_in:
-        parameters["spike_in"] = spike_in
+        parameters["spike_ins"] = spike_in
 
     if payload["platform"] in ("ont", "illumina.se"):
         parameters["fastq"] = payload["files"][".fastq.gz"]["uri"]
