@@ -36,6 +36,13 @@ mscape_alert_template = """<!channel>
 ```
 """
 
+hcid_alert_template = """<!channel>
+*MScape HCID Alert*
+```
+{}
+```
+"""
+
 
 while True:
     new_artifact_message = varys_client.receive(
@@ -109,7 +116,7 @@ while True:
     if hcid_message:
         in_dict = json.loads(hcid_message.body)
 
-        out_text = mscape_alert_template.format(json.dumps(in_dict, indent=2))
+        out_text = hcid_alert_template.format(json.dumps(in_dict, indent=2))
 
         out_message = {"text": out_text}
 
