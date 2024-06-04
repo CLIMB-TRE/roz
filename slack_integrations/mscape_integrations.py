@@ -14,6 +14,7 @@ varys_client = Varys(
 new_artifact_url = os.getenv("NEW_ARTIFACT_WEBHOOK")
 public_result_url = os.getenv("PUBLIC_RESULT_WEBHOOK")
 alert_url = os.getenv("MSCAPE_ALERT_WEBHOOK")
+hcid_url = os.getenv("HCID_WEBHOOK")
 
 new_artifact_message_template = """*New MScape Artifact Published*
 ```
@@ -64,7 +65,7 @@ while True:
 
         outcome = ""
 
-        if type(in_dict) == dict:
+        if isinstance(in_dict, dict):
 
             outcome = "Success" if in_dict.get("published") else "Failure"
 
@@ -100,3 +101,22 @@ while True:
             sys.exit(1)
 
         varys_client.acknowledge_message(alert_message)
+
+    hcid_message = varys_client.receive(
+        "mscape-restricted-hcid", queue_suffix="slack_integration", timeout=1
+    )
+
+    if hcid_message:
+        in_dict = json.loads(hcid_message.body)
+
+        out_text = mscape_alert_template.format(json.dumps(in_dict, indent=2))
+
+        out_message = {"text": out_text}
+
+        r = requests.post(hcid_url, json=out_message)
+
+        if not r.ok:
+            print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
+            sys.exit(1)
+
+        varys_client.acknowledge_message(hcid_message)

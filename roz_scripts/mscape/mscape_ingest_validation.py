@@ -64,7 +64,7 @@ class worker_pool_handler:
             )
             self._varys_client.send(
                 message=payload,
-                exchange="restricted-mscape-announce",
+                exchange="mscape-restricted-announce",
                 queue_suffix="alert",
             )
 
@@ -110,7 +110,7 @@ class worker_pool_handler:
                 for alert in hcid_alerts:
                     self._varys_client.send(
                         message=alert,
-                        exchange="restricted-mscape-hcid",
+                        exchange="mscape-restricted-hcid",
                         queue_suffix="alert",
                     )
 
