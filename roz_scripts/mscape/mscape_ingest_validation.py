@@ -1262,12 +1262,17 @@ def validate(
             },
         )
 
-    elif payload["platform"] in ("ont", "illumina"):
+    elif payload["platform"] in ("ont", "illumina.se"):
         etag_fail, alert, payload = onyx_update(
             payload=payload,
             log=log,
             fields={"fastq_1_etag": payload["files"][".fastq.gz"]["etag"]},
         )
+
+    else:
+        log.error(f"Unknown platform: {payload['platform']}")
+        ingest_pipe.cleanup(stdout=stdout)
+        return (False, alert, hcid_alerts, payload, message)
 
     if etag_fail:
         ingest_pipe.cleanup(stdout=stdout)
