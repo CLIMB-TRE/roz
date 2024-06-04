@@ -108,6 +108,7 @@ class worker_pool_handler:
                 )
 
                 for alert in hcid_alerts:
+                    alert["climb_id"] = payload["climb_id"]
                     self._varys_client.send(
                         message=alert,
                         exchange="mscape-restricted-hcid",
