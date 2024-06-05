@@ -434,6 +434,7 @@ def add_taxon_records(
         nested_records.append(taxon_dict)
 
     if not binned_read_fail:
+
         update_fail, update_alert, payload = onyx_update(
             payload=payload, fields={"taxa_files": nested_records}, log=log
         )
@@ -442,6 +443,22 @@ def add_taxon_records(
             binned_read_fail = True
 
         if update_alert:
+            alert = True
+
+    if not binned_read_fail:
+        top_level_fail = False
+        for batch in batched(nested_records, 100):
+            update_fail, update_alert, payload = onyx_update(
+                payload=payload,
+                fields={"classifier_calls": batch},
+                log=log,
+            )
+
+            if update_fail:
+                top_level_fail = True
+
+        if top_level_fail:
+            binned_read_fail = True
             alert = True
 
     return (binned_read_fail, alert, payload)
@@ -566,6 +583,7 @@ def add_classifier_calls(
         alert = True
 
     if not classifier_calls_fail:
+        top_level_fail = False
         for batch in batched(classifier_calls, 100):
             update_fail, update_alert, payload = onyx_update(
                 payload=payload,
@@ -573,7 +591,10 @@ def add_classifier_calls(
                 log=log,
             )
 
-        if update_fail:
+            if update_fail:
+                top_level_fail = True
+
+        if top_level_fail:
             classifier_calls_fail = True
             alert = True
 
@@ -1195,7 +1216,6 @@ def validate(
             "is_approximate_date",
             "is_public_dataset",
             "received_date",
-            "collection_date",
             "sample_source",
             "sample_type",
             "sequence_purpose",

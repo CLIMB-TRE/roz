@@ -626,7 +626,7 @@ def onyx_reconcile(
 
                     if metadata.get(field):
                         if metadata[field].startswith("is_"):
-                            metadata[field] = str(metadata[field]).lower() in (
+                            metadata[field] = str(metadata[field]).lower().strip() in (
                                 "t",
                                 "y",
                                 "yes",
