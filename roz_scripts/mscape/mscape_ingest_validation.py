@@ -434,23 +434,11 @@ def add_taxon_records(
         nested_records.append(taxon_dict)
 
     if not binned_read_fail:
-
-        update_fail, update_alert, payload = onyx_update(
-            payload=payload, fields={"taxa_files": nested_records}, log=log
-        )
-
-        if update_fail:
-            binned_read_fail = True
-
-        if update_alert:
-            alert = True
-
-    if not binned_read_fail:
         top_level_fail = False
         for batch in batched(nested_records, 100):
             update_fail, update_alert, payload = onyx_update(
                 payload=payload,
-                fields={"classifier_calls": batch},
+                fields={"taxa_files": batch},
                 log=log,
             )
 
