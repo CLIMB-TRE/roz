@@ -14,6 +14,7 @@ import multiprocessing as mp
 from collections import namedtuple
 import sys
 from itertools import batched
+from math import log, floor
 
 from roz_scripts.utils.utils import (
     pipeline,
@@ -233,7 +234,13 @@ def execute_validation_pipeline(
 
     log_path = Path(args.result_dir, payload["uuid"])
 
-    return ingest_pipe.execute(params=parameters, logdir=log_path)
+    timeout = dynamic_timeout(payload["files"][".fastq.gz"]["uri"])
+
+    return ingest_pipe.execute(
+        params=parameters,
+        logdir=log_path,
+        timeout=timeout,
+    )
 
 
 def handle_spike_ins(
@@ -315,6 +322,39 @@ def handle_spike_ins(
         return (spike_in_fail, alert, payload)
 
     return (spike_in_fail, alert, payload)
+
+
+def dynamic_timeout(s3_uri: str) -> int:
+    """Function to calculate the timeout for a given S3 URI based on the file size, calculated
+    using the logarithmic function -> 3500 * log(x) - 20000 where x is the file size in bytes
+
+    Args:
+        s3_uri (str): S3 URI of the file to calculate the timeout for
+
+    Returns:
+        int: Timeout in seconds
+    """
+
+    s3_credentials = get_s3_credentials()
+
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=s3_credentials.access_key,
+        aws_secret_access_key=s3_credentials.secret_key,
+        endpoint_url=s3_credentials.endpoint,
+    )
+
+    bucket, key = s3_uri.split("/", 3)[2:]
+    obj = s3_client.head_object(Bucket=bucket, Key=key)
+
+    size = obj["ContentLength"] / 1000000
+
+    timeout = floor(3500 * log(size)) - 20000
+
+    if timeout < 1800:
+        timeout = 1800
+
+    return timeout
 
 
 def add_taxon_records(
@@ -1448,7 +1488,7 @@ def run(args):
         profile="docker",
         config=args.nxf_config,
         nxf_executable=args.nxf_executable,
-        timeout=args.pipeline_timeout,
+        # timeout=args.pipeline_timeout,
     )
 
     worker_pool = worker_pool_handler(

@@ -46,7 +46,7 @@ class pipeline:
         config: Path,
         nxf_executable: Path,
         profile=None,
-        timeout=10800,
+        # timeout=10800,
     ):
         """
         Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
@@ -64,16 +64,18 @@ class pipeline:
         self.branch = branch
         self.config = Path(config) if config else None
         self.nxf_executable = nxf_executable
-        self.timeout = timeout
+        # self.timeout = timeout
         self.profile = profile
         self.cmd = None
 
-    def execute(self, params: dict, logdir: Path) -> tuple[int, str, str]:
+    def execute(self, params: dict, logdir: Path, timeout: int) -> tuple[int, str, str]:
         """
         Execute the pipeline with the given parameters
 
         Args:
             params (dict): A dictionary of parameters to pass to the pipeline in the format {'param_name': 'param_value'} (no --)
+            logdir (Path): The directory to write the nextflow log to
+            timeout (int): The timeout for the pipeline execution
 
         Returns:
             tuple[int, str, str]: A tuple containing the return code, stdout and stderr
@@ -109,7 +111,7 @@ class pipeline:
                 capture_output=True,
                 universal_newlines=True,
                 text=True,
-                timeout=self.timeout,
+                timeout=timeout,
             )
 
         except BaseException as subprocess_exception:
