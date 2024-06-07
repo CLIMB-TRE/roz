@@ -344,8 +344,16 @@ def dynamic_timeout(s3_uri: str) -> int:
         endpoint_url=s3_credentials.endpoint,
     )
 
-    bucket, key = s3_uri.split("/", 3)[2:]
-    obj = s3_client.head_object(Bucket=bucket, Key=key)
+    try:
+        bucket, key = s3_uri.split("/", 3)[2:]
+        obj = s3_client.head_object(Bucket=bucket, Key=key)
+
+    except ClientError as dynamic_timeout_exception:
+        log.error(
+            f"Failed to get object metadata for S3 URI: {s3_uri} due to client error: {dynamic_timeout_exception}"
+        )
+
+        return 1800
 
     size = obj["ContentLength"] / 1000000
 

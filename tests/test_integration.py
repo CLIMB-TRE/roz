@@ -507,10 +507,12 @@ example_k2_out = {
     }
 }
 
+
 def reset_moto():
     import requests
 
     requests.post("http://localhost:5000/moto-api/reset")
+
 
 class MockResponse:
     def __init__(self, status_code, json_data=None, ok=True):
@@ -710,8 +712,6 @@ class Test_ingest(unittest.TestCase):
             "mscape.sample-test.run-test.csv",
         )
 
-        self.s3_client.put_object(Bucket="mscape-subteam1.birm.mscape-ont-prod", Key="mscape.sample-test.run-test.fastq.gz", Body=b"test")
-
         resp = self.s3_client.head_object(
             Bucket="mscape-subteam1.birm.mscape-ont-prod",
             Key="mscape.sample-test.run-test.csv",
@@ -862,6 +862,8 @@ class Test_mscape_validator(unittest.TestCase):
             Bucket="mscape-birm-ont-prod",
             Key="mscape.sample-test.run-test.csv",
         )
+
+        self.s3_client.put_object(Bucket="mscape-birm-ont-prod", Key="mscape.sample-test.run-test.fastq.gz", Body=b"hello")
 
         self.log = utils.init_logger(
             "mscape.ingest", MSCAPE_VALIDATION_LOG_FILENAME, "DEBUG"
