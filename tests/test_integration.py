@@ -710,6 +710,8 @@ class Test_ingest(unittest.TestCase):
             "mscape.sample-test.run-test.csv",
         )
 
+        self.s3_client.put_object(Bucket="mscape-subteam1.birm.mscape-ont-prod", Key="mscape.sample-test.run-test.fastq.gz", Body=b"test")
+
         resp = self.s3_client.head_object(
             Bucket="mscape-subteam1.birm.mscape-ont-prod",
             Key="mscape.sample-test.run-test.csv",
