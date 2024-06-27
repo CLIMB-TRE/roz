@@ -449,19 +449,41 @@ def validate(
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         return (False, payload, message)
     
-    fastq_1_unseen, alert, payload = ensure_file_unseen(
+    unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
         etag_field="fastq_1_etag",
         etag=to_validate["files"][".1.fastq.gz"]["etag"],
         log=log,
         payload=payload,
     )
 
-    fastq_2_unseen, alert, payload = ensure_file_unseen(
+    if unseen_check_fail:
+        log.error(
+            f"Failed to check if fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, sending result"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "Failed to check if fastq file has already been ingested into the project"
+        )
+        payload["rerun"] = True
+        return (False, payload, message)
+
+    unseen_check_fail, fastq_2_unseen, alert, payload = ensure_file_unseen(
         etag_field="fastq_2_etag",
         etag=to_validate["files"][".2.fastq.gz"]["etag"],
         log=log,
         payload=payload,
     )
+
+    if unseen_check_fail:
+        log.error(
+            f"Failed to check if fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, sending result"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "Failed to check if fastq file has already been ingested into the project"
+        )
+        payload["rerun"] = True
+        return (False, payload, message)
 
     if not fastq_1_unseen or not fastq_2_unseen:
         log.info(
