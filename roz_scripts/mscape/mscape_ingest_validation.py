@@ -218,15 +218,7 @@ def execute_validation_pipeline(
         "taxonomy": taxonomy_path,
     }
 
-    if spike_in and spike_in.lower() not in (
-        "none",
-        "n/a",
-        "false",
-        "null",
-        "na",
-        "nan",
-        "nil",
-    ):
+    if spike_in and spike_in != "none":
         parameters["spike_ins"] = spike_in
 
     if payload["platform"] in ("ont", "illumina.se"):
