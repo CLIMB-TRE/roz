@@ -726,7 +726,7 @@ def onyx_reconcile(
 
 def ensure_file_unseen(
     etag_field: str, etag: str, log: logging.getLogger, payload: dict
-) -> tuple[bool, bool, dict]:
+) -> tuple[bool, bool, bool, dict]:
     """Function to check that a file has not already been uploaded to Onyx
 
     Args:
@@ -736,7 +736,7 @@ def ensure_file_unseen(
         payload (dict): Payload dict for the current artifact
 
     Returns:
-        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the check failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
+        tuple[bool, bool, bool, dict]: Tuple containing a bool indicating whether the check failed, a bool indicating whether the file is unseen or not,  a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
     onyx_config = get_onyx_credentials()
 
@@ -752,9 +752,9 @@ def ensure_file_unseen(
                 )
 
                 if len(response) == 0:
-                    return (True, False, payload)
+                    return (False, True, False, payload)
                 else:
-                    return (False, False, payload)
+                    return (False, False, False, payload)
 
             except OnyxConnectionError as e:
                 if reconnect_count < 3:
@@ -773,14 +773,14 @@ def ensure_file_unseen(
                     payload["onyx_errors"].setdefault("onyx_errors", [])
                     payload["onyx_errors"]["onyx_errors"].append(str(e))
 
-                    return (False, True, payload)
+                    return (True, True, True, payload)
 
             except (OnyxServerError, OnyxConfigError) as e:
                 log.error(f"Unhandled Onyx error: {e}")
                 payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
                 payload["onyx_errors"]["onyx_errors"].append(e)
-                return (False, True, payload)
+                return (True, True, True, payload)
 
             except OnyxClientError as e:
                 log.error(
@@ -789,7 +789,7 @@ def ensure_file_unseen(
                 payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
                 payload["onyx_errors"]["onyx_errors"].append(str(e))
-                return (False, True, payload)
+                return (True, True, True, payload)
 
             except OnyxRequestError as e:
                 log.error(
@@ -799,7 +799,7 @@ def ensure_file_unseen(
                 for field, messages in e.response.json()["messages"].items():
                     payload["onyx_errors"].setdefault(field, [])
                     payload["onyx_errors"][field].extend(messages)
-                return (False, True, payload)
+                return (True, True, True, payload)
 
             except Exception as e:
                 log.error(f"Unhandled check_file_unseen error: {e}")
@@ -808,7 +808,7 @@ def ensure_file_unseen(
                 payload["onyx_errors"]["onyx_errors"].append(
                     f"Unhandled check_file_unseen error: {e}"
                 )
-                return (False, True, payload)
+                return (True, True, True, payload)
 
 
 def check_artifact_published(

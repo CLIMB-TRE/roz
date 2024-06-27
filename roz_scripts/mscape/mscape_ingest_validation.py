@@ -1150,12 +1150,24 @@ def validate(
         return (False, alert, hcid_alerts, payload, message)
 
     if to_validate["platform"] in ("ont", "illumina.se"):
-        fastq_unseen, alert, payload = ensure_file_unseen(
+        unseen_check_fail, fastq_unseen, alert, payload = ensure_file_unseen(
             etag_field="fastq_1_etag",
             etag=to_validate["files"][".fastq.gz"]["etag"],
             log=log,
             payload=payload,
         )
+
+        if unseen_check_fail:
+            log.error(
+                f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                "Failed to check if fastq file is unseen, please contact the mSCAPE admin team"
+            )
+            payload["rerun"] = True
+
+            return (False, alert, hcid_alerts, payload, message)
 
         if not fastq_unseen:
             log.info(
@@ -1168,19 +1180,42 @@ def validate(
             return (False, alert, hcid_alerts, payload, message)
 
     elif to_validate["platform"] == "illumina":
-        fastq_1_unseen, alert, payload = ensure_file_unseen(
+        unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
             etag_field="fastq_1_etag",
             etag=to_validate["files"][".1.fastq.gz"]["etag"],
             log=log,
             payload=payload,
         )
+        if unseen_check_fail:
+            log.error(
+                f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                "Failed to check if fastq file is unseen, please contact the mSCAPE admin team"
+            )
+            payload["rerun"] = True
 
-        fastq_2_unseen, alert, payload = ensure_file_unseen(
+            return (False, alert, hcid_alerts, payload, message)
+
+        unseen_check_fail, fastq_2_unseen, alert, payload = ensure_file_unseen(
             etag_field="fastq_2_etag",
             etag=to_validate["files"][".2.fastq.gz"]["etag"],
             log=log,
             payload=payload,
         )
+
+        if unseen_check_fail:
+            log.error(
+                f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                "Failed to check if fastq file is unseen, please contact the mSCAPE admin team"
+            )
+            payload["rerun"] = True
+
+            return (False, alert, hcid_alerts, payload, message)
 
         if not fastq_1_unseen or not fastq_2_unseen:
             log.info(
