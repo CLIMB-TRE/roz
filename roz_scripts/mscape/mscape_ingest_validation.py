@@ -223,18 +223,21 @@ def execute_validation_pipeline(
 
     if payload["platform"] in ("ont", "illumina.se"):
         parameters["fastq"] = payload["files"][".fastq.gz"]["uri"]
+        timeout = dynamic_timeout(payload["files"][".fastq.gz"]["uri"])
 
     elif payload["platform"] == "illumina":
         parameters["fastq1"] = payload["files"][".1.fastq.gz"]["uri"]
         parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
         parameters["paired"] = ""
+        timeout = dynamic_timeout(
+            payload["files"][".1.fastq.gz"]["uri"],
+            payload["files"][".2.fastq.gz"]["uri"],
+        )
 
     if payload["platform"].startswith("illumina"):
         parameters["read_type"] = "illumina"
 
     log_path = Path(args.result_dir, payload["uuid"])
-
-    timeout = dynamic_timeout(payload["files"][".fastq.gz"]["uri"])
 
     return ingest_pipe.execute(
         params=parameters,
@@ -324,12 +327,12 @@ def handle_spike_ins(
     return (spike_in_fail, alert, payload)
 
 
-def dynamic_timeout(s3_uri: str) -> int:
+def dynamic_timeout(*s3_uris: str) -> int:
     """Function to calculate the timeout for a given S3 URI based on the file size, calculated
     using the logarithmic function -> 3500 * log(x) - 20000 where x is the file size in bytes
 
     Args:
-        s3_uri (str): S3 URI of the file to calculate the timeout for
+        *s3_uris (str): Variable number of S3 URIs to calculate the timeout for
 
     Returns:
         int: Timeout in seconds
@@ -345,8 +348,11 @@ def dynamic_timeout(s3_uri: str) -> int:
     )
 
     try:
-        bucket, key = s3_uri.split("/", 3)[2:]
-        obj = s3_client.head_object(Bucket=bucket, Key=key)
+        content_length = 0
+        for s3_uri in s3_uris:
+            bucket, key = s3_uri.split("/", 3)[2:]
+            obj = s3_client.head_object(Bucket=bucket, Key=key)
+            content_length += obj["ContentLength"]
 
     except ClientError as dynamic_timeout_exception:
         log.error(
@@ -355,7 +361,7 @@ def dynamic_timeout(s3_uri: str) -> int:
 
         return 1800
 
-    size = obj["ContentLength"] / 1000000
+    size = content_length / 1000000
 
     timeout = floor(3500 * log(size)) - 20000
 
