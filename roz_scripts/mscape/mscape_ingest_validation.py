@@ -264,7 +264,7 @@ def handle_spike_ins(
     spike_in_fail = False
     alert = False
 
-    if not spike_in or spike_in == "none":
+    if not spike_in or spike_in.strip().lower() == "none":
         return (spike_in_fail, alert, payload)
 
     try:
