@@ -1234,10 +1234,9 @@ def validate(
         spike_in=artifact_metadata.get("spike_in"),
     )
 
-    if ingest_pipe.cmd:
-        log.info(
-            f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {' '.join(str(x) for x in ingest_pipe.cmd)}"
-        )
+    log.info(
+        f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {' '.join(str(x) for x in ingest_pipe.cmd)}"
+    )
 
     args.result_dir = Path(args.result_dir)
 
