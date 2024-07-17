@@ -27,6 +27,8 @@ RUN pip3 install ./roz
 
 RUN rm -rf /roz
 
+RUN chown -R jovyan:jovyan /tmp/
+
 ENV PATH=/opt/bin:$PATH
 
 USER jovyan
