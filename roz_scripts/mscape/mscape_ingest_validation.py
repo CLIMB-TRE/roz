@@ -147,6 +147,8 @@ class worker_pool_handler:
 
                     self._varys_client.nack_message(message)
 
+                    os.remove("/tmp/healthy")
+
                     raise ValueError(
                         "Validation failed after 5 attempts, shutting down worker pool"
                     )
