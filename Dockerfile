@@ -1,11 +1,11 @@
-FROM python:3.12-alpine
+FROM python:3.12.4-slim-bullseye
 
 COPY . ./roz/
 
-RUN apk add --no-cache wget \
+RUN apt update &&\
+    apt install -y wget \
     git \
-    openjdk21-jre-headless \
-    bash
+    openjdk-17-jre-headless
 
 RUN wget --directory-prefix /opt/bin/ https://github.com/nextflow-io/nextflow/releases/download/v24.04.2/nextflow
 
@@ -27,7 +27,7 @@ RUN pip3 install ./roz
 
 RUN rm -rf /roz
 
-RUN chown -R jovyan:jovyan /tmp/
+# RUN chown -R jovyan:jovyan /tmp/
 
 ENV PATH=/opt/bin:$PATH
 
