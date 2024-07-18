@@ -1546,6 +1546,7 @@ def run(args):
     )
     try:
         while True:
+            time.sleep(0.5)
             message = varys_client.receive(
                 exchange="inbound-to_validate-mscape",
                 queue_suffix="validator",
