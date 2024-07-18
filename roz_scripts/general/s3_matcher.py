@@ -398,45 +398,53 @@ def main():
     )
 
     while True:
-        message = varys_client.receive(
-            exchange="inbound-s3",
-            queue_suffix="s3_matcher",
-        )
-
-        message_dict = json.loads(message.body)
-
-        if message_dict["Records"][0]["s3"]["object"]["key"] == "test":
-            continue
-
-        artifact_complete, existing_object_dict, index_tuple = parse_new_object_message(
-            existing_object_dict=existing_object_dict,
-            new_object_message=message_dict,
-            config_dict=config_dict,
-        )
-
-        artifact, project, site, platform, test_flag = index_tuple
-
-        if not artifact:
-            failure_message = f"Problem parsing object with key: {message_dict['Records'][0]['s3']['object']['key']}, probable cause - key does not match file spec for this bucket or is malformed"
-            log.info(failure_message)
-            varys_client.send(
-                message=failure_message,
-                exchange=f"inbound-results-{project}-{site}",
+        try:
+            message = varys_client.receive(
+                exchange="inbound-s3",
                 queue_suffix="s3_matcher",
             )
-            continue
 
-        if not artifact_complete:
-            continue
+            message_dict = json.loads(message.body)
 
-        payload = generate_payload(
-            index_tuple=index_tuple, existing_object_dict=existing_object_dict
-        )
+            if message_dict["Records"][0]["s3"]["object"]["key"] == "test":
+                continue
 
-        log.info(f"Successful match for artifact: {artifact}. Sending payload.")
-        varys_client.send(
-            message=payload, exchange="inbound-matched", queue_suffix="s3_matcher"
-        )
+            artifact_complete, existing_object_dict, index_tuple = (
+                parse_new_object_message(
+                    existing_object_dict=existing_object_dict,
+                    new_object_message=message_dict,
+                    config_dict=config_dict,
+                )
+            )
+
+            artifact, project, site, platform, test_flag = index_tuple
+
+            if not artifact:
+                failure_message = f"Problem parsing object with key: {message_dict['Records'][0]['s3']['object']['key']}, probable cause - key does not match file spec for this bucket or is malformed"
+                log.info(failure_message)
+                varys_client.send(
+                    message=failure_message,
+                    exchange=f"inbound-results-{project}-{site}",
+                    queue_suffix="s3_matcher",
+                )
+                continue
+
+            if not artifact_complete:
+                continue
+
+            payload = generate_payload(
+                index_tuple=index_tuple, existing_object_dict=existing_object_dict
+            )
+
+            log.info(f"Successful match for artifact: {artifact}. Sending payload.")
+            varys_client.send(
+                message=payload, exchange="inbound-matched", queue_suffix="s3_matcher"
+            )
+
+        except Exception as e:
+            log.error(f"Unhandled exception: {str(e)}")
+            os.remove("/tmp/healthy")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
