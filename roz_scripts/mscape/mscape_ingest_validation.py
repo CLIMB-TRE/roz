@@ -1182,6 +1182,18 @@ def validate(
             return (False, alert, hcid_alerts, payload, message)
 
     elif to_validate["platform"] == "illumina":
+
+        if (
+            to_validate["files"][".1.fastq.gz"]["etag"]
+            == to_validate["files"][".2.fastq.gz"]["etag"]
+        ):
+            payload.setdefault("ingest_errors", [])
+            log.info(f"Identical fastq files detected for UUID: {payload['uuid']}")
+            payload["ingest_errors"].append(
+                "Identical fastq files detected, please ensure that the submitted paired fastqs are correct. Please contact the mSCAPE admin team if you believe this to be in error."
+            )
+            return (False, alert, hcid_alerts, payload, message)
+
         unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
             etag_field="fastq_1_etag",
             etag=to_validate["files"][".1.fastq.gz"]["etag"],
