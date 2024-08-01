@@ -997,13 +997,13 @@ def ret_0_parser(
 
         for process, trace in trace_dict.items():
             if trace["exit"] != "0":
-                if process.startswith("paired_concatenate") and trace["exit"] == 5:
+                if process.startswith("paired_concatenate") and trace["exit"] == "5":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         "At least one FASTQ in the pair appear to not contain valid header lines, please resubmit valid FASTQ files or contact the mSCAPE admin team if you believe this to be in error"
                     )
                     ingest_fail = True
-                if process.startswith("paired_concatenate") and trace["exit"] == 8:
+                if process.startswith("paired_concatenate") and trace["exit"] == "8":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         "Paired FASTQ files do not appear to match, please resubmit valid FASTQ files or contact the mSCAPE admin team if you believe this to be in error"
