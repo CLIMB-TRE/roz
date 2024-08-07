@@ -53,12 +53,12 @@
         },
         "published_binned_reads": {
           "name_layout": "{project}-published-binned-reads",
-          "policy": { "analysis": "project_read" },
+          "policy": { "analysis": "project_read_list" },
           "owner": "admin"
         },
         "published-read-fractions": {
           "name_layout": "{project}-published-read-fractions",
-          "policy": { "analysis": "project_read" },
+          "policy": { "analysis": "project_read_list" },
           "owner": "admin"
         },
         "published_taxon_reports": {

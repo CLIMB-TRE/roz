@@ -106,6 +106,7 @@ class pipeline:
 
         try:
             self.cmd = cmd
+            os.chdir(logdir)
             proc = subprocess.run(
                 args=cmd,
                 capture_output=True,
