@@ -114,6 +114,104 @@
         }
       }
     },
+    "synthscape": {
+      "artifact_layout": "project|run_index|run_id",
+      "sites": {
+        "synthscape.ukhsa": "analysis",
+        "synthscape": "analysis"
+      },
+      "bucket_policies": {
+        "site_ingest": ["get", "put", "list", "delete"],
+        "project_ingest": ["get", "put", "list", "delete"],
+        "site_read": ["get"],
+        "project_read": ["get"],
+        "project_read_list": ["get", "list"],
+        "project_private": []
+      },
+      "site_buckets": {
+        "ingest": {
+          "name_layout": "{project}-{site}-{platform}-{test_flag}",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
+        },
+        "results": {
+          "name_layout": "{project}-{site}-results",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
+        }
+      },
+      "notification_bucket_configs": {
+        "ingest": {
+          "rmq_exchange": "inbound-s3",
+          "rmq_queue_env": "s3_matcher",
+          "amqps": false
+        }
+      },
+      "project_buckets": {
+        "published_reads": {
+          "name_layout": "{project}-published-reads",
+          "policy": {},
+          "owner": "admin"
+        },
+        "published_binned_reads": {
+          "name_layout": "{project}-published-binned-reads",
+          "policy": { "analysis": "project_read_list" },
+          "owner": "admin"
+        },
+        "published-read-fractions": {
+          "name_layout": "{project}-published-read-fractions",
+          "policy": { "analysis": "project_read_list" },
+          "owner": "admin"
+        },
+        "published_taxon_reports": {
+          "name_layout": "{project}-published-taxon-reports",
+          "policy": { "analysis": "project_read_list" },
+          "owner": "admin"
+        },
+        "published_scylla_reports": {
+          "name_layout": "{project}-published-reports",
+          "policy": { "analysis": "project_read" },
+          "owner": "admin"
+        }
+      },
+      "file_specs": {
+        "illumina": {
+          ".1.fastq.gz": {
+            "layout": "project.run_index.run_id.direction.ftype.gzip"
+          },
+          ".2.fastq.gz": {
+            "layout": "project.run_index.run_id.direction.ftype.gzip"
+          },
+          ".csv": {
+            "layout": "project.run_index.run_id.ftype"
+          }
+        },
+        "illumina.se": {
+          ".fastq.gz": {
+            "layout": "project.run_index.run_id.ftype.gzip"
+          },
+          ".csv": {
+            "layout": "project.run_index.run_id.ftype"
+          }
+        },
+        "ont": {
+          ".fastq.gz": {
+            "sections": 5,
+            "layout": "project.run_index.run_id.ftype.gzip"
+          },
+          ".csv": {
+            "sections": 4,
+            "layout": "project.run_index.run_id.ftype"
+          }
+        }
+      }
+    },
     "pathsafe": {
       "artifact_layout": "project|run_index|run_id",
       "sites": {
