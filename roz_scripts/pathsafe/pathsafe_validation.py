@@ -357,7 +357,7 @@ def execute_assembly_pipeline(
 
     log_path = Path(args.result_dir, payload["uuid"])
 
-    return ingest_pipe.execute(params=parameters, logdir=log_path)
+    return ingest_pipe.execute(params=parameters, logdir=log_path, timeout=7200)
 
 
 def ret_0_parser(
@@ -654,7 +654,7 @@ def run(args):
         profile="docker",
         config=args.nxf_config,
         nxf_executable=args.nxf_executable,
-        timeout=21600,
+        # timeout=21600,
     )
 
     worker_pool = worker_pool_handler(
