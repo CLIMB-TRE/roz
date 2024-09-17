@@ -31,7 +31,7 @@ from varys import Varys
 
 
 class worker_pool_handler:
-    def __init__(self, workers, logger, varys_client):
+    def __init__(self, workers, logger, varys_client, project):
         self._log = logger
         self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
@@ -39,6 +39,8 @@ class worker_pool_handler:
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
         self._retry_log = {}
+        
+        self._project = project
 
     def submit_job(self, message, args, ingest_pipe):
         self._log.info(
@@ -65,7 +67,7 @@ class worker_pool_handler:
             )
             self._varys_client.send(
                 message=payload,
-                exchange="mscape-restricted-announce",
+                exchange=f"{self._project}-restricted-announce",
                 queue_suffix="alert",
             )
 
@@ -104,7 +106,7 @@ class worker_pool_handler:
 
                 self._varys_client.send(
                     message=new_artifact_payload,
-                    exchange="inbound-new_artifact-mscape",
+                    exchange=f"inbound-new_artifact-{payload['project']}",
                     queue_suffix="validator",
                 )
 
@@ -112,7 +114,7 @@ class worker_pool_handler:
                     alert["climb_id"] = payload["climb_id"]
                     self._varys_client.send(
                         message=alert,
-                        exchange="mscape-restricted-hcid",
+                        exchange=f"{payload['project']}-restricted-hcid",
                         queue_suffix="alert",
                     )
 
@@ -133,7 +135,7 @@ class worker_pool_handler:
 
                     self._varys_client.send(
                         message=payload,
-                        exchange="mscape-restricted-announce",
+                        exchange=f"{self._project}-restricted-announce",
                         queue_suffix="dead_letter",
                     )
 
@@ -173,8 +175,8 @@ class worker_pool_handler:
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
         self._varys_client.send(
-            message=f"MScape ingest worker failed with unhandled exception: {exception}",
-            exchange="mscape-restricted-announce",
+            message=f"{self._project} ingest worker failed with unhandled exception: {exception}",
+            exchange=f"{self._project}-restricted-announce",
             queue_suffix="dead_worker",
         )
 
@@ -426,7 +428,7 @@ def add_taxon_records(
                 )
 
                 try:
-                    s3_bucket = "mscape-published-binned-reads"
+                    s3_bucket = f"{payload['project']}-published-binned-reads"
                     s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}_{i}.fastq.gz"
                     s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
@@ -456,7 +458,7 @@ def add_taxon_records(
             )
 
             try:
-                s3_bucket = "mscape-published-binned-reads"
+                s3_bucket = f"{payload['project']}-published-binned-reads"
                 s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}.fastq.gz"
                 s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
@@ -531,7 +533,7 @@ def push_taxon_reports(
     try:
         reports = os.listdir(taxon_report_path)
 
-        s3_bucket = "mscape-published-taxon-reports"
+        s3_bucket = f"{payload['project']}-published-taxon-reports"
 
         for report in reports:
             # Skip directories and hidden files just incase
@@ -665,7 +667,7 @@ def push_report_file(
 
     report_path = os.path.join(result_path, f"{payload['uuid']}_report.html")
 
-    s3_bucket = "mscape-published-reports"
+    s3_bucket = f"{payload['project']}-published-reports"
 
     s3_key = f"{payload['climb_id']}_scylla_report.html"
 
@@ -726,7 +728,7 @@ def add_reads_record(
     raw_read_fail = False
     alert = False
 
-    s3_bucket = "mscape-published-reads"
+    s3_bucket = f"{payload['project']}-published-reads"
 
     if payload["platform"] == "illumina":
         for i in (1, 2):
@@ -841,7 +843,7 @@ def read_fraction_upload(
     read_fraction_fail = False
     alert = False
 
-    s3_bucket = "mscape-published-read-fractions"
+    s3_bucket = f"{payload['project']}-published-read-fractions"
 
     if payload["platform"] == "illumina":
         for i in (1, 2):
@@ -1000,13 +1002,13 @@ def ret_0_parser(
                 if process.startswith("paired_concatenate") and trace["exit"] == "5":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
-                        "At least one FASTQ in the pair appear to not contain valid header lines, please resubmit valid FASTQ files or contact the mSCAPE admin team if you believe this to be in error"
+                        f"At least one FASTQ in the pair appear to not contain valid header lines, please resubmit valid FASTQ files or contact the {payload['project']} admin team if you believe this to be in error"
                     )
                     ingest_fail = True
                 elif process.startswith("paired_concatenate") and trace["exit"] == "8":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
-                        "Paired FASTQ read headers do not appear to match between files, please resubmit valid FASTQ files or contact the mSCAPE admin team if you believe this to be in error"
+                        f"Paired FASTQ read headers do not appear to match between files, please resubmit valid FASTQ files or contact the {payload['project']} admin team if you believe this to be in error"
                     )
                     ingest_fail = True
                 elif (
@@ -1026,13 +1028,13 @@ def ret_0_parser(
                 elif process.startswith("fastp") and trace["exit"] == "255":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
-                        "Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the mSCAPE admin team for assistance"
+                        f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the {payload['project']} admin team for assistance"
                     )
                     ingest_fail = True
                 else:
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
-                        f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
+                        f"{payload['project']} validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
                     )
                     ingest_fail = True
 
@@ -1123,7 +1125,7 @@ def validate(
         endpoint_url=s3_credentials.endpoint,
     )
 
-    log = logging.getLogger("mscape.ingest")
+    log = logging.getLogger(f"{args.project}.ingest")
 
     to_validate = json.loads(message.body)
 
@@ -1153,10 +1155,10 @@ def validate(
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
-    # This client is purely for Mscape, ignore all other messages
-    if to_validate["project"] != "mscape":
+    # This client is purely for Mscape/synthscape, ignore all other messages
+    if to_validate["project"] != args.project:
         log.info(
-            f"Ignoring file set with UUID: {to_validate['uuid']} due non-mscape project ID"
+            f"Ignoring file set with UUID: {to_validate['uuid']} due non-{args.project} project ID"
         )
         return (False, alert, hcid_alerts, payload, message)
 
@@ -1177,7 +1179,7 @@ def validate(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                "Failed to check if fastq file is unseen, please contact the mSCAPE admin team"
+                f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
             )
             payload["rerun"] = True
 
@@ -1189,7 +1191,7 @@ def validate(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                "Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
+                f"Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the {payload['project']} admin team if you believe this to be in error."
             )
             return (False, alert, hcid_alerts, payload, message)
 
@@ -1202,7 +1204,7 @@ def validate(
             payload.setdefault("ingest_errors", [])
             log.info(f"Identical fastq files detected for UUID: {payload['uuid']}")
             payload["ingest_errors"].append(
-                "Identical fastq files detected, please ensure that the submitted paired fastqs are correct. Please contact the mSCAPE admin team if you believe this to be in error."
+                f"Identical fastq files detected, please ensure that the submitted paired fastqs are correct. Please contact the {payload['project']} admin team if you believe this to be in error."
             )
             return (False, alert, hcid_alerts, payload, message)
 
@@ -1218,7 +1220,7 @@ def validate(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                "Failed to check if fastq file is unseen, please contact the mSCAPE admin team"
+                f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
             )
             payload["rerun"] = True
 
@@ -1237,7 +1239,7 @@ def validate(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                "Failed to check if fastq file is unseen, please contact the mSCAPE admin team"
+                f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
             )
             payload["rerun"] = True
 
@@ -1249,7 +1251,7 @@ def validate(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                "At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the mSCAPE admin team if you believe this to be in error."
+                f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the {payload['project']} admin team if you believe this to be in error."
             )
             return (False, alert, hcid_alerts, payload, message)
 
@@ -1547,7 +1549,7 @@ def validate(
 
 
 def run(args):
-    log = init_logger("mscape.ingest", args.logfile, args.log_level)
+    log = init_logger(f"{args.project}.ingest", args.logfile, args.log_level)
 
     varys_client = Varys(
         profile="roz",
@@ -1572,7 +1574,7 @@ def run(args):
         while True:
             time.sleep(0.5)
             message = varys_client.receive(
-                exchange="inbound-to_validate-mscape",
+                exchange=f"inbound-to_validate-{args.project}",
                 queue_suffix="validator",
                 prefetch_count=args.n_workers,
             )
@@ -1595,6 +1597,7 @@ def main():
     parser.add_argument("--log_level", type=str, default="DEBUG")
     parser.add_argument("--ingest_pipeline", type=str, default="artic-network/scylla")
     parser.add_argument("--pipeline_branch", type=str, default="main")
+    parser.add_argument("--project", type=str, default="mscape")
     parser.add_argument("--nxf_config")
     parser.add_argument("--nxf_executable", default="nextflow")
     parser.add_argument("--k2_host", type=str)
