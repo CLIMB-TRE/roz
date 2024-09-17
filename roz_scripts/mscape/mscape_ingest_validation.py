@@ -1568,7 +1568,7 @@ def run(args):
     )
 
     worker_pool = worker_pool_handler(
-        workers=args.n_workers, logger=log, varys_client=varys_client
+        workers=args.n_workers, logger=log, varys_client=varys_client, project=args.project
     )
     try:
         while True:
