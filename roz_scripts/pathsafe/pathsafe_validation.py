@@ -131,6 +131,8 @@ class worker_pool_handler:
 
                     self._varys_client.nack_message(message)
 
+                    os.remove("/tmp/healthy")
+
                     raise ValueError("Validation failed after 5 attempts, shutting down worker pool")
                 
                 else:
@@ -669,6 +671,7 @@ def run(args):
             worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
     except BaseException as e:
         log.info(f"Shutting down worker pool due to exception: {e}")
+        os.remove("/tmp/healthy")
         worker_pool.close()
         varys_client.close()
         time.sleep(1)
