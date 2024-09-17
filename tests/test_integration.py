@@ -1085,6 +1085,7 @@ class Test_mscape_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = utils.pipeline(
@@ -1288,6 +1289,7 @@ class Test_mscape_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = utils.pipeline(
@@ -1462,6 +1464,7 @@ class Test_mscape_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = utils.pipeline(
@@ -1737,6 +1740,7 @@ class Test_mscape_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = utils.pipeline(
@@ -2039,6 +2043,7 @@ class Test_mscape_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = utils.pipeline(
@@ -2276,6 +2281,7 @@ class Test_mscape_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = utils.pipeline(
@@ -2511,6 +2517,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -2782,6 +2789,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -2940,6 +2948,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 result_dir=DIR,
                 n_workers=2,
                 retry_delay=2,
+                project="mscape",
             )
 
             pipeline = pathsafe_validation.pipeline(
