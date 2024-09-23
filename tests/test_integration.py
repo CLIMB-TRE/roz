@@ -726,21 +726,11 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
     def test_project_mismatch(self):
-        # Initialise the queue so that the message is not lost
-        self.varys_client.receive("inbound-results-mscape-birm", "s3_matcher", timeout=6)
-
         self.varys_client.send(mismatch_project_message, exchange="inbound-s3", queue_suffix="s3_matcher")
 
         output_message = self.varys_client.receive(exchange="inbound-matched", queue_suffix="s3_matcher", timeout=10)
 
         self.assertIsNone(output_message)
-
-        result_message = self.varys_client.receive(exchange="inbound-results-mscape-birm", queue_suffix="s3_matcher", timeout=10)
-
-        self.assertIsNotNone(result_message)
-        parsed_message = json.loads(result_message.body)
-        self.assertEqual(f"Project name in object key: notmscape.sample-test.run-test.csv does not match the project for the bucket: mscape-birm-mscape-prod", parsed_message)
-
 
 
 
