@@ -880,6 +880,7 @@ class test_s3_matcher(unittest.TestCase):
             artifact_complete,
             existing_object_dict,
             index_tuple_ret,
+            parsed_bucket_name
         ) = s3_matcher.parse_new_object_message(
             existing_object_dict=existing_object_dict,
             new_object_message=message_1,
@@ -901,6 +902,7 @@ class test_s3_matcher(unittest.TestCase):
             artifact_complete,
             existing_object_dict,
             index_tuple_ret_2,
+            parsed_bucket_name
         ) = s3_matcher.parse_new_object_message(
             existing_object_dict=existing_object_dict,
             new_object_message=message_2,
@@ -933,6 +935,7 @@ class test_s3_matcher(unittest.TestCase):
             artifact_complete,
             existing_object_dict,
             index_tuple,
+            parsed_bucket_name
         ) = s3_matcher.parse_new_object_message(
             existing_object_dict=existing_object_dict,
             new_object_message=message_3,
@@ -946,3 +949,77 @@ class test_s3_matcher(unittest.TestCase):
 
         self.assertFalse(artifact)
         self.assertTrue(all((project, site, platform, test_flag)))
+
+    def test_mismatching_project(self):
+        index_tuple = (
+            "project1|sample1|run1",
+            "project1",
+            "site1",
+            "illumina",
+            "prod",
+        )
+
+        message = {
+            "Records": [
+                {
+                    "eventVersion": "2.2",
+                    "eventSource": "ceph:s3",
+                    "awsRegion": "",
+                    "eventTime": "2023-10-10T06:39:35.470367Z",
+                    "eventName": "ObjectCreated:Put",
+                    "userIdentity": {"principalId": "bryn-site1"},
+                    "requestParameters": {"sourceIPAddress": ""},
+                    "responseElements": {
+                        "x-amz-request-id": "testdata",
+                        "x-amz-id-2": "testdata",
+                    },
+                    "s3": {
+                        "s3SchemaVersion": "1.0",
+                        "configurationId": "inbound.s3",
+                        "bucket": {
+                            "name": "project1-site1-illumina-prod",
+                            "ownerIdentity": {"principalId": "admin"},
+                            "arn": "arn:aws:s3:::project1-site1-illumina-prod",
+                            "id": "testdata",
+                        },
+                        "object": {
+                            "key": "project4.sample1.run2.csv",
+                            "size": 123123123,
+                            "eTag": "179d94f8cd22896c2a80a9a7c98463d2-21",
+                            "versionId": "",
+                            "sequencer": "testdata",
+                            "metadata": [
+                                {
+                                    "key": "x-amz-content-sha256",
+                                    "val": "UNSIGNED-PAYLOAD",
+                                },
+                                {"key": "x-amz-date", "val": "testdata"},
+                            ],
+                            "tags": [],
+                        },
+                    },
+                    "eventId": "testdata",
+                    "opaqueData": "",
+                }
+            ]
+        }
+
+        existing_object_dict = {}
+
+        (
+            artifact_complete,
+            existing_object_dict,
+            index_tuple_ret,
+            parsed_bucket_name
+        ) = s3_matcher.parse_new_object_message(
+            existing_object_dict=existing_object_dict,
+            new_object_message=message,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        artifact, site, project, platform, test_flag = index_tuple_ret
+
+        self.assertFalse(artifact_complete)
+
+        self.assertNotEqual(project, "project4")
+

@@ -1,4 +1,4 @@
-from roz_scripts.utils.utils import get_s3_credentials, init_logger
+from roz_scripts.utils.utils import get_s3_credentials, init_logger, put_result_json
 from roz_scripts.general.s3_controller import create_config_map
 from varys import Varys
 
@@ -233,12 +233,14 @@ def parse_new_object_message(
 
     bucket_name = record["s3"]["bucket"]["name"]
 
-    project, site_str, platform, test_flag = bucket_name.split("-")
+    parsed_bucket_name = {x: y for x, y in zip(("project", "site_str", "platform", "test_flag"), bucket_name.split("-"))}
 
-    if "." in site_str:
-        site = site_str.split(".")[-2]
+    # project, site_str, platform, test_flag = parsed_bucket_name
+
+    if "." in parsed_bucket_name["site_str"]:
+        site = parsed_bucket_name["site_str"].split(".")[-2]
     else:
-        site = site_str
+        site = parsed_bucket_name["site_str"]
 
     object_key = record["s3"]["object"]["key"]
 
@@ -246,29 +248,34 @@ def parse_new_object_message(
         return (
             False,
             existing_object_dict,
-            (False, project, site, platform, test_flag),
+            (False, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"]),
+            parsed_bucket_name,
         )
 
     extension, parsed_object_key = parse_object_key(
         object_key=object_key,
         config_dict=config_dict,
-        project=project,
-        platform=platform,
+        project=parsed_bucket_name["project"],
+        platform=parsed_bucket_name["platform"],
     )
 
     if not extension:
-        index_tuple = (False, project, site, platform, test_flag)
-        return (False, existing_object_dict, index_tuple)
+        index_tuple = (False, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
+        return (False, existing_object_dict, index_tuple, parsed_bucket_name)
 
     artifact = generate_artifact(
         parsed_object_key=parsed_object_key,
-        artifact_layout=config_dict["configs"][project]["artifact_layout"],
+        artifact_layout=config_dict["configs"][parsed_bucket_name["project"]]["artifact_layout"],
     )
 
-    index_tuple = (artifact, project, site, platform, test_flag)
+    if parsed_object_key["project"].lower() != parsed_bucket_name["project"]:
+        index_tuple = (False, parsed_bucket_name["platform"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
+        return (False, existing_object_dict, index_tuple, parsed_bucket_name)
+
+    index_tuple = (artifact, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
 
     if not artifact:
-        return (False, existing_object_dict, index_tuple)
+        return (False, existing_object_dict, index_tuple, parsed_bucket_name)
 
     existing_object_dict.setdefault(index_tuple, {"files": {}, "objects": {}})
 
@@ -283,16 +290,17 @@ def parse_new_object_message(
     existing_object_dict[index_tuple]["objects"][extension] = record
 
     if extension == ".csv":
-        existing_object_dict[index_tuple]["raw_site"] = site_str
+        existing_object_dict[index_tuple]["raw_site"] = parsed_bucket_name["site_str"]
 
     return (
         is_artifact_dict_complete(
-            (artifact, project, site, platform, test_flag),
+            index_tuple,
             existing_object_dict,
             config_dict,
         ),
         existing_object_dict,
         index_tuple,
+        parsed_bucket_name,
     )
 
 
@@ -409,7 +417,7 @@ def main():
             if message_dict["Records"][0]["s3"]["object"]["key"] == "test":
                 continue
 
-            artifact_complete, existing_object_dict, index_tuple = (
+            artifact_complete, existing_object_dict, index_tuple, parsed_bucket_name = (
                 parse_new_object_message(
                     existing_object_dict=existing_object_dict,
                     new_object_message=message_dict,
@@ -425,6 +433,16 @@ def main():
                 varys_client.send(
                     message=failure_message,
                     exchange=f"inbound-results-{project}-{site}",
+                    queue_suffix="s3_matcher",
+                )
+                continue
+
+            if project != parsed_bucket_name["project"]:
+                failure_message = f"Project name in object key: {message_dict['Records'][0]['s3']['object']['key']} does not match the project for the bucket: {message_dict['Records'][0]['s3']['bucket']['name']}"
+                log.info(failure_message)
+                varys_client.send(
+                    message=failure_message,
+                    exchange=f"inbound-results-{parsed_bucket_name['project']}-{site}",
                     queue_suffix="s3_matcher",
                 )
                 continue

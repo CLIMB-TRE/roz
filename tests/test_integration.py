@@ -203,6 +203,48 @@ incorrect_fastq_msg = {
     ]
 }
 
+mismatch_project_message = {
+    "Records": [
+        {
+            "eventVersion": "2.2",
+            "eventSource": "ceph:s3",
+            "awsRegion": "",
+            "eventTime": "2023-10-10T06:39:35.470367Z",
+            "eventName": "ObjectCreated:Put",
+            "userIdentity": {"principalId": "testuser"},
+            "requestParameters": {"sourceIPAddress": ""},
+            "responseElements": {
+                "x-amz-request-id": "testdata",
+                "x-amz-id-2": "testdata",
+            },
+            "s3": {
+                "s3SchemaVersion": "1.0",
+                "configurationId": "inbound.s3",
+                "bucket": {
+                    "name": "mscape-birm-ont-prod",
+                    "ownerIdentity": {"principalId": "testuser"},
+                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
+                    "id": "testdata",
+                },
+                "object": {
+                    "key": "notmscape.sample-test.run-test.csv",
+                    "size": 275,
+                    "eTag": "7022ea6a3adb39323b5039c1d6587d08",
+                    "versionId": "",
+                    "sequencer": "testdata",
+                    "metadata": [
+                        {"key": "x-amz-content-sha256", "val": "UNSIGNED-PAYLOAD"},
+                        {"key": "x-amz-date", "val": "testdata"},
+                    ],
+                    "tags": [],
+                },
+            },
+            "eventId": "testdata",
+            "opaqueData": "",
+        }
+    ]
+}
+
 example_match_message = {
     "uuid": "42c3796d-d767-4293-97a8-c4906bb5cca8",
     "payload_version": 1,
@@ -682,6 +724,23 @@ class Test_S3_matcher(unittest.TestCase):
             "mscape.sample-test.run-test.fastq.gz",
         )
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
+
+    def test_project_mismatch(self):
+        # Initialise the queue so that the message is not lost
+        self.varys_client.receive("inbound-results-mscape-birm", "s3_matcher", timeout=1)
+
+        self.varys_client.send(mismatch_project_message, exchange="inbound-s3", queue_suffix="s3_matcher")
+
+        output_message = self.varys_client.receive(exchange="inbound-matched", queue_suffix="s3_matcher", timeout=10)
+
+        self.assertIsNone(output_message)
+
+        result_message = self.varys_client.receive("inbound-results-mscape-birm", "s3_matcher", timeout=10)
+
+        self.assertIsNotNone(result_message)
+        self.assertEqual(f"Project name in object key: notmscape.sample-test.run-test.csv does not match the project for the bucket: mscape-birm-ont-prod", json.load(result_message.body))
+
+
 
 
 class Test_ingest(unittest.TestCase):
