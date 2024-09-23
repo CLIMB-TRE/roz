@@ -269,7 +269,7 @@ def parse_new_object_message(
     )
 
     if parsed_object_key["project"].lower() != parsed_bucket_name["project"]:
-        index_tuple = (False, parsed_bucket_name["platform"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
+        index_tuple = (artifact, parsed_bucket_name["platform"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
         return (False, existing_object_dict, index_tuple, parsed_bucket_name)
 
     index_tuple = (artifact, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
