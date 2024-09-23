@@ -983,7 +983,7 @@ class test_s3_matcher(unittest.TestCase):
                             "id": "testdata",
                         },
                         "object": {
-                            "key": "project4.sample1.run2.csv",
+                            "key": "project4.sample1.run2.2.fastq.gz",
                             "size": 123123123,
                             "eTag": "179d94f8cd22896c2a80a9a7c98463d2-21",
                             "versionId": "",
@@ -1004,7 +1004,47 @@ class test_s3_matcher(unittest.TestCase):
             ]
         }
 
-        existing_object_dict = {}
+        index_tuple = (
+            "project1|sample1|run1",
+            "project1",
+            "site1",
+            "illumina",
+            "prod",
+        )
+
+        existing_object_dict = {
+            index_tuple: {
+                "files": {
+                    ".1.fastq.gz": {
+                        "uri": "s3://project1-site1-illumina-prod/project1.sample1.run1.1.fastq.gz",
+                        "etag": " cfade0850023c5552624423beec6c20f-9422",
+                        "key": "project1.sample1.run1.1.fastq.gz",
+                        "submitter": "bryn-site1",
+                        "parsed_fname": {
+                            "project": "project1",
+                            "run_index": "sample1",
+                            "run_id": "run1",
+                            "direction": "1",
+                            "ftype": "fastq",
+                            "gzip": "gz",
+                        },
+                    },
+                    ".csv": {
+                        "uri": "s3://project1-site1-illumina-prod/project1.sample1.run1.csv",
+                        "etag": " cfade0850023c5552624423beec6c20f-9422",
+                        "key": "project1.sample1.run1.csv",
+                        "submitter": "bryn-site1",
+                        "parsed_fname": {
+                            "project": "project1",
+                            "run_index": "sample1",
+                            "run_id": "run1",
+                            "ftype": "csv",
+                        },
+                    },
+                },
+                "objects": {},
+            }
+        }
 
         (
             artifact_complete,

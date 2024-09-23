@@ -150,6 +150,9 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
                 platform=platform,
             )
 
+            if parsed_object_key['project'].lower() != project:
+                continue
+
             if not extension:
                 continue
 
