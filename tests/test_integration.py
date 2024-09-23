@@ -738,7 +738,8 @@ class Test_S3_matcher(unittest.TestCase):
         result_message = self.varys_client.receive("inbound-results-mscape-birm", "s3_matcher", timeout=10)
 
         self.assertIsNotNone(result_message)
-        self.assertEqual(f"Project name in object key: notmscape.sample-test.run-test.csv does not match the project for the bucket: mscape-birm-ont-prod", json.load(result_message.body))
+        parsed_message = json.loads(result_message.body)
+        self.assertEqual(f"Project name in object key: notmscape.sample-test.run-test.csv does not match the project for the bucket: mscape-birm-mscape-prod", parsed_message)
 
 
 
