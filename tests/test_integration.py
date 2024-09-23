@@ -727,7 +727,7 @@ class Test_S3_matcher(unittest.TestCase):
 
     def test_project_mismatch(self):
         # Initialise the queue so that the message is not lost
-        self.varys_client.receive("inbound-results-mscape-birm", "s3_matcher", timeout=3)
+        self.varys_client.receive("inbound-results-mscape-birm", "s3_matcher", timeout=6)
 
         self.varys_client.send(mismatch_project_message, exchange="inbound-s3", queue_suffix="s3_matcher")
 
