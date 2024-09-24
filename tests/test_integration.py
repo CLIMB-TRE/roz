@@ -522,7 +522,7 @@ example_pathsafe_execution_trace = """task_id	hash	native_id	name	status	exit	su
 example_reads_summary = [
     {
         "human_readable": "Pseudomonas",
-        "taxon": "286",
+        "taxon_id": "286",
         "tax_level": "G",
         "filenames": ["286.fastq"],
         "qc_metrics": {
