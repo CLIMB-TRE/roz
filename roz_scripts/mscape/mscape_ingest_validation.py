@@ -179,6 +179,8 @@ class worker_pool_handler:
             exchange=f"{self._project}-restricted-announce",
             queue_suffix="dead_worker",
         )
+        os.remove("/tmp/healthy")
+        sys.exit(1)
 
     def close(self):
         self.worker_pool.close()
@@ -411,14 +413,26 @@ def add_taxon_records(
         return (binned_read_fail, alert, payload)
 
     for taxa in summary:
-        taxon_dict = {
-            "taxon_id": taxa["taxon"],
-            "human_readable": taxa["human_readable"],
-            "n_reads": taxa["qc_metrics"]["num_reads"],
-            "avg_quality": taxa["qc_metrics"]["avg_qual"],
-            "mean_len": taxa["qc_metrics"]["mean_len"],
-            "rank": taxa["tax_level"],
-        }
+        try:
+            taxon_dict = {
+                "taxon_id": taxa["taxon_id"],
+                "human_readable": taxa["human_readable"],
+                "n_reads": taxa["qc_metrics"]["num_reads"],
+                "avg_quality": taxa["qc_metrics"]["avg_qual"],
+                "mean_len": taxa["qc_metrics"]["mean_len"],
+                "rank": taxa["tax_level"],
+            }
+        except KeyError as e:
+            log.error(
+                f"Failed to parse reads_summary_combined.json for UUID: {payload['uuid']} with CID: {payload['climb_id']}. Error: {e}"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                f"Failed to parse taxon record, likely due to malformed reads_summary_combined.json"
+            )
+            binned_read_fail = True
+            alert = True
+            return (binned_read_fail, alert, payload)
 
         if payload["platform"] == "illumina":
             for i in (1, 2):
@@ -429,7 +443,7 @@ def add_taxon_records(
 
                 try:
                     s3_bucket = f"{payload['project']}-published-binned-reads"
-                    s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}_{i}.fastq.gz"
+                    s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon_id']}_{i}.fastq.gz"
                     s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
                     s3_client.upload_file(
@@ -442,11 +456,11 @@ def add_taxon_records(
 
                 except Exception as add_taxon_record_exception:
                     log.error(
-                        f"Failed to upload binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
+                        f"Failed to upload binned reads for taxon {taxa['taxon_id']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
                     )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
-                        f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
+                        f"Failed to upload binned reads for taxon: {taxa['taxon_id']} to storage bucket"
                     )
                     binned_read_fail = True
                     alert = True
@@ -459,7 +473,7 @@ def add_taxon_records(
 
             try:
                 s3_bucket = f"{payload['project']}-published-binned-reads"
-                s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon']}.fastq.gz"
+                s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon_id']}.fastq.gz"
                 s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
                 s3_client.upload_file(
@@ -472,11 +486,11 @@ def add_taxon_records(
 
             except Exception as add_taxon_record_exception:
                 log.error(
-                    f"Failed to binned reads for taxon {taxa['taxon']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
+                    f"Failed to binned reads for taxon {taxa['taxon_id']} to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_taxon_record_exception}"
                 )
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
-                    f"Failed to upload binned reads for taxon: {taxa['taxon']} to storage bucket"
+                    f"Failed to upload binned reads for taxon: {taxa['taxon_id']} to storage bucket"
                 )
                 binned_read_fail = True
                 alert = True
