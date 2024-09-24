@@ -159,6 +159,8 @@ class worker_pool_handler:
             exchange="pathsafe-restricted-announce",
             queue_suffix="dead_worker",
         )
+        os.remove("/tmp/healthy")
+        sys.exit(1)
 
 
     def close(self):
@@ -356,6 +358,9 @@ def execute_assembly_pipeline(
     log.info(f"Submitted ingest pipeline for UUID: {payload['uuid']}")
 
     log_path = Path(args.result_dir, payload["uuid"])
+
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
 
     return ingest_pipe.execute(params=parameters, logdir=log_path, timeout=7200)
 
