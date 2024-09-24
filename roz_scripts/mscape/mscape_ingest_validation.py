@@ -245,6 +245,9 @@ def execute_validation_pipeline(
 
     log_path = Path(args.result_dir, payload["uuid"])
 
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+
     return ingest_pipe.execute(
         params=parameters,
         logdir=log_path,
