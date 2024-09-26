@@ -423,6 +423,39 @@ def ret_0_parser(
 
     return (ingest_fail, payload)
 
+def ensure_files_not_empty(log: logging.getLogger, payload: dict, s3_client: boto3.client) -> tuple[bool, dict]:
+
+    fail = False
+
+    for file in (payload["files"][".1.fastq.gz"], payload["files"][".2.fastq.gz"]):
+        try:
+            response = s3_client.head_object(
+                Bucket=file["bucket"],
+                Key=file["key"],
+            )
+
+            if response["ContentLength"] == 0:
+                log.error(
+                    f"FASTQ file for UUID: {payload['uuid']} is empty, sending result"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    "At least one FASTQ file appears to be empty. Please contact the pathsafe admin team if you believe this to be in error."
+                )
+                fail = True
+
+        except ClientError as e:
+            log.error(
+                f"Failed to check if fastq file for UUID: {payload['uuid']} is empty due to client error: {e}"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                "Failed to check if fastq file isn't empty"
+            )
+            fail = True
+            payload["rerun"] = True
+        
+    return (fail, payload)
 
 def validate(
     message,
@@ -454,6 +487,14 @@ def validate(
         return (False, payload, message)
 
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
+        return (False, payload, message)
+    
+    empty_fastq, payload = ensure_files_not_empty(log=log, payload=payload, s3_client=s3_client)
+
+    if empty_fastq:
+        log.error(
+            f"FASTQ file for UUID: {payload['uuid']} is empty, sending result"
+        )
         return (False, payload, message)
     
     unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
