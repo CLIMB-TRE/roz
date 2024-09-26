@@ -419,12 +419,11 @@ def ensure_files_not_empty(log: logging.getLogger, payload: dict, s3_client: bot
 
     for file in (payload["files"][".1.fastq.gz"], payload["files"][".2.fastq.gz"]):
         try:
-            bucket = file["s3_uri"].split("/")[2]
-            key = file["s3_uri"].split("/")[3:]
+            bucket = file["uri"].split("/")[2]
 
             response = s3_client.head_object(
                 Bucket=bucket,
-                Key=key,
+                Key=file["key"],
             )
 
             if response["ContentLength"] == 0:
