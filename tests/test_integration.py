@@ -2394,6 +2394,12 @@ class Test_pathsafe_validator(unittest.TestCase):
             "pathsafe.sample-test.run-test.csv",
         )
 
+        with open("pathsafe.sample-test.run-test.1.fastq.gz", "w") as f:
+            f.write("Hello pytest :)")
+
+        self.s3_client.upload_file("pathsafe.sample-test.run-test.1.fastq.gz", "pathsafe-birm-illumina-prod", "pathsafe.sample-test.run-test.1.fastq.gz")
+        self.s3_client.upload_file("pathsafe.sample-test.run-test.1.fastq.gz", "pathsafe-published-assembly", "pathsafe.sample-test.run-test.2.fastq.gz")
+
         resp = self.s3_client.head_object(
             Bucket="pathsafe-birm-illumina-prod",
             Key="pathsafe.sample-test.run-test.csv",
