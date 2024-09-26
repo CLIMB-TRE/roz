@@ -56,16 +56,6 @@ class worker_pool_handler:
     def callback(self, validate_result):
         success, payload, message = validate_result
 
-        # if alert:
-        #     self._log.error(
-        #         f"Alert flag set for UUID: {payload['uuid']}, manual intervention required"
-        #     )
-        #     self._varys_client.send(
-        #         message=payload,
-        #         exchange="restricted-mscape-announce",
-        #         queue_suffix="alert",
-        #     )
-
         if success:
             self._log.info(
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
@@ -429,9 +419,12 @@ def ensure_files_not_empty(log: logging.getLogger, payload: dict, s3_client: bot
 
     for file in (payload["files"][".1.fastq.gz"], payload["files"][".2.fastq.gz"]):
         try:
+            bucket = file["s3_uri"].split("/")[2]
+            key = file["s3_uri"].split("/")[3:]
+
             response = s3_client.head_object(
-                Bucket=file["bucket"],
-                Key=file["key"],
+                Bucket=bucket,
+                Key=key,
             )
 
             if response["ContentLength"] == 0:
