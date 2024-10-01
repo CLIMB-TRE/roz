@@ -676,7 +676,7 @@ def run(args):
         branch="main",
         profile="docker",
         config=args.nxf_config,
-        nxf_executable=args.nxf_executable,
+        nxf_image=args.nxf_image,
         # timeout=21600,
     )
 
@@ -718,7 +718,7 @@ def main():
         "--nxf_config", type=Path, required=False, help="Path to nxf config file"
     )
     parser.add_argument(
-        "--nxf_executable", type=Path, required=False, default="nextflow"
+        "--nxf_image", type=Path, required=False, default="quay.io/climb-tre/nextflow:24.04.4"
     )
     parser.add_argument(
         "--n_workers",

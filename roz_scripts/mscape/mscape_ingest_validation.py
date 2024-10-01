@@ -1565,7 +1565,7 @@ def run(args):
         branch=args.pipeline_branch,
         profile="docker",
         config=args.nxf_config,
-        nxf_executable=args.nxf_executable,
+        nxf_image=args.nxf_image,
         # timeout=args.pipeline_timeout,
     )
 
@@ -1604,7 +1604,7 @@ def main():
     parser.add_argument("--pipeline_branch", type=str, default="main")
     parser.add_argument("--project", type=str, default="mscape")
     parser.add_argument("--nxf_config")
-    parser.add_argument("--nxf_executable", default="nextflow")
+    parser.add_argument("--nxf_image", default="quay.io/climb-tre/nextflow:24.04.4")
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)
