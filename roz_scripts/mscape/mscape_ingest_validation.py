@@ -39,7 +39,7 @@ class worker_pool_handler:
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
         self._retry_log = {}
-        
+
         self._project = project
 
     def submit_job(self, message, args, ingest_pipe):
@@ -248,10 +248,25 @@ def execute_validation_pipeline(
     if not os.path.exists(log_path):
         os.makedirs(log_path)
 
+    env_vars = {
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "NXF_WORK": "/shared/team/nxf_work/roz/work/",
+        "NXF_HOME": "/shared/team/nxf_work/roz/.nextflow/",
+    }
+
+    stdout_path = os.path.join(log_path, "nextflow.stdout")
+    stderr_path = os.path.join(log_path, "nextflow.stderr")
+
     return ingest_pipe.execute(
         params=parameters,
         logdir=log_path,
         timeout=timeout,
+        env_vars=env_vars,
+        namespace=f"ns-{payload['project']}",
+        job_id=payload["uuid"],
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
     )
 
 
@@ -431,7 +446,7 @@ def add_taxon_records(
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                f"Failed to parse taxon record, likely due to malformed reads_summary_combined.json"
+                "Failed to parse taxon record, likely due to malformed reads_summary_combined.json"
             )
             binned_read_fail = True
             alert = True
@@ -1272,7 +1287,7 @@ def validate(
             )
             return (False, alert, hcid_alerts, payload, message)
 
-    rc, stdout, stderr = execute_validation_pipeline(
+    rc = execute_validation_pipeline(
         payload=payload,
         args=args,
         ingest_pipe=ingest_pipe,
@@ -1286,15 +1301,6 @@ def validate(
     args.result_dir = Path(args.result_dir)
 
     result_path = Path(args.result_dir.resolve(), payload["uuid"])
-
-    if not os.path.exists(result_path):
-        os.makedirs(result_path)
-
-    with open(Path(result_path, "nextflow.stdout"), "wt") as out_fh, open(
-        Path(result_path, "nextflow.stderr"), "wt"
-    ) as err_fh:
-        out_fh.write(stdout)
-        err_fh.write(stderr)
 
     if rc != 0:
         log.error(
@@ -1312,7 +1318,6 @@ def validate(
 
     if ingest_fail:
         log.info(f"Validation pipeline failed for UUID: {payload['uuid']}")
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
     if payload["test_flag"]:
@@ -1320,7 +1325,6 @@ def validate(
             f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
         )
         payload["test_ingest_result"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         return (True, alert, hcid_alerts, payload, message)
 
     # Spot if metadata disagrees anywhere, don't act on it yet though
@@ -1371,13 +1375,11 @@ def validate(
             f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     if not create_success:
         log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
     payload["onyx_create_status"] = True
@@ -1391,7 +1393,6 @@ def validate(
 
     if scylla_version_fail:
         log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
     if payload["platform"] == "illumina":
@@ -1413,11 +1414,9 @@ def validate(
 
     else:
         log.error(f"Unknown platform: {payload['platform']}")
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
     if etag_fail:
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
     log.info(
@@ -1525,7 +1524,6 @@ def validate(
             f"Failed to upload files to S3 or update Onyx for CID: {payload['climb_id']} with match UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
@@ -1538,29 +1536,16 @@ def validate(
             f"Failed to update Onyx record for UUID: {payload['uuid']} with CID: {payload['climb_id']}"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     if publish_fail:
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, alert, hcid_alerts, payload, message)
 
     payload["published"] = True
     log.info(
         f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['climb_id']}"
     )
-
-    (
-        cleanup_rc,
-        cleanup_stdout,
-        cleanup_stderr,
-    ) = ingest_pipe.cleanup(stdout=stdout)
-
-    if cleanup_rc != 0:
-        log.error(
-            f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_rc}. stdout: {cleanup_stdout}, stderr: {cleanup_stderr}"
-        )
 
     return (True, alert, hcid_alerts, payload, message)
 
@@ -1585,7 +1570,10 @@ def run(args):
     )
 
     worker_pool = worker_pool_handler(
-        workers=args.n_workers, logger=log, varys_client=varys_client, project=args.project
+        workers=args.n_workers,
+        logger=log,
+        varys_client=varys_client,
+        project=args.project,
     )
     try:
         while True:

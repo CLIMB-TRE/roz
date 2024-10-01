@@ -726,12 +726,15 @@ class Test_S3_matcher(unittest.TestCase):
         self.assertTrue(uuid.UUID(message_dict["uuid"], version=4))
 
     def test_project_mismatch(self):
-        self.varys_client.send(mismatch_project_message, exchange="inbound-s3", queue_suffix="s3_matcher")
+        self.varys_client.send(
+            mismatch_project_message, exchange="inbound-s3", queue_suffix="s3_matcher"
+        )
 
-        output_message = self.varys_client.receive(exchange="inbound-matched", queue_suffix="s3_matcher", timeout=10)
+        output_message = self.varys_client.receive(
+            exchange="inbound-matched", queue_suffix="s3_matcher", timeout=10
+        )
 
         self.assertIsNone(output_message)
-
 
 
 class Test_ingest(unittest.TestCase):
@@ -913,7 +916,11 @@ class Test_mscape_validator(unittest.TestCase):
             Key="mscape.sample-test.run-test.csv",
         )
 
-        self.s3_client.put_object(Bucket="mscape-birm-ont-prod", Key="mscape.sample-test.run-test.fastq.gz", Body=b"hello")
+        self.s3_client.put_object(
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.fastq.gz",
+            Body=b"hello",
+        )
 
         self.log = utils.init_logger(
             "mscape.ingest", MSCAPE_VALIDATION_LOG_FILENAME, "DEBUG"
@@ -1208,17 +1215,10 @@ class Test_mscape_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.cleanup.return_value = 0
+
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
             mock_client.return_value.__enter__.return_value.update.return_value = {}
@@ -1404,17 +1404,10 @@ class Test_mscape_validator(unittest.TestCase):
 
             test_message["uuid"] = "test_successful_test"
 
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.cleanup.return_value = 0
+
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
             mock_client.return_value.__enter__.return_value.update.return_value = {}
@@ -1571,17 +1564,10 @@ class Test_mscape_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.cleanup.return_value = 0
+
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
@@ -1851,17 +1837,10 @@ class Test_mscape_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.cleanup.return_value = 0
+
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
             mock_client.return_value.__enter__.return_value.update.return_value = {}
@@ -2166,17 +2145,8 @@ class Test_mscape_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
             mock_client.return_value.__enter__.return_value.update.return_value = {}
@@ -2397,9 +2367,17 @@ class Test_pathsafe_validator(unittest.TestCase):
         with open("pathsafe.sample-test.run-test.1.fastq.gz", "w") as f:
             f.write("Hello pytest :)")
 
-        self.s3_client.upload_file("pathsafe.sample-test.run-test.1.fastq.gz", "pathsafe-birm-illumina-prod", "pathsafe.sample-test.run-test.1.fastq.gz")
+        self.s3_client.upload_file(
+            "pathsafe.sample-test.run-test.1.fastq.gz",
+            "pathsafe-birm-illumina-prod",
+            "pathsafe.sample-test.run-test.1.fastq.gz",
+        )
 
-        self.s3_client.upload_file("pathsafe.sample-test.run-test.1.fastq.gz", "pathsafe-birm-illumina-prod", "pathsafe.sample-test.run-test.2.fastq.gz")
+        self.s3_client.upload_file(
+            "pathsafe.sample-test.run-test.1.fastq.gz",
+            "pathsafe-birm-illumina-prod",
+            "pathsafe.sample-test.run-test.2.fastq.gz",
+        )
 
         resp = self.s3_client.head_object(
             Bucket="pathsafe-birm-illumina-prod",
@@ -2469,17 +2447,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
             patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
-
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
             mock_requests.post.return_value = MockResponse(
                 status_code=201, json_data={"id": "test_pwid", "uuid": "test_uuid"}
@@ -2618,17 +2586,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
             patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
-
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
             mock_requests.post = Mock(
                 side_effect=MockResponse(
@@ -2893,17 +2851,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
             patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
-
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
             mock_requests.post.return_value = MockResponse(
                 status_code=201, json_data={"id": "test_pwid", "uuid": "test_uuid"}
