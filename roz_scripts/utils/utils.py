@@ -193,6 +193,7 @@ class pipeline:
             c.host = f"https://{os.getenv("KUBERNETES_SERVICE_HOST")}"
             c.ssl_ca_cert = f"{os.getenv("K8S_SECRETS_MOUNT")}/ca.crt"
 
+            Configuration.set_default(c)
             api_instance = BatchV1Api()
 
             resp = api_instance.create_namespaced_job(
