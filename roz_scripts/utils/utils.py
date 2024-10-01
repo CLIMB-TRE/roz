@@ -186,8 +186,9 @@ class pipeline:
             c = Configuration()
 
             with open(f"{os.getenv("K8S_SECRETS_MOUNT")}/token", "rt") as token_fh:
-                c.api_key["authorization"] = token_fh.read()
+                token = token_fh.read()
 
+            c.api_key["authorization"] = token
             c.api_key_prefix["authorization"] = "Bearer"
             c.host = f"https://{os.getenv("KUBERNETES_SERVICE_HOST")}"
             c.ssl_ca_cert = f"{os.getenv("K8S_SECRETS_MOUNT")}/ca.crt"
