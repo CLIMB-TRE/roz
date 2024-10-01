@@ -71,12 +71,11 @@ class pipeline:
 
         with open(f"{os.getenv("K8S_SECRETS_MOUNT")}/token", "rt") as token_fh:
             c.api_key["authorization"] = token_fh.read()
-            
+
         c.api_key_prefix["authorization"] = "Bearer"
         c.host = f"https://{os.getenv("KUBERNETES_SERVICE_HOST")}"
         c.ssl_ca_cert = f"{os.getenv("K8S_SECRETS_MOUNT")}/ca.crt"
         Configuration.set_default(c)
-        self.k8s_api_instance = BatchV1Api()
 
     def execute(
         self,
@@ -196,13 +195,17 @@ class pipeline:
             self.cmd = cmd
             os.chdir(logdir)
 
-            resp = self.k8s_api_instance.create_namespaced_job(
+            config = Configuration.get_default_copy()
+
+            api_instance = BatchV1Api()
+
+            resp = api_instance.create_namespaced_job(
                 body=job_manifest, namespace=namespace
             )
 
             job_completed = False
             while not job_completed:
-                resp = self.k8s_api_instance.read_namespaced_job_status(
+                resp = api_instance.read_namespaced_job_status(
                     name=f"roz-{job_id}", namespace=namespace
                 )
                 if resp.status.succeeded or resp.status.failed:
