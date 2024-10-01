@@ -152,7 +152,7 @@ class pipeline:
                         "containers": [
                             {
                                 "name": f"roz-{job_id}-pod",
-                                "image": self.nxf_image,
+                                "image": str(self.nxf_image),
                                 "resources": {"requests": {"cpu": "2", "memory": "4G"}},
                                 "volumeMounts": [
                                     {
