@@ -988,17 +988,8 @@ class Test_mscape_validator(unittest.TestCase):
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
         ):
-            mock_pipeline.return_value.execute.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
+            mock_pipeline.return_value.execute.return_value = 0
 
-            mock_pipeline.return_value.cleanup.return_value = (
-                0,
-                "test_stdout",
-                "test_stderr",
-            )
             mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
 
             mock_client.return_value.__enter__.return_value.update.return_value = {}
