@@ -207,6 +207,7 @@ class pipeline:
                 )
                 if resp.status.succeeded or resp.status.failed:
                     returncode = 0 if resp.status.succeeded else 1
+                    job_completed = True
                 time.sleep(1)
 
         except BaseException as e:
