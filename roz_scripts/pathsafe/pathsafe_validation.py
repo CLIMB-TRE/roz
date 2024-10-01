@@ -352,8 +352,26 @@ def execute_assembly_pipeline(
     if not os.path.exists(log_path):
         os.makedirs(log_path)
 
-    return ingest_pipe.execute(params=parameters, logdir=log_path, timeout=7200)
+    env_vars = {
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "NXF_WORK": "/shared/team/nxf_work/roz/work/",
+        "NXF_HOME": "/shared/team/nxf_work/roz/.nextflow/",
+    }
 
+    stdout_path = os.path.join(log_path, "nextflow.stdout")
+    stderr_path = os.path.join(log_path, "nextflow.stderr")
+
+    return ingest_pipe.execute(
+        params=parameters,
+        logdir=log_path,
+        timeout=7200,
+        env_vars=env_vars,
+        namespace=f"ns-{payload['project']}",
+        job_id=payload["uuid"],
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
 
 def ret_0_parser(
     log: logging.getLogger,
@@ -535,7 +553,7 @@ def validate(
         )
         return (False, payload, message)
 
-    rc, stdout, stderr = execute_assembly_pipeline(
+    rc = execute_assembly_pipeline(
         payload=payload, args=args, log=log, ingest_pipe=ingest_pipe
     )
 
@@ -551,18 +569,11 @@ def validate(
     if not os.path.exists(result_path):
         os.makedirs(result_path)
 
-    with open(os.path.join(result_path, "nextflow.stdout"), "wt") as out_fh, open(
-        os.path.join(result_path, "nextflow.stderr"), "wt"
-    ) as err_fh:
-        out_fh.write(stdout)
-        err_fh.write(stderr)
-
     if rc != 0:
         log.error(
             f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, payload, message)
 
@@ -573,7 +584,6 @@ def validate(
     )
 
     if ingest_fail:
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
     if payload["test_flag"]:
@@ -581,7 +591,6 @@ def validate(
             f"Test ingest for artifact: {payload['artifact']} with UUID: {payload['uuid']} completed successfully"
         )
         payload["test_ingest_result"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         return (False, payload, message)
 
     submission_success, alert, payload = csv_create(
@@ -593,7 +602,6 @@ def validate(
             f"Submission to Onyx failed for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, payload, message)
 
@@ -610,7 +618,6 @@ def validate(
         log.error(
             f"Failed to upload assembly to long-term storage bucket for UUID: {payload['uuid']}"
         )
-        ingest_pipe.cleanup(stdout=stdout)
         payload["rerun"] = True
         time.sleep(args.retry_delay)
         return (False, payload, message)
@@ -625,7 +632,6 @@ def validate(
             f"Pathogenwatch submission failed for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, payload, message)
     
@@ -642,7 +648,6 @@ def validate(
 
     if etag_fail:
         log.error(f"Failed to update etags for UUID: {payload['uuid']}")
-        ingest_pipe.cleanup(stdout=stdout)
         payload["rerun"] = True
         time.sleep(args.retry_delay)
         return (False, payload, message)    
@@ -656,22 +661,10 @@ def validate(
             f"Failed to unsuppress Onyx record for UUID: {payload['uuid']}, sending result"
         )
         payload["rerun"] = True
-        ingest_pipe.cleanup(stdout=stdout)
         time.sleep(args.retry_delay)
         return (False, payload, message)
 
     payload["published"] = True
-
-    (
-        cleanup_status,
-        cleanup_stdout,
-        cleanup_stderr,
-    ) = ingest_pipe.cleanup(stdout=stdout)
-
-    if cleanup_status != 0:
-        log.error(
-            f"Cleanup of pipeline for UUID: {payload['uuid']} failed with exit code: {cleanup_status}, Stdout: {cleanup_stdout}, Stderr: {cleanup_stderr}"
-        )
 
     return (True, payload, message)
 
@@ -691,7 +684,7 @@ def run(args):
         branch="main",
         profile="docker",
         config=args.nxf_config,
-        nxf_executable=args.nxf_executable,
+        nxf_image=args.nxf_image,
         # timeout=21600,
     )
 
@@ -733,7 +726,7 @@ def main():
         "--nxf_config", type=Path, required=False, help="Path to nxf config file"
     )
     parser.add_argument(
-        "--nxf_executable", type=Path, required=False, default="nextflow"
+        "--nxf_image", required=False, default="quay.io/climb-tre/nextflow:24.04.4"
     )
     parser.add_argument(
         "--n_workers",

@@ -7,9 +7,7 @@ import sys
 from io import StringIO
 import logging
 import logging.handlers
-import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 import time
 import csv
 import regex as re
@@ -28,6 +26,9 @@ from onyx.exceptions import (
     OnyxClientError,
 )
 
+from kubernetes.client import Configuration
+from kubernetes.client.api import BatchV1Api
+
 __s3_creds = namedtuple(
     "s3_credentials",
     ["access_key", "secret_key", "endpoint", "region", "profile_name"],
@@ -44,9 +45,8 @@ class pipeline:
         pipe: str,
         branch: str,
         config: Path,
-        nxf_executable: Path,
+        nxf_image: str,
         profile=None,
-        # timeout=10800,
     ):
         """
         Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
@@ -55,7 +55,6 @@ class pipeline:
         Args:
             pipe (str): The pipeline to run as a github repo in the format 'user/repo'
             config (str): Path to a nextflow config file
-            nxf_executable (str): Path to the nextflow executable
             profile (str): The nextflow profile to use
 
         """
@@ -63,25 +62,40 @@ class pipeline:
         self.pipe = pipe
         self.branch = branch
         self.config = Path(config) if config else None
-        self.nxf_executable = nxf_executable
+        self.nxf_image = nxf_image
         # self.timeout = timeout
         self.profile = profile
         self.cmd = None
 
-    def execute(self, params: dict, logdir: Path, timeout: int) -> tuple[int, str, str]:
+    def execute(
+        self,
+        params: dict,
+        logdir: Path,
+        timeout: int,
+        env_vars: dict,
+        namespace: str,
+        job_id: str,
+        stdout_path: str,
+        stderr_path: str,
+    ) -> int:
         """
-        Execute the pipeline with the given parameters
+        Execute the pipeline as a k8s job
 
         Args:
-            params (dict): A dictionary of parameters to pass to the pipeline in the format {'param_name': 'param_value'} (no --)
-            logdir (Path): The directory to write the nextflow log to
-            timeout (int): The timeout for the pipeline execution
+            params (dict): Parameters to pass to the pipeline
+            logdir (Path): Path to the log directory
+            timeout (int): Timeout for the job
+            env_vars (dict): Environment variables to pass to the pod
+            namespace (str): The namespace to run the job in
+            job_id (str): The job id
+            stdout_path (str): Path to the stdout file
+            stderr_path (str): Path to the stderr file
 
         Returns:
-            tuple[int, str, str]: A tuple containing the return code, stdout and stderr
+            int: The (fake) return code of the job
         """
 
-        cmd = [self.nxf_executable]
+        cmd = ["nextflow"]
 
         if logdir:
             logfile_path = os.path.join(logdir.resolve(), "nextflow.log")
@@ -104,60 +118,104 @@ class pipeline:
             for k, v in params.items():
                 cmd.extend([f"--{k}", v])
 
+        cmd_str = " ".join(str(x) for x in cmd)
+
+        pod_env_vars = [{"name": k, "value": v} for k, v in env_vars.items()]
+
+        job_manifest = {
+            "apiVersion": "batch/v1",
+            "kind": "Job",
+            "metadata": {"name": f"roz-{job_id}"},
+            "spec": {
+                "ttlSecondsAfterFinished": 300,
+                "activeDeadlineSeconds": timeout,
+                "template": {
+                    "spec": {
+                        "hostname": f"roz-{job_id}-pod",
+                        "subdomain": namespace,
+                        "restartPolicy": "Never",
+                        "volumes": [
+                            {
+                                "name": "shared-public",
+                                "persistentVolumeClaim": {
+                                    "claimName": "cephfs-shared-ro-public"
+                                },
+                            },
+                            {
+                                "name": "shared-team",
+                                "persistentVolumeClaim": {
+                                    "claimName": "cephfs-shared-team"
+                                },
+                            },
+                        ],
+                        "nodeSelector": {"hub.jupyter.org/node-purpose": "user"},
+                        "containers": [
+                            {
+                                "name": f"roz-{job_id}-pod",
+                                "image": str(self.nxf_image),
+                                "resources": {"requests": {"cpu": "2", "memory": "4G"}},
+                                "volumeMounts": [
+                                    {
+                                        "mountPath": "/shared/public/",
+                                        "name": "shared-public",
+                                        "readOnly": True,
+                                    },
+                                    {
+                                        "mountPath": "/shared/team/",
+                                        "name": "shared-team",
+                                    },
+                                ],
+                                "workingDir": "/shared/team/nxf_work/roz/",
+                                "env": pod_env_vars,
+                                "args": [
+                                    "/bin/sh",
+                                    "-c",
+                                    f"{cmd_str} > {stdout_path} 2> {stderr_path}",
+                                ],
+                            }
+                        ],
+                    },
+                },
+            },
+        }
+
         try:
             self.cmd = cmd
             os.chdir(logdir)
-            proc = subprocess.run(
-                args=cmd,
-                capture_output=True,
-                universal_newlines=True,
-                text=True,
-                timeout=timeout,
+
+            c = Configuration()
+
+            with open(f"{os.getenv("K8S_SECRETS_MOUNT")}/token", "rt") as token_fh:
+                token = token_fh.read()
+
+            c.api_key["authorization"] = token
+            c.api_key_prefix["authorization"] = "Bearer"
+            c.host = f"https://{os.getenv("KUBERNETES_SERVICE_HOST")}"
+            c.ssl_ca_cert = f"{os.getenv("K8S_SECRETS_MOUNT")}/ca.crt"
+
+            Configuration.set_default(c)
+            api_instance = BatchV1Api()
+
+            resp = api_instance.create_namespaced_job(
+                body=job_manifest, namespace=namespace
             )
 
-        except BaseException as subprocess_exception:
-            proc = SimpleNamespace(
-                returncode=1, stdout=str(subprocess_exception), stderr=""
-            )
+            job_completed = False
+            while not job_completed:
+                resp = api_instance.read_namespaced_job_status(
+                    name=f"roz-{job_id}", namespace=namespace
+                )
+                if resp.status.succeeded or resp.status.failed:
+                    returncode = 0 if resp.status.succeeded else 1
+                    job_completed = True
+                time.sleep(1)
 
-        return (proc.returncode, proc.stdout, proc.stderr)
+        except BaseException as e:
+            # proc = SimpleNamespace(returncode=1, stdout=str(k8s_exception), stderr="")
+            print(f"Failed to execute pipeline due to exception: {e}")
+            returncode = 1
 
-    def cleanup(self, stdout: str) -> tuple[int, str, str]:
-        """Cleanup the pipeline intermediate files
-
-        Args:
-            stdout (str): The stdout from the pipeline execution
-
-        Returns:
-            tuple[int, str, str]: A tuple containing the return code, stdout and stderr
-        """
-
-        try:
-            pipeline_id = None
-            for line in stdout.split("\n"):
-                if "Launching" in line:
-                    matches = re.findall("\[(\w*_\w*)\]", line)
-                    pipeline_id = matches[0]
-
-            if not pipeline_id:
-                raise ValueError("Could not find pipeline ID in stdout")
-
-            cmd = [self.nxf_executable, "clean", "-f", pipeline_id]
-
-            proc = subprocess.run(
-                args=cmd,
-                capture_output=True,
-                universal_newlines=True,
-                text=True,
-                timeout=60,
-            )
-
-        except BaseException as cleanup_exception:
-            proc = SimpleNamespace(
-                returncode=1, stdout=str(cleanup_exception), stderr=""
-            )
-
-        return (proc.returncode, proc.stdout, proc.stderr)
+        return returncode
 
 
 def init_logger(name, log_path, log_level):
