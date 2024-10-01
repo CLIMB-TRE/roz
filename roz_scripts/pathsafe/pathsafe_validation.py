@@ -362,8 +362,16 @@ def execute_assembly_pipeline(
     stdout_path = os.path.join(log_path, "nextflow.stdout")
     stderr_path = os.path.join(log_path, "nextflow.stderr")
 
-    return ingest_pipe.execute(params=parameters, logdir=log_path, timeout=7200, env_vars=env_vars, stdout_path=stdout_path, stderr_path=stderr_path)
-
+    return ingest_pipe.execute(
+        params=parameters,
+        logdir=log_path,
+        timeout=7200,
+        env_vars=env_vars,
+        namespace=f"ns-{payload['project']}",
+        job_id=payload["uuid"],
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
 
 def ret_0_parser(
     log: logging.getLogger,

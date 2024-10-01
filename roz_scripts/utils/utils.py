@@ -195,7 +195,7 @@ class pipeline:
             self.cmd = cmd
             os.chdir(logdir)
 
-            config = Configuration.get_default_copy()
+            Configuration.get_default_copy()
 
             api_instance = BatchV1Api()
 
