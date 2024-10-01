@@ -67,16 +67,6 @@ class pipeline:
         self.profile = profile
         self.cmd = None
 
-        c = Configuration()
-
-        with open(f"{os.getenv("K8S_SECRETS_MOUNT")}/token", "rt") as token_fh:
-            c.api_key["authorization"] = token_fh.read()
-
-        c.api_key_prefix["authorization"] = "Bearer"
-        c.host = f"https://{os.getenv("KUBERNETES_SERVICE_HOST")}"
-        c.ssl_ca_cert = f"{os.getenv("K8S_SECRETS_MOUNT")}/ca.crt"
-        Configuration.set_default(c)
-
     def execute(
         self,
         params: dict,
@@ -131,8 +121,6 @@ class pipeline:
         cmd_str = " ".join(str(x) for x in cmd)
 
         pod_env_vars = [{"name": k, "value": v} for k, v in env_vars.items()]
-
-        pod_env_vars.append({"name": "NXF_USRMAP", "value": "1000"})
 
         job_manifest = {
             "apiVersion": "batch/v1",
@@ -195,7 +183,14 @@ class pipeline:
             self.cmd = cmd
             os.chdir(logdir)
 
-            Configuration.get_default_copy()
+            c = Configuration()
+
+            with open(f"{os.getenv("K8S_SECRETS_MOUNT")}/token", "rt") as token_fh:
+                c.api_key["authorization"] = token_fh.read()
+
+            c.api_key_prefix["authorization"] = "Bearer"
+            c.host = f"https://{os.getenv("KUBERNETES_SERVICE_HOST")}"
+            c.ssl_ca_cert = f"{os.getenv("K8S_SECRETS_MOUNT")}/ca.crt"
 
             api_instance = BatchV1Api()
 
