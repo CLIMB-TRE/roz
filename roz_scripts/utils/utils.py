@@ -12,6 +12,7 @@ import time
 import csv
 import regex as re
 import json
+import random
 
 from onyx import (
     OnyxClient,
@@ -196,16 +197,11 @@ class pipeline:
             Configuration.set_default(c)
             api_instance = BatchV1Api()
 
-            resp = None
-
             try:
                 resp = api_instance.read_namespaced_job_status(
                     name=f"roz-{job_id}", namespace=namespace
                 )
-            except Exception:
-                pass
-
-            if resp:
+                
                 if resp.status.succeeded or resp.status.failed:
                     if resp.status.succeeded:
                         return 0
@@ -215,7 +211,7 @@ class pipeline:
                         api_instance.create_namespaced_job(
                             body=job_manifest, namespace=namespace
                         )
-            else:
+            except Exception:
                 api_instance.create_namespaced_job(
                     body=job_manifest, namespace=namespace
                 )
@@ -229,7 +225,7 @@ class pipeline:
                     returncode = 0 if resp.status.succeeded else 1
                     job_completed = True
 
-                time.sleep(1)
+                time.sleep(random.uniform(2.0, 3.0))
 
         except BaseException as e:
             # proc = SimpleNamespace(returncode=1, stdout=str(k8s_exception), stderr="")
