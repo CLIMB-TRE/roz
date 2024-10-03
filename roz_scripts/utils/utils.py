@@ -212,12 +212,13 @@ class pipeline:
                 resp = api_instance.read_namespaced_job_status(
                     name=f"roz-{job_id}", namespace=namespace
                 )
-                if resp.status.succeeded or resp.status.failed:
+                if resp.status.succeeded:
                     if resp.status.succeeded >= 1:
                         returncode = 0
                         job_completed = True
                         break
 
+                if resp.status.failed:
                     if resp.status.failed > 5:
                         api_instance.delete_namespaced_job(name=f"roz-{job_id}", namespace=namespace)
                         returncode = 1
