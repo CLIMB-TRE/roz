@@ -202,16 +202,16 @@ class pipeline:
                     name=f"roz-{job_id}", namespace=namespace
                 )
 
-                if resp.status.succeeded >= 1:
-                    return 0
-                
-                if resp.status.failed > 5:
-                    api_instance.delete_namespaced_job(name=f"roz-{job_id}", namespace=namespace)
-
-                    api_instance.create_namespaced_job(
-                        body=job_manifest, namespace=namespace
+                if resp.status.succeeded or resp.status.failed:
+                    if resp.status.succeeded >= 1:
+                        return 0
                     
-                    )
+                    if resp.status.failed > 5:
+                        api_instance.delete_namespaced_job(name=f"roz-{job_id}", namespace=namespace)
+
+                        api_instance.create_namespaced_job(
+                            body=job_manifest, namespace=namespace
+                        )
 
             except Exception:
                 api_instance.create_namespaced_job(
@@ -223,16 +223,17 @@ class pipeline:
                 resp = api_instance.read_namespaced_job_status(
                     name=f"roz-{job_id}", namespace=namespace
                 )
-                if resp.status.succeeded >= 1:
-                    returncode = 0
-                    job_completed = True
-                    break
+                if resp.status.succeeded or resp.status.failed:
+                    if resp.status.succeeded >= 1:
+                        returncode = 0
+                        job_completed = True
+                        break
 
-                if resp.status.failed > 5:
-                    api_instance.delete_namespaced_job(name=f"roz-{job_id}", namespace=namespace)
-                    returncode = 1
-                    job_completed = True
-                    break
+                    if resp.status.failed > 5:
+                        api_instance.delete_namespaced_job(name=f"roz-{job_id}", namespace=namespace)
+                        returncode = 1
+                        job_completed = True
+                        break
 
                 time.sleep(random.uniform(2.0, 3.0))
 
