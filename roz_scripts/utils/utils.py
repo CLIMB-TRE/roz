@@ -202,6 +202,15 @@ class pipeline:
                     name=f"roz-{job_id}", namespace=namespace
                 )
 
+            except Exception:
+                api_instance.create_namespaced_job(
+                    body=job_manifest, namespace=namespace
+                )
+                resp = api_instance.read_namespaced_job_status(
+                    name=f"roz-{job_id}", namespace=namespace
+                )
+
+            try:
                 if resp.status.succeeded or resp.status.failed:
                     if resp.status.succeeded >= 1:
                         return 0
@@ -212,11 +221,10 @@ class pipeline:
                         api_instance.create_namespaced_job(
                             body=job_manifest, namespace=namespace
                         )
-
-            except Exception:
-                api_instance.create_namespaced_job(
-                    body=job_manifest, namespace=namespace
-                )
+                        
+            except Exception as e:
+                print(f"Failed when checking on status of freshly created job due to error: {e}")
+                return 1
 
             job_completed = False
             while not job_completed:
