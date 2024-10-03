@@ -190,15 +190,35 @@ class pipeline:
 
             c.api_key["authorization"] = token
             c.api_key_prefix["authorization"] = "Bearer"
-            c.host = f"https://{os.getenv("KUBERNETES_SERVICE_HOST")}"
-            c.ssl_ca_cert = f"{os.getenv("K8S_SECRETS_MOUNT")}/ca.crt"
+            c.host = f"https://{os.getenv('KUBERNETES_SERVICE_HOST')}"
+            c.ssl_ca_cert = f"{os.getenv('K8S_SECRETS_MOUNT')}/ca.crt"
 
             Configuration.set_default(c)
             api_instance = BatchV1Api()
 
-            resp = api_instance.create_namespaced_job(
-                body=job_manifest, namespace=namespace
-            )
+            resp = None
+
+            try:
+                resp = api_instance.read_namespaced_job_status(
+                    name=f"roz-{job_id}", namespace=namespace
+                )
+            except Exception:
+                pass
+
+            if resp:
+                if resp.status.succeeded or resp.status.failed:
+                    if resp.status.succeeded:
+                        return 0
+                    elif resp.status.failed:
+                        api_instance.delete_namespaced_job(name=f"roz-{job_id}", namespace=namespace)
+
+                        api_instance.create_namespaced_job(
+                            body=job_manifest, namespace=namespace
+                        )
+            else:
+                api_instance.create_namespaced_job(
+                    body=job_manifest, namespace=namespace
+                )
 
             job_completed = False
             while not job_completed:
@@ -208,6 +228,7 @@ class pipeline:
                 if resp.status.succeeded or resp.status.failed:
                     returncode = 0 if resp.status.succeeded else 1
                     job_completed = True
+
                 time.sleep(1)
 
         except BaseException as e:
