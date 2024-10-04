@@ -132,7 +132,7 @@ class pipeline:
                 "activeDeadlineSeconds": timeout,
                 "template": {
                     "spec": {
-                        "hostname": f"roz-{job_id}-pod",
+                        "hostname": f"roz-{job_id}",
                         "subdomain": namespace,
                         "restartPolicy": "Never",
                         "volumes": [
@@ -152,7 +152,7 @@ class pipeline:
                         "nodeSelector": {"hub.jupyter.org/node-purpose": "user"},
                         "containers": [
                             {
-                                "name": f"roz-{job_id}-pod",
+                                "name": f"roz-{job_id}",
                                 "image": str(self.nxf_image),
                                 "resources": {"requests": {"cpu": "2", "memory": "4G"}},
                                 "volumeMounts": [

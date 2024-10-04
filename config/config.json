@@ -10,6 +10,7 @@
         "tarzet.ukhsa.mscape": "analysis",
         "gstt.mscape": "uploader",
         "rvi.wtsi.mscape": "uploader",
+        "gosh.mscape": "uploader",
         "mscape": "analysis"
       },
       "bucket_policies": {
