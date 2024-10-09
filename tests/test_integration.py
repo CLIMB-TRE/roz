@@ -2534,6 +2534,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 n_workers=2,
                 retry_delay=2,
                 project="mscape",
+                timeout=1440,
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -2796,6 +2797,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 n_workers=2,
                 retry_delay=2,
                 project="mscape",
+                timeout=1440,
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -2945,6 +2947,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 n_workers=2,
                 retry_delay=2,
                 project="mscape",
+                timeout=1440,
             )
 
             pipeline = pathsafe_validation.pipeline(
