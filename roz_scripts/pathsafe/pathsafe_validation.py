@@ -365,7 +365,7 @@ def execute_assembly_pipeline(
     return ingest_pipe.execute(
         params=parameters,
         logdir=log_path,
-        timeout=7200,
+        timeout=args.timeout,
         env_vars=env_vars,
         namespace=f"ns-{payload['project']}",
         job_id=payload["uuid"],
@@ -685,7 +685,6 @@ def run(args):
         profile="docker",
         config=args.nxf_config,
         nxf_image=args.nxf_image,
-        # timeout=21600,
     )
 
     worker_pool = worker_pool_handler(
@@ -734,6 +733,7 @@ def main():
         default=5,
         help="Number of workers to use for concurrent validation",
     )
+    parser.add_argument("--timeout", type=int, default=14400, help="Timeout for pipeline execution")
     parser.add_argument("--retry-delay", type=int, default=180, help="Time to wait before re-queuing a failed message")
     args = parser.parse_args()
 
