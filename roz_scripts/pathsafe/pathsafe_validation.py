@@ -103,7 +103,7 @@ class worker_pool_handler:
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Validation failed for UUID: {payload['uuid']} unrecoverably"
-                    ) 
+                    )
 
                     self._varys_client.send(
                         message=payload,
@@ -123,8 +123,10 @@ class worker_pool_handler:
 
                     os.remove("/tmp/healthy")
 
-                    raise ValueError("Validation failed after 5 attempts, shutting down worker pool")
-                
+                    raise ValueError(
+                        "Validation failed after 5 attempts, shutting down worker pool"
+                    )
+
                 else:
                     self._log.info(
                         f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
@@ -151,7 +153,6 @@ class worker_pool_handler:
         )
         os.remove("/tmp/healthy")
         sys.exit(1)
-
 
     def close(self):
         self.worker_pool.close()
@@ -373,6 +374,7 @@ def execute_assembly_pipeline(
         stderr_path=stderr_path,
     )
 
+
 def ret_0_parser(
     log: logging.getLogger,
     payload: dict,
@@ -415,15 +417,18 @@ def ret_0_parser(
     for process, trace in trace_dict.items():
         if trace["exit"] != "0":
             if process.startswith("etoki_assemble") and trace["exit"] == "255":
-                log.info(f"Etoki assembly failed for UUID: {payload['uuid']}, exit code: 255")
+                log.info(
+                    f"Etoki assembly failed for UUID: {payload['uuid']}, exit code: 255"
+                )
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
-                    "Etoki assembly (spades) failed with exit code 255, most likely due to mangled quality strings, please check the fastq files and resubmit")
+                    "Etoki assembly (spades) failed with exit code 255, most likely due to mangled quality strings, please check the fastq files and resubmit"
+                )
                 ingest_fail = True
                 continue
-            
+
             payload.setdefault("ingest_errors", [])
-            
+
             payload["ingest_errors"].append(
                 f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
             )
@@ -431,7 +436,10 @@ def ret_0_parser(
 
     return (ingest_fail, payload)
 
-def ensure_files_not_empty(log: logging.getLogger, payload: dict, s3_client: boto3.client) -> tuple[bool, dict]:
+
+def ensure_files_not_empty(
+    log: logging.getLogger, payload: dict, s3_client: boto3.client
+) -> tuple[bool, dict]:
 
     fail = False
 
@@ -459,13 +467,12 @@ def ensure_files_not_empty(log: logging.getLogger, payload: dict, s3_client: bot
                 f"Failed to check if fastq file for UUID: {payload['uuid']} is empty due to client error: {e}"
             )
             payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                "Failed to check if fastq file isn't empty"
-            )
+            payload["ingest_errors"].append("Failed to check if fastq file isn't empty")
             fail = True
             payload["rerun"] = True
-        
+
     return (fail, payload)
+
 
 def validate(
     message,
@@ -498,15 +505,15 @@ def validate(
 
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         return (False, payload, message)
-    
-    empty_fastq, payload = ensure_files_not_empty(log=log, payload=payload, s3_client=s3_client)
+
+    empty_fastq, payload = ensure_files_not_empty(
+        log=log, payload=payload, s3_client=s3_client
+    )
 
     if empty_fastq:
-        log.error(
-            f"FASTQ file for UUID: {payload['uuid']} is empty, sending result"
-        )
+        log.error(f"FASTQ file for UUID: {payload['uuid']} is empty, sending result")
         return (False, payload, message)
-    
+
     unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
         etag_field="fastq_1_etag",
         etag=to_validate["files"][".1.fastq.gz"]["etag"],
@@ -598,11 +605,7 @@ def validate(
     )
 
     if not submission_success:
-        log.error(
-            f"Submission to Onyx failed for UUID: {payload['uuid']}"
-        )
-        payload["rerun"] = True
-        time.sleep(args.retry_delay)
+        log.error(f"Submission to Onyx failed for UUID: {payload['uuid']}")
         return (False, payload, message)
 
     payload["created"] = True
@@ -628,21 +631,19 @@ def validate(
     )
 
     if pathogenwatch_fail:
-        log.error(
-            f"Pathogenwatch submission failed for UUID: {payload['uuid']}"
-        )
+        log.error(f"Pathogenwatch submission failed for UUID: {payload['uuid']}")
         payload["rerun"] = True
         time.sleep(args.retry_delay)
         return (False, payload, message)
-    
+
     log.info(f"Pathogenwatch submission successful for UUID: {payload['uuid']}")
 
     etag_fail, alert, payload = onyx_update(
-    payload=payload,
-    log=log,
-    fields={
-        "fastq_1_etag": payload["files"][".1.fastq.gz"]["etag"],
-        "fastq_2_etag": payload["files"][".2.fastq.gz"]["etag"],
+        payload=payload,
+        log=log,
+        fields={
+            "fastq_1_etag": payload["files"][".1.fastq.gz"]["etag"],
+            "fastq_2_etag": payload["files"][".2.fastq.gz"]["etag"],
         },
     )
 
@@ -650,7 +651,7 @@ def validate(
         log.error(f"Failed to update etags for UUID: {payload['uuid']}")
         payload["rerun"] = True
         time.sleep(args.retry_delay)
-        return (False, payload, message)    
+        return (False, payload, message)
 
     unsuppress_fail, alert, payload = onyx_update(
         payload=payload, log=log, fields={"is_published": True}
@@ -733,8 +734,15 @@ def main():
         default=5,
         help="Number of workers to use for concurrent validation",
     )
-    parser.add_argument("--timeout", type=int, default=14400, help="Timeout for pipeline execution")
-    parser.add_argument("--retry-delay", type=int, default=180, help="Time to wait before re-queuing a failed message")
+    parser.add_argument(
+        "--timeout", type=int, default=14400, help="Timeout for pipeline execution"
+    )
+    parser.add_argument(
+        "--retry-delay",
+        type=int,
+        default=180,
+        help="Time to wait before re-queuing a failed message",
+    )
     args = parser.parse_args()
 
     run(args)
