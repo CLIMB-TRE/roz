@@ -900,6 +900,7 @@ class Test_mscape_validator(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="mscape-published-taxon-reports")
         self.s3_client.create_bucket(Bucket="mscape-published-binned-reads")
         self.s3_client.create_bucket(Bucket="mscape-published-read-fractions")
+        self.s3_client.create_bucket(Bucket="mscape-published-hcid")
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("run_index,run_id,project,platform,site,spike_in\n")
