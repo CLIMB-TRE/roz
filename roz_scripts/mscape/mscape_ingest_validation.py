@@ -1084,7 +1084,7 @@ def ret_0_parser(
 
 
 def handle_hcid(
-    log: logging.getLogger, payload: dict, result_path: str
+    log: logging.getLogger, payload: dict, result_path: str, s3_client: boto3.client
 ) -> tuple[bool, list, bool, dict]:
     """Function to handle the parsing of HCID warnings output by the Scylla pipeline
 
@@ -1092,6 +1092,7 @@ def handle_hcid(
         log (logging.getLogger): Logger object
         payload (dict): Payload dictionary
         result_path (str): Path to the results directory
+        s3_client (boto3.client): Boto3 client object for S3
 
     Returns:
         tuple[bool, list, bool, dict]: Tuple containing a bool indicating whether the ingest has failed, a list of HCID alerts, a bool indicating whether to squawk in the alert channel and the updated payload dictionary
@@ -1102,23 +1103,47 @@ def handle_hcid(
 
     hcid_alerts = []
 
+    s3_bucket = f"{payload['project']}-published-hcid"
+
     try:
         hcid_path = os.path.join(result_path, "qc")
 
         contents = os.listdir(hcid_path)
 
-        if not any(x.endswith(".warning.json") for x in contents):
-            return (hcid_fail, hcid_alerts, alert, payload)
+        # if not any(x.endswith(".warning.json") for x in contents):
+        #     return (hcid_fail, hcid_alerts, alert, payload)
 
         for path in contents:
+
+            full_path = os.path.join(hcid_path, path)
+
             if path.endswith(".warning.json"):
 
-                warning_path = os.path.join(hcid_path, path)
-
-                with open(warning_path, "rt") as hcid_fh:
+                with open(full_path, "rt") as hcid_fh:
                     hcid_message = json.load(hcid_fh)
 
                 hcid_alerts.append(hcid_message)
+
+            s3_key = f"{payload['climb_id']}/{path}"
+
+            try:
+                s3_client.upload_file(
+                    full_path,
+                    s3_bucket,
+                    s3_key,
+                )
+
+            except (ClientError, FileNotFoundError) as upload_hcid_exception:
+                log.error(
+                    f"Failed to upload HCID record to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {upload_hcid_exception}"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Failed to upload HCID record {path} to storage bucket"
+                )
+
+                hcid_fail = True
+                alert = True
 
     except Exception as e:
         log.error(f"Unhandled exception in hcid warning parsing: {e}")
@@ -1128,10 +1153,8 @@ def handle_hcid(
         )
         hcid_fail = True
         alert = True
-        return (hcid_fail, hcid_alerts, alert, payload)
 
     return (hcid_fail, hcid_alerts, alert, payload)
-
 
 def validate(
     message: namedtuple,
