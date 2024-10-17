@@ -2337,10 +2337,16 @@ class Test_mscape_validator(unittest.TestCase):
             )
 
             hcid_contents = self.s3_client.list_objects(Bucket="mscape-published-hcid")
-            for x in ("1570291.warning.json", "hcid_counts.csv"):
+            for x in (
+                "test_climb_id/1570291.warning.json",
+                "test_climb_id/hcid_counts.csv",
+            ):
                 self.assertIn(x, [y["Key"] for y in hcid_contents["Contents"]])
-            
-            self.assertNotIn("test_climb_id/some.other.csv", [y["Key"] for y in hcid_contents["Contents"]])
+
+            self.assertNotIn(
+                "test_climb_id/some.other.csv",
+                [y["Key"] for y in hcid_contents["Contents"]],
+            )
 
 
 class Test_pathsafe_validator(unittest.TestCase):
