@@ -1156,6 +1156,7 @@ def handle_hcid(
 
     return (hcid_fail, hcid_alerts, alert, payload)
 
+
 def validate(
     message: namedtuple,
     args: argparse.Namespace,
@@ -1510,7 +1511,7 @@ def validate(
     )
 
     hcid_fail, hcid_alerts, hcid_alert, payload = handle_hcid(
-        log=log, payload=payload, result_path=result_path
+        log=log, payload=payload, result_path=result_path, s3_client=s3_client
     )
 
     spike_in_fail, spike_in_alert, payload = handle_spike_ins(
