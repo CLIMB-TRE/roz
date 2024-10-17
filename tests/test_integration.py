@@ -2216,6 +2216,14 @@ class Test_mscape_validator(unittest.TestCase):
                 ),
                 "w",
             ).close()
+            open(
+                os.path.join(result_path, "qc", "hcid.counts.csv"),
+                "w",
+            ).close()
+            open(
+                os.path.join(result_path, "qc", "some.other.csv"),
+                "w",
+            ).close()
 
             with open(
                 os.path.join(
@@ -2327,6 +2335,12 @@ class Test_mscape_validator(unittest.TestCase):
                 },
                 hcid_alerts[0],
             )
+
+            hcid_contents = self.s3_client.list_objects(Bucket="mscape-published-hcid")
+            for x in ("1570291.warning.json", "hcid_counts.csv"):
+                self.assertIn(x, [y["Key"] for y in hcid_contents["Contents"]])
+            
+            self.assertNotIn("some.other.csv", [y["Key"] for y in hcid_contents["Contents"]])
 
 
 class Test_pathsafe_validator(unittest.TestCase):
