@@ -1110,14 +1110,11 @@ def handle_hcid(
 
         contents = os.listdir(hcid_path)
 
-        # if not any(x.endswith(".warning.json") for x in contents):
-        #     return (hcid_fail, hcid_alerts, alert, payload)
-
         for path in contents:
 
             full_path = os.path.join(hcid_path, path)
 
-            if not path.endswith(".warning.json") or not path == "hcid.counts.csv":
+            if not path.endswith(".warning.json") or not path.endswith("hcid.counts.csv"):
                 continue
 
             if path.endswith(".warning.json"):
