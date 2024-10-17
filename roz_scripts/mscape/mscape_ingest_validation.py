@@ -1114,7 +1114,7 @@ def handle_hcid(
 
             full_path = os.path.join(hcid_path, path)
 
-            if not path.endswith(".warning.json") or not path.endswith("hcid.counts.csv"):
+            if not path.endswith(".warning.json") and not path.endswith("hcid.counts.csv"):
                 continue
 
             if path.endswith(".warning.json"):
