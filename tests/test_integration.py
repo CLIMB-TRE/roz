@@ -2340,7 +2340,7 @@ class Test_mscape_validator(unittest.TestCase):
             for x in ("1570291.warning.json", "hcid_counts.csv"):
                 self.assertIn(x, [y["Key"] for y in hcid_contents["Contents"]])
             
-            self.assertNotIn("some.other.csv", [y["Key"] for y in hcid_contents["Contents"]])
+            self.assertNotIn("test_climb_id/some.other.csv", [y["Key"] for y in hcid_contents["Contents"]])
 
 
 class Test_pathsafe_validator(unittest.TestCase):
