@@ -128,7 +128,7 @@ class pipeline:
             "kind": "Job",
             "metadata": {"name": f"roz-{job_id}"},
             "spec": {
-                "ttlSecondsAfterFinished": 300,
+                "ttlSecondsAfterFinished": 120,
                 "activeDeadlineSeconds": timeout,
                 "backoffLimit": 5,
                 "template": {

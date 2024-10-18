@@ -1641,9 +1641,6 @@ def main():
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)
     parser.add_argument("--retry-delay", type=int, default=180)
-    parser.add_argument(
-        "--pipeline_timeout", type=int, default=43200
-    )  # 12 hours, might not even be enough for larger datasets (e.g. promethion / N*Seq)
 
     global args
     args = parser.parse_args()
