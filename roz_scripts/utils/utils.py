@@ -130,6 +130,7 @@ class pipeline:
             "spec": {
                 "ttlSecondsAfterFinished": 300,
                 "activeDeadlineSeconds": timeout,
+                "backoffLimit": 5,
                 "template": {
                     "spec": {
                         "hostname": f"roz-{job_id}",
@@ -219,8 +220,10 @@ class pipeline:
                         break
 
                 if resp.status.failed:
-                    if resp.status.failed > 5:
-                        api_instance.delete_namespaced_job(name=f"roz-{job_id}", namespace=namespace)
+                    if resp.status.failed >= 5:
+                        api_instance.delete_namespaced_job(
+                            name=f"roz-{job_id}", namespace=namespace
+                        )
                         returncode = 1
                         job_completed = True
                         break
