@@ -1063,6 +1063,12 @@ def ret_0_parser(
                         f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the {payload['project']} admin team for assistance"
                     )
                     ingest_fail = True
+                elif process.startswith("fastp") and trace["exit"] == "10":
+                    payload.setdefault("ingest_errors", [])
+                    payload["ingest_errors"].append(
+                        f"No reads left after fastp filtering, either all reads fail QC or at least one FASTQ is malformed, please contact the {payload['project']} admin team if you believe this to be in error"
+                    )
+                    ingest_fail = True
                 else:
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
@@ -1114,7 +1120,9 @@ def handle_hcid(
 
             full_path = os.path.join(hcid_path, path)
 
-            if not path.endswith(".warning.json") and not path.endswith("hcid.counts.csv"):
+            if not path.endswith(".warning.json") and not path.endswith(
+                "hcid.counts.csv"
+            ):
                 continue
 
             if path.endswith(".warning.json"):
