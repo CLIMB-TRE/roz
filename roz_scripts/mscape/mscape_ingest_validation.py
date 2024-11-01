@@ -26,6 +26,7 @@ from roz_scripts.utils.utils import (
     onyx_reconcile,
     put_result_json,
     s3_to_fh,
+    EtagMismatchError,
 )
 from varys import Varys
 
@@ -1208,6 +1209,14 @@ def validate(
             reader = csv.DictReader(fh)
 
             artifact_metadata = next(reader)
+
+    except EtagMismatchError:
+        log.error(f"ETag mismatch for UUID: {payload['uuid']}")
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "CSV file appears to have been modified during validation, this is likely due to a resubmission which will be processed later."
+        )
+        return (False, alert, hcid_alerts, payload, message)
 
     except Exception as e:
         log.error(
