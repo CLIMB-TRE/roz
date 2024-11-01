@@ -12,6 +12,7 @@
         "rvi.wtsi.mscape": "uploader",
         "gosh.mscape": "uploader",
         "uhsnft.mscape": "uploader",
+        "ripl.mscape": "uploader",
         "mscape": "analysis"
       },
       "bucket_policies": {
