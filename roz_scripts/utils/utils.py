@@ -133,7 +133,7 @@ class pipeline:
                 "backoffLimit": 5,
                 "template": {
                     "spec": {
-                        "hostname": f"roz-{job_id}",
+                        "hostnahttps://github.com/CLIMB-TRE/roz/me": f"roz-{job_id}",
                         "subdomain": namespace,
                         "restartPolicy": "Never",
                         "volumes": [
@@ -187,13 +187,15 @@ class pipeline:
 
             c = Configuration()
 
-            with open(f"{os.getenv("K8S_SECRETS_MOUNT")}/token", "rt") as token_fh:
+            with open(
+                "/run/secrets/kubernetes.io/serviceaccount/token", "rt"
+            ) as token_fh:
                 token = token_fh.read()
 
             c.api_key["authorization"] = token
             c.api_key_prefix["authorization"] = "Bearer"
             c.host = f"https://{os.getenv('KUBERNETES_SERVICE_HOST')}"
-            c.ssl_ca_cert = f"{os.getenv('K8S_SECRETS_MOUNT')}/ca.crt"
+            c.ssl_ca_cert = "/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
             Configuration.set_default(c)
             api_instance = BatchV1Api()
