@@ -11,7 +11,7 @@
         "gstt.mscape": "uploader",
         "rvi.wtsi.mscape": "uploader",
         "gosh.mscape": "uploader",
-        "uhsnft.mscape": "uploader",
+        "uhs.mscape": "uploader",
         "ripl.mscape": "uploader",
         "mscape": "analysis"
       },
@@ -295,8 +295,7 @@
     "openmgs": {
       "artifact_layout": "project|run_index|run_id",
       "sites": {
-        "bham.openmgs": "analysis",
-        "edin.opengs": "analysis",
+        "analysis.openmgs": "analysis",
         "openmgs": "analysis"
       },
       "bucket_policies": {
@@ -307,24 +306,7 @@
         "project_read_list": ["get", "list"],
         "project_private": []
       },
-      "site_buckets": {
-        "ingest": {
-          "name_layout": "{project}-{site}-{platform}-{test_flag}",
-          "policy": {
-            "analysis": "site_ingest",
-            "uploader": "site_ingest"
-          },
-          "owner": "{site}"
-        },
-        "results": {
-          "name_layout": "{project}-{site}-results",
-          "policy": {
-            "analysis": "site_ingest",
-            "uploader": "site_ingest"
-          },
-          "owner": "{site}"
-        }
-      },
+      "site_buckets": {},
       "notification_bucket_configs": {
         "ingest": {
           "rmq_exchange": "inbound-s3",
