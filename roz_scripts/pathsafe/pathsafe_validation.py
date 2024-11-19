@@ -463,13 +463,25 @@ def ensure_files_not_empty(
                 fail = True
 
         except ClientError as e:
-            log.error(
-                f"Failed to check if fastq file for UUID: {payload['uuid']} is empty due to client error: {e}"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append("Failed to check if fastq file isn't empty")
-            fail = True
-            payload["rerun"] = True
+            if e.response["Error"]["Code"] == "404":
+                log.error(
+                    f"FASTQ file for UUID: {payload['uuid']} not found in S3, sending result"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    "At least one FASTQ file appears to have been removed from S3 post upload. Please contact the pathsafe admin team if you believe this to be in error."
+                )
+                fail = True
+            else:
+                log.error(
+                    f"Failed to check if fastq file for UUID: {payload['uuid']} is empty due to client error: {e}"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    "Failed to check if fastq file isn't empty"
+                )
+                fail = True
+                payload["rerun"] = True
 
     return (fail, payload)
 
