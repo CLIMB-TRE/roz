@@ -6,6 +6,8 @@ from ftplib import FTP
 import urllib.request
 from urllib.error import URLError
 import datetime
+import requests
+import doi
 
 base_db_path = "/shared/public/db/kraken2/"
 
@@ -152,7 +154,7 @@ def get_ncbi_blast():
                             f"{base_db_path}/{segment}",
                         )
                         break
-                    except:
+                    except Exception:
                         retry_count += 1
                         continue
 
@@ -161,6 +163,69 @@ def get_ncbi_blast():
                 )
 
                 os.system(f"rm {base_db_path}/{segment}")
+
+
+def get_bakta_db():
+
+    latest_url = doi.get_real_url_from_doi("10.5281/zenodo.4247252")
+
+    resp = requests.get(latest_url)
+
+    try:
+        db_version_file = requests.get(f"{resp.url}/files/db-versions.json")
+
+        db_versions = db_version_file.json()
+
+    except Exception:
+        print(f"Failed to get db-versions.json from {resp.url}")
+
+    latest_db = max(
+        datetime.datetime.strptime(x["date"], "%Y-%m-%d") for x in db_versions
+    )
+
+    for db in db_versions:
+        if not datetime.datetime.strptime(db["date"], "%Y-%m-%d") == latest_db:
+            continue
+
+        if os.path.exists(os.path.join(base_db_path, "bakta", db["date"])):
+            print(f"Already have latest bakta db: {db['date']}")
+            break
+
+        if not dry_run:
+            os.makedirs(os.path.join(base_db_path, "bakta", db["date"]))
+
+        else:
+            print(f"Would make dir: {os.path.join(base_db_path, 'bakta', db['date'])}")
+
+        doi_url = f"{doi.get_real_url_from_doi(db['doi'])}/files/db.tar.gz"
+
+        db_url = requests.get(doi_url).url
+
+        if not dry_run:
+            urllib.request.urlretrieve(
+                db_url, f"{base_db_path}/bakta/{db['date']}/db.tar.gz"
+            )
+
+            os.system(
+                f"tar -xvf {base_db_path}/bakta/{db['date']}/db.tar.gz -C {base_db_path}/bakta/{db['date']}"
+            )
+
+            os.system(f"rm {base_db_path}/bakta/{db['date']}/db.tar.gz")
+
+            try:
+                os.remove(os.path.join(base_db_path, "bakta", "latest"))
+            except OSError:
+                pass
+
+            os.symlink(
+                db["date"],
+                os.path.join(base_db_path, "bakta", "latest"),
+            )
+
+        else:
+            print(
+                f"Would get: {db_url} to path: {str(os.path.join(base_db_path, 'bakta', db['date']))}"
+            )
 
 
 def run():
@@ -240,6 +305,8 @@ def run():
             )
 
     get_ncbi_blast()
+
+    get_bakta_db()
 
 
 def main():
