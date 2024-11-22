@@ -197,9 +197,9 @@ def get_bakta_db():
         else:
             print(f"Would make dir: {os.path.join(base_db_path, 'bakta', db['date'])}")
 
-        doi_url = f"{doi.get_real_url_from_doi(db['doi'])}/files/db.tar.gz"
+        doi_url = f"{doi.get_real_url_from_doi(db['doi'])}"
 
-        db_url = requests.get(doi_url).url
+        db_url = f"{requests.get(doi_url).url}/files/db.tar.gz"
 
         if not dry_run:
             urllib.request.urlretrieve(
