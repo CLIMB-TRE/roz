@@ -133,7 +133,7 @@ class pipeline:
                 "backoffLimit": 5,
                 "template": {
                     "spec": {
-                        "hostnahttps://github.com/CLIMB-TRE/roz/me": f"roz-{job_id}",
+                        "hostname": f"roz-{job_id}",
                         "subdomain": namespace,
                         "restartPolicy": "Never",
                         "volumes": [
