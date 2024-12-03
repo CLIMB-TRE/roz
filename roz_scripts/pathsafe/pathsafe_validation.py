@@ -357,7 +357,7 @@ def execute_assembly_pipeline(
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
         "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
         "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-        "NXF_HOME": "/shared/team/nxf_work/roz/.nextflow/",
+        "NXF_HOME": f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
     }
 
     stdout_path = os.path.join(log_path, "nextflow.stdout")
