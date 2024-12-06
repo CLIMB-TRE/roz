@@ -1076,6 +1076,7 @@ def ret_0_parser(
                         f"{payload['project']} validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
                     )
                     ingest_fail = True
+                    payload["rerun"] = True
 
     except Exception as pipeline_trace_exception:
         log.error(
