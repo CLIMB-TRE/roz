@@ -433,6 +433,7 @@ def ret_0_parser(
                 f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
             )
             ingest_fail = True
+            payload["rerun"] = True
 
     return (ingest_fail, payload)
 
