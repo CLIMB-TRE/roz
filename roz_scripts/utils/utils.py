@@ -376,6 +376,7 @@ def csv_create(
                     payload["onyx_create_errors"]["onyx_errors"].append(
                         f"Unhandled csv_create Onyx error: {e}"
                     )
+                    payload["rerun"] = True
 
                 return (False, True, payload)
 
