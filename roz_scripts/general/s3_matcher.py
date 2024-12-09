@@ -150,10 +150,10 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
                 platform=platform,
             )
 
-            if parsed_object_key['project'].lower() != project:
+            if not extension:
                 continue
 
-            if not extension:
+            if parsed_object_key["project"].lower() != project:
                 continue
 
             artifact = generate_artifact(
@@ -236,7 +236,12 @@ def parse_new_object_message(
 
     bucket_name = record["s3"]["bucket"]["name"]
 
-    parsed_bucket_name = {x: y for x, y in zip(("project", "site_str", "platform", "test_flag"), bucket_name.split("-"))}
+    parsed_bucket_name = {
+        x: y
+        for x, y in zip(
+            ("project", "site_str", "platform", "test_flag"), bucket_name.split("-")
+        )
+    }
 
     # project, site_str, platform, test_flag = parsed_bucket_name
 
@@ -251,7 +256,13 @@ def parse_new_object_message(
         return (
             False,
             existing_object_dict,
-            (False, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"]),
+            (
+                False,
+                parsed_bucket_name["project"],
+                site,
+                parsed_bucket_name["platform"],
+                parsed_bucket_name["test_flag"],
+            ),
             parsed_bucket_name,
         )
 
@@ -263,19 +274,39 @@ def parse_new_object_message(
     )
 
     if not extension:
-        index_tuple = (False, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
+        index_tuple = (
+            False,
+            parsed_bucket_name["project"],
+            site,
+            parsed_bucket_name["platform"],
+            parsed_bucket_name["test_flag"],
+        )
         return (False, existing_object_dict, index_tuple, parsed_bucket_name)
 
     artifact = generate_artifact(
         parsed_object_key=parsed_object_key,
-        artifact_layout=config_dict["configs"][parsed_bucket_name["project"]]["artifact_layout"],
+        artifact_layout=config_dict["configs"][parsed_bucket_name["project"]][
+            "artifact_layout"
+        ],
     )
 
     if parsed_object_key["project"].lower() != parsed_bucket_name["project"]:
-        index_tuple = (artifact, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
+        index_tuple = (
+            artifact,
+            parsed_bucket_name["project"],
+            site,
+            parsed_bucket_name["platform"],
+            parsed_bucket_name["test_flag"],
+        )
         return (False, existing_object_dict, index_tuple, parsed_bucket_name)
 
-    index_tuple = (artifact, parsed_bucket_name["project"], site, parsed_bucket_name["platform"], parsed_bucket_name["test_flag"])
+    index_tuple = (
+        artifact,
+        parsed_bucket_name["project"],
+        site,
+        parsed_bucket_name["platform"],
+        parsed_bucket_name["test_flag"],
+    )
 
     if not artifact:
         return (False, existing_object_dict, index_tuple, parsed_bucket_name)
