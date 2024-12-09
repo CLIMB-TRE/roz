@@ -1,6 +1,8 @@
 {
   "version": "1",
-  "pathogen_configs": ["mscape"],
+  "pathogen_configs": [
+    "mscape"
+  ],
   "configs": {
     "mscape": {
       "artifact_layout": "project|run_index|run_id",
@@ -13,14 +15,32 @@
         "gosh.mscape": "uploader",
         "uhs.mscape": "uploader",
         "ripl.mscape": "uploader",
+        "cuh.mscape": "uploader",
         "mscape": "analysis"
       },
       "bucket_policies": {
-        "site_ingest": ["get", "put", "list", "delete"],
-        "project_ingest": ["get", "put", "list", "delete"],
-        "site_read": ["get"],
-        "project_read": ["get"],
-        "project_read_list": ["get", "list"],
+        "site_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "project_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "site_read": [
+          "get"
+        ],
+        "project_read": [
+          "get"
+        ],
+        "project_read_list": [
+          "get",
+          "list"
+        ],
         "project_private": []
       },
       "site_buckets": {
@@ -56,37 +76,51 @@
         },
         "published_binned_reads": {
           "name_layout": "{project}-published-binned-reads",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published-read-fractions": {
           "name_layout": "{project}-published-read-fractions",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published_taxon_reports": {
           "name_layout": "{project}-published-taxon-reports",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published_scylla_reports": {
           "name_layout": "{project}-published-reports",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
-          "policy": { "analysis": "project_ingest" },
+          "policy": {
+            "analysis": "project_ingest"
+          },
           "owner": "admin"
         },
         "public_results": {
           "name_layout": "{project}-public-results",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         },
         "published_hcid_reports": {
           "name_layout": "{project}-published-hcid",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         }
       },
@@ -129,11 +163,28 @@
         "synthscape": "analysis"
       },
       "bucket_policies": {
-        "site_ingest": ["get", "put", "list", "delete"],
-        "project_ingest": ["get", "put", "list", "delete"],
-        "site_read": ["get"],
-        "project_read": ["get"],
-        "project_read_list": ["get", "list"],
+        "site_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "project_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "site_read": [
+          "get"
+        ],
+        "project_read": [
+          "get"
+        ],
+        "project_read_list": [
+          "get",
+          "list"
+        ],
         "project_private": []
       },
       "site_buckets": {
@@ -169,27 +220,37 @@
         },
         "published_binned_reads": {
           "name_layout": "{project}-published-binned-reads",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published-read-fractions": {
           "name_layout": "{project}-published-read-fractions",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published_taxon_reports": {
           "name_layout": "{project}-published-taxon-reports",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published_scylla_reports": {
           "name_layout": "{project}-published-reports",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         },
         "published_hcid_reports": {
           "name_layout": "{project}-published-hcid",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         }
       },
@@ -238,8 +299,15 @@
         "pathsafe": "analysis"
       },
       "bucket_policies": {
-        "site_ingest": ["get", "put", "list", "delete"],
-        "project_read": ["get"]
+        "site_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "project_read": [
+          "get"
+        ]
       },
       "site_buckets": {
         "ingest": {
@@ -269,12 +337,16 @@
       "project_buckets": {
         "published_reads": {
           "name_layout": "{project}-published-reads",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         },
         "published_assemblies": {
           "name_layout": "{project}-published-assembly",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         }
       },
@@ -299,11 +371,28 @@
         "openmgs": "analysis"
       },
       "bucket_policies": {
-        "site_ingest": ["get", "put", "list", "delete"],
-        "project_ingest": ["get", "put", "list", "delete"],
-        "site_read": ["get"],
-        "project_read": ["get"],
-        "project_read_list": ["get", "list"],
+        "site_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "project_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "site_read": [
+          "get"
+        ],
+        "project_read": [
+          "get"
+        ],
+        "project_read_list": [
+          "get",
+          "list"
+        ],
         "project_private": []
       },
       "site_buckets": {},
@@ -322,37 +411,51 @@
         },
         "published_binned_reads": {
           "name_layout": "{project}-published-binned-reads",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published-read-fractions": {
           "name_layout": "{project}-published-read-fractions",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published_taxon_reports": {
           "name_layout": "{project}-published-taxon-reports",
-          "policy": { "analysis": "project_read_list" },
+          "policy": {
+            "analysis": "project_read_list"
+          },
           "owner": "admin"
         },
         "published_scylla_reports": {
           "name_layout": "{project}-published-reports",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
-          "policy": { "analysis": "project_ingest" },
+          "policy": {
+            "analysis": "project_ingest"
+          },
           "owner": "admin"
         },
         "public_results": {
           "name_layout": "{project}-public-results",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         },
         "published_hcid_reports": {
           "name_layout": "{project}-published-hcid",
-          "policy": { "analysis": "project_read" },
+          "policy": {
+            "analysis": "project_read"
+          },
           "owner": "admin"
         }
       },
