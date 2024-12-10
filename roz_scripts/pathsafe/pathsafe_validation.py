@@ -749,7 +749,7 @@ def main():
         help="Number of workers to use for concurrent validation",
     )
     parser.add_argument(
-        "--timeout", type=int, default=14400, help="Timeout for pipeline execution"
+        "--timeout", type=int, default=57600, help="Timeout for pipeline execution"
     )
     parser.add_argument(
         "--retry-delay",
