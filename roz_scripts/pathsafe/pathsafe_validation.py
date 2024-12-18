@@ -257,6 +257,20 @@ def pathogenwatch_submission(
     try:
         resp = requests.get(f"{base_url}/folders/list?user_owned=true", headers=headers)
 
+        if resp.status_code != 200:
+            log.error(
+                f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}"
+            )
+            pathogenwatch_fail = True
+            payload["rerun"] = True
+            return (pathogenwatch_fail, payload)
+
+        folders = resp.json()
+
     except requests.exceptions.RequestException as e:
         log.error(
             f"Failed to retrieve Pathogenwatch folders due to error: {e}, sending result"
@@ -268,18 +282,6 @@ def pathogenwatch_submission(
         pathogenwatch_fail = True
         payload["rerun"] = True
         return (pathogenwatch_fail, payload)
-
-    if resp.status_code != 200:
-        log.error(f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}")
-        payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append(
-            f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}"
-        )
-        pathogenwatch_fail = True
-        payload["rerun"] = True
-        return (pathogenwatch_fail, payload)
-
-    folders = resp.json()
 
     folder_id = False
 
@@ -314,6 +316,20 @@ def pathogenwatch_submission(
     try:
         r = requests.post(url=f"{base_url}/genomes/create", headers=headers, json=body)
 
+        if r.status_code != 201:
+            log.error(
+                f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {r.text}"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
+            )
+            pathogenwatch_fail = True
+            payload["rerun"] = True
+            return (pathogenwatch_fail, payload)
+
+        pathogenwatch_uuid = r.json()["uuid"]
+
     except requests.exceptions.RequestException as e:
         log.error(
             f"Failed to submit genome to Pathogenwatch for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {e}"
@@ -325,18 +341,6 @@ def pathogenwatch_submission(
         pathogenwatch_fail = True
         payload["rerun"] = True
         return (pathogenwatch_fail, payload)
-
-    if r.status_code != 201:
-        log.error(
-            f"Pathogenwatch submission failed for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {r.text}"
-        )
-        payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append(
-            f"Pathogenwatch submission failed with status code: {r.status_code}, due to error: {r.text}"
-        )
-        pathogenwatch_fail = True
-
-    pathogenwatch_uuid = r.json()["uuid"]
 
     update_fail, alert, payload = onyx_update(
         payload=payload, fields={"pathogenwatch_uuid": pathogenwatch_uuid}, log=log
