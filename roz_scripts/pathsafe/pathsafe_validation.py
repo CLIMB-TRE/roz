@@ -254,7 +254,20 @@ def pathogenwatch_submission(
 
     base_url = os.getenv("PATHOGENWATCH_ENDPOINT_URL")
 
-    resp = requests.get(f"{base_url}/folders/list?user_owned=true", headers=headers)
+    try:
+        resp = requests.get(f"{base_url}/folders/list?user_owned=true", headers=headers)
+
+    except requests.exceptions.RequestException as e:
+        log.error(
+            f"Failed to retrieve Pathogenwatch folders due to error: {e}, sending result"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Failed to retrieve Pathogenwatch folders due to error: {e}"
+        )
+        pathogenwatch_fail = True
+        payload["rerun"] = True
+        return (pathogenwatch_fail, payload)
 
     if resp.status_code != 200:
         log.error(f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}")
@@ -263,6 +276,7 @@ def pathogenwatch_submission(
             f"Failed to retrieve Pathogenwatch folders due to error: {resp.text}"
         )
         pathogenwatch_fail = True
+        payload["rerun"] = True
         return (pathogenwatch_fail, payload)
 
     folders = resp.json()
@@ -297,7 +311,20 @@ def pathogenwatch_submission(
         "metadata": fields,
     }
 
-    r = requests.post(url=f"{base_url}/genomes/create", headers=headers, json=body)
+    try:
+        r = requests.post(url=f"{base_url}/genomes/create", headers=headers, json=body)
+
+    except requests.exceptions.RequestException as e:
+        log.error(
+            f"Failed to submit genome to Pathogenwatch for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {e}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Pathogenwatch submission failed due to error: {e}"
+        )
+        pathogenwatch_fail = True
+        payload["rerun"] = True
+        return (pathogenwatch_fail, payload)
 
     if r.status_code != 201:
         log.error(
