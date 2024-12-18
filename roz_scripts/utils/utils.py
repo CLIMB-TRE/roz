@@ -166,7 +166,7 @@ class pipeline:
                                         "name": "shared-team",
                                     },
                                 ],
-                                "workingDir": "/shared/team/nxf_work/roz/",
+                                "workingDir": f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
                                 "env": pod_env_vars,
                                 "args": [
                                     "/bin/sh",
