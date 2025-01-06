@@ -29,7 +29,7 @@ Outcome - *{}*
 """
 
 mscape_alert_template = """<!channel>
-*MScape Alert*
+*PATH-SAFE Alert*
 ```
 {}
 ```

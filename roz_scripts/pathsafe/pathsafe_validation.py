@@ -456,7 +456,7 @@ def ret_0_parser(
                 )
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
-                    "Etoki assembly (spades) failed with exit code 255, most likely due to mangled quality strings, please check the fastq files and resubmit"
+                    "Etoki assembly (spades) failed with exit code 255, most likely due to mangled quality strings, please check the fastq files and re-upload after fixing the quality scores"
                 )
                 ingest_fail = True
                 continue
@@ -464,7 +464,7 @@ def ret_0_parser(
             payload.setdefault("ingest_errors", [])
 
             payload["ingest_errors"].append(
-                f"MScape validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
+                f"Pathsafe assembly pipeline failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
             )
             ingest_fail = True
             payload["rerun"] = True
