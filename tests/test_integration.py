@@ -2367,8 +2367,8 @@ class Test_pathsafe_validator(unittest.TestCase):
         self.s3_client.create_bucket(Bucket="pathsafe-published-assembly")
 
         with open(TEST_CSV_FILENAME, "w") as f:
-            f.write("run_index,run_id,project,platform,site\n")
-            f.write("sample-test,run-test,pathsafe,ont,birm")
+            f.write("run_index,run_id,project,platform,site,submitted_species\n")
+            f.write("sample-test,run-test,pathsafe,ont,birm,1639")
 
         self.s3_client.upload_file(
             TEST_CSV_FILENAME,
