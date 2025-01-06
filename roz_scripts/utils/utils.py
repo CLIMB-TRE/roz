@@ -301,6 +301,7 @@ def put_linkage_json(payload: dict, log: logging.getLogger):
 
     linkage_dict = {
         "publish_timestamp": time.time_ns(),
+        "artifact": payload["artifact"],
         "climb_id": payload["climb_id"],
         "run_id": payload["anonymised_run_id"],
         "run_index": payload["anonymised_run_index"],
