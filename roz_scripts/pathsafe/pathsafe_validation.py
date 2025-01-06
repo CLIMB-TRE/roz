@@ -20,6 +20,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
     put_result_json,
+    put_linkage_json,
     get_onyx_credentials,
     ensure_file_unseen,
 )
@@ -89,6 +90,8 @@ class worker_pool_handler:
                     exchange="inbound-new_artifact-pathsafe",
                     queue_suffix="validator",
                 )
+
+                put_linkage_json(new_artifact_payload, self._log)
 
         else:
             self._log.info(

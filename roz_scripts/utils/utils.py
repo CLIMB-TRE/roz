@@ -281,6 +281,50 @@ def put_result_json(payload: dict, log: logging.getLogger):
         raise e
 
 
+def put_linkage_json(payload: dict, log: logging.getLogger):
+    """Send the linkage payload to S3
+
+    Args:
+        payload (dict): The payload dict to create the linkage dict from
+        log (logging.getLogger): Logger object
+    """
+
+    s3_credentials = get_s3_credentials()
+
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=s3_credentials.endpoint,
+        aws_access_key_id=s3_credentials.access_key,
+        region_name=s3_credentials.region,
+        aws_secret_access_key=s3_credentials.secret_key,
+    )
+
+    linkage_dict = {
+        "publish_timestamp": time.time_ns(),
+        "climb_id": payload["climb_id"],
+        "run_id": payload["anonymised_run_id"],
+        "run_index": payload["anonymised_run_index"],
+        "biosample_id": payload["anonymised_biosample_id"],
+        "site": payload["site"],
+        "platform": payload["platform"],
+        "match_uuid": payload["uuid"],
+        "project": payload["project"],
+    }
+
+    if payload.get("anonymised_biosample_source_id"):
+        linkage_dict["biosample_source_id"] = payload["anonymised_biosample_source_id"]
+
+    try:
+        s3_client.put_object(
+            Bucket=f"{payload['project']}-{payload['raw_site']}-results",
+            Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.linkage.json",
+            Body=json.dumps(linkage_dict),
+        )
+    except ClientError as e:
+        log.error(f"Failed to upload result JSON to S3: {e}")
+        raise e
+
+
 def csv_create(
     payload: dict,
     log: logging.getLogger,

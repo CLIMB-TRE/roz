@@ -25,6 +25,7 @@ from roz_scripts.utils.utils import (
     ensure_file_unseen,
     onyx_reconcile,
     put_result_json,
+    put_linkage_json,
     s3_to_fh,
     EtagMismatchError,
 )
@@ -104,6 +105,8 @@ class worker_pool_handler:
                     new_artifact_payload["biosample_source_id"] = payload[
                         "anonymised_biosample_source_id"
                     ]
+
+                put_linkage_json(payload=payload, log=self._log)
 
                 self._varys_client.send(
                     message=new_artifact_payload,
