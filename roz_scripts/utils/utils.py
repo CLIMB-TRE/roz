@@ -276,6 +276,11 @@ def put_result_json(payload: dict, log: logging.getLogger):
             Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.result.json",
             Body=json.dumps(payload),
         )
+
+        log.info(
+            f"Successfully uploaded result JSON for artifact: {payload['artifact']} to S3"
+        )
+
     except ClientError as e:
         log.error(f"Failed to upload result JSON to S3: {e}")
         raise e
@@ -321,6 +326,10 @@ def put_linkage_json(payload: dict, log: logging.getLogger):
             Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.linkage.json",
             Body=json.dumps(linkage_dict),
         )
+        log.info(
+            f"Successfully uploaded linkage JSON for artifact: {payload['artifact']} to S3"
+        )
+
     except ClientError as e:
         log.error(f"Failed to upload result JSON to S3: {e}")
         raise e
