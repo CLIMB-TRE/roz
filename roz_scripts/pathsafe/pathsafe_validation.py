@@ -93,7 +93,7 @@ class worker_pool_handler:
                     queue_suffix="validator",
                 )
 
-                put_linkage_json(new_artifact_payload, self._log)
+                put_linkage_json(payload, self._log)
 
         else:
             self._log.info(
