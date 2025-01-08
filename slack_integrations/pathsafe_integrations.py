@@ -47,7 +47,15 @@ while True:
 
         out_message = {"text": out_text}
 
-        r = requests.post(new_artifact_url, json=out_message)
+        success = False
+
+        while not success:
+            try:
+                r = requests.post(new_artifact_url, json=out_message)
+                success = True
+
+            except requests.exceptions.ConnectionError:
+                continue
 
         if not r.ok:
             print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
@@ -66,7 +74,15 @@ while True:
 
         out_message = {"text": out_text}
 
-        r = requests.post(alert_url, json=out_message)
+        success = False
+
+        while not success:
+            try:
+                r = requests.post(alert_url, json=out_message)
+                success = True
+
+            except requests.exceptions.ConnectionError:
+                continue
 
         if not r.ok:
             print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
