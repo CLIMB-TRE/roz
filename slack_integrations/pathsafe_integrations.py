@@ -6,7 +6,7 @@ import sys
 
 varys_client = Varys(
     profile="roz",
-    logfile=sys.stderr,
+    logfile=os.devnull,
     log_level="CRITICAL",
     auto_acknowledge=False,
 )
