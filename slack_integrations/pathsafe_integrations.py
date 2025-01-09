@@ -6,7 +6,7 @@ import sys
 
 varys_client = Varys(
     profile="roz",
-    logfile=os.devnull,
+    logfile=sys.stderr,
     log_level="CRITICAL",
     auto_acknowledge=False,
 )
@@ -54,7 +54,7 @@ while True:
                 r = requests.post(new_artifact_url, json=out_message)
                 success = True
 
-            except requests.exceptions.ConnectionError:
+            except Exception:
                 continue
 
         if not r.ok:
@@ -81,7 +81,7 @@ while True:
                 r = requests.post(alert_url, json=out_message)
                 success = True
 
-            except requests.exceptions.ConnectionError:
+            except Exception:
                 continue
 
         if not r.ok:
