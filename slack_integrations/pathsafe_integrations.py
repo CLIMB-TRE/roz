@@ -6,7 +6,7 @@ import sys
 
 varys_client = Varys(
     profile="roz",
-    logfile=os.devnull,
+    logfile="/data/roz_logs/pathsafe_messages.log",
     log_level="CRITICAL",
     auto_acknowledge=False,
 )
