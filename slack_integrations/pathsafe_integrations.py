@@ -3,10 +3,11 @@ import os
 import requests
 import json
 import sys
+import time
 
 varys_client = Varys(
     profile="roz",
-    logfile=os.path.abspath("/data/roz_logs/pathsafe_messages.log"),
+    logfile="/data/roz_logs/pathsafe_messages.log",
     log_level="CRITICAL",
     auto_acknowledge=False,
 )
@@ -55,7 +56,7 @@ while True:
                 success = True
 
             except Exception:
-                continue
+                time.sleep(1)
 
         if not r.ok:
             print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
@@ -82,7 +83,7 @@ while True:
                 success = True
 
             except Exception:
-                continue
+                time.sleep(1)
 
         if not r.ok:
             print(f"Error posting to Slack webhook: {r.status_code} - {r.reason}")
