@@ -8,7 +8,7 @@ import time
 varys_client = Varys(
     profile="roz",
     logfile="/data/roz_logs/pathsafe_messages.log",
-    log_level="CRITICAL",
+    log_level="DEBUG",
     auto_acknowledge=False,
 )
 
