@@ -437,20 +437,6 @@
           },
           "owner": "admin"
         },
-        "ingest": {
-          "name_layout": "{project}-public-{platform}-{test_flag}",
-          "policy": {
-            "analysis": "project_ingest"
-          },
-          "owner": "admin"
-        },
-        "public_results": {
-          "name_layout": "{project}-public-results",
-          "policy": {
-            "analysis": "project_read"
-          },
-          "owner": "admin"
-        },
         "published_hcid_reports": {
           "name_layout": "{project}-published-hcid",
           "policy": {
