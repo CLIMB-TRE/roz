@@ -451,7 +451,7 @@ def csv_create(
 
             except OnyxRequestError as e:
                 log.info(
-                    f"Onyx test csv create failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
+                    f"Onyx csv create failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
                 )
 
                 if test_submission:

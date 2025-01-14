@@ -569,6 +569,14 @@ def validate(
     if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
         return (False, payload, message)
 
+    test_create_status, alert, payload = csv_create(
+        payload=payload, log=log, test_submission=True
+    )
+
+    if not test_create_status:
+        log.info(f"Test create failed for UUID: {payload['uuid']}")
+        return (False, payload, message)
+
     try:
         with s3_to_fh(
             s3_uri=payload["files"][".csv"]["uri"],
