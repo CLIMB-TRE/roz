@@ -2849,7 +2849,7 @@ class Test_pathsafe_validator(unittest.TestCase):
 
             self.assertIn(
                 "Test run_index error handling",
-                payload["onyx_create_errors"]["run_index"],
+                payload["onyx_test_create_errors"]["run_index"],
             )
 
             published_reads_contents = self.s3_client.list_objects(
