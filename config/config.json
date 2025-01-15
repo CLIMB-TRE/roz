@@ -395,7 +395,24 @@
         ],
         "project_private": []
       },
-      "site_buckets": {},
+      "site_buckets": {
+        "ingest": {
+          "name_layout": "{project}-{site}-{platform}-{test_flag}",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
+        },
+        "results": {
+          "name_layout": "{project}-{site}-results",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest"
+          },
+          "owner": "{site}"
+        }
+      },
       "notification_bucket_configs": {
         "ingest": {
           "rmq_exchange": "inbound-s3",
