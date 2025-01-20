@@ -49,7 +49,14 @@ def k2_db_generator():
 
         date = date.rstrip(".tar.gz")
 
-        date = datetime.datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d")
+        try:
+            date = datetime.datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d")
+        except ValueError:
+            try:
+                date = datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d")
+            except ValueError:
+                print(f"Failed to parse date: {date} -> skipping")
+                continue
 
         yield db, date, key
 
