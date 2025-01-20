@@ -38,12 +38,14 @@ def k2_db_generator():
 
         if len(key.split("_")) == 3:
             k2, db, date = key.split("_")
-        else:
+        elif len(key.split("_")) == 4:
             k2, db, size, date = key.split("_")
 
             size = size.lstrip("0")
 
             db = f"{db}_{size}"
+        else:
+            print(f"Unknown key format: {key} -> skipping")
 
         date = date.rstrip(".tar.gz")
 
