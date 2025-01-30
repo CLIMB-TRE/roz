@@ -135,6 +135,7 @@ class pipeline:
                         "hostname": f"roz-{job_id}",
                         "subdomain": namespace,
                         "securityContext": {
+                            "runAsNonRoot": True,
                             "runAsUser": 1000,
                             "runAsGroup": 1000,
                             "fsGroup": 1000,
