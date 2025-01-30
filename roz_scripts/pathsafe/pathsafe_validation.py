@@ -477,6 +477,17 @@ def ret_0_parser(
                 ingest_fail = True
                 continue
 
+            elif process.startswith("etoki_assemble") and trace["exit"] == "21":
+                log.info(
+                    f"Etoki assembly failed for UUID: {payload['uuid']}, exit code: 21. 'Invalid kmer coverage histogram, make sure that the coverage is indeed uniform'"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    "Etoki assembly (spades) failed with exit code 21. 'Invalid kmer coverage histogram, make sure that the coverage is indeed uniform'. This suggests the data is not suitable for assembly."
+                )
+                ingest_fail = True
+                continue
+
             payload.setdefault("ingest_errors", [])
 
             payload["ingest_errors"].append(
