@@ -134,6 +134,11 @@ class pipeline:
                     "spec": {
                         "hostname": f"roz-{job_id}",
                         "subdomain": namespace,
+                        "securityContext": {
+                            "runAsUser": 1000,
+                            "runAsGroup": 1000,
+                            "fsGroup": 1000,
+                        },
                         "restartPolicy": "Never",
                         "volumes": [
                             {
