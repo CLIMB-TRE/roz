@@ -816,7 +816,7 @@ def run(args):
 
             # Add timestamp to file to indicate health
             with open("/tmp/healthy", "w") as fh:
-                fh.write(time.time_ns())
+                fh.write(str(time.time_ns()))
 
             if not message:
                 continue
