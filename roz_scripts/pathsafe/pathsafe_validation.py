@@ -818,10 +818,10 @@ def run(args):
             with open("/tmp/healthy", "w") as fh:
                 fh.write(str(time.time_ns()))
 
-            if not message:
-                continue
-
-            worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
+            if message:
+                worker_pool.submit_job(
+                    message=message, args=args, ingest_pipe=ingest_pipe
+                )
 
     except BaseException as e:
         log.info(f"Shutting down worker pool due to exception: {e}")

@@ -1627,12 +1627,19 @@ def run(args):
                 exchange=f"inbound-to_validate-{args.project}",
                 queue_suffix="validator",
                 prefetch_count=args.n_workers,
+                timeout=60,
             )
 
-            worker_pool.submit_job(message=message, args=args, ingest_pipe=ingest_pipe)
+            with open("/tmp/healthy", "w") as fh:
+                fh.write(str(time.time_ns()))
+
+            if message:
+                worker_pool.submit_job(
+                    message=message, args=args, ingest_pipe=ingest_pipe
+                )
+
     except BaseException as e:
         log.info(f"Shutting down worker pool due to exception: {e}")
-        os.remove("/tmp/healthy")
         worker_pool.close()
         varys_client.close()
         time.sleep(1)
