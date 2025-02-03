@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import csv
+import time
 
 import varys
 
@@ -44,8 +45,14 @@ def main():
     while True:
         try:
             message = varys_client.receive(
-                exchange="inbound-matched", queue_suffix="ingest"
+                exchange="inbound-matched", queue_suffix="ingest", timeout=60
             )
+
+            with open("/tmp/healthy", "w") as fh:
+                fh.write(str(time.time_ns()))
+
+            if not message:
+                continue
 
             payload = json.loads(message.body)
             payload["validate"] = False

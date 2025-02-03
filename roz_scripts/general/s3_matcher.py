@@ -444,7 +444,14 @@ def main():
             message = varys_client.receive(
                 exchange="inbound-s3",
                 queue_suffix="s3_matcher",
+                timeout=60,
             )
+
+            with open("/tmp/healthy", "w") as fh:
+                fh.write(str(time.time_ns()))
+
+            if not message:
+                continue
 
             message_dict = json.loads(message.body)
 
