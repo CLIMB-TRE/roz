@@ -305,7 +305,7 @@ class test_utils(unittest.TestCase):
             print(payload)
 
             self.assertFalse(success)
-            self.assertTrue(alert)
+            self.assertFalse(alert)
 
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
