@@ -184,7 +184,6 @@ class worker_pool_handler:
             queue_suffix="dead_worker",
         )
         os.remove("/tmp/healthy")
-        sys.exit(1)
 
     def close(self):
         self.worker_pool.close()
@@ -1630,8 +1629,9 @@ def run(args):
                 timeout=60,
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            if os.path.exists("/tmp/healthy"):
+                with open("/tmp/healthy", "w") as fh:
+                    fh.write(str(time.time_ns()))
 
             if message:
                 worker_pool.submit_job(

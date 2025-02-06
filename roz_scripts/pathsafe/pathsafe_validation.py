@@ -157,7 +157,6 @@ class worker_pool_handler:
             queue_suffix="dead_worker",
         )
         os.remove("/tmp/healthy")
-        sys.exit(1)
 
     def close(self):
         self.worker_pool.close()
@@ -815,8 +814,9 @@ def run(args):
             )
 
             # Add timestamp to file to indicate health
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            if os.path.exists("/tmp/healthy"):
+                with open("/tmp/healthy", "w") as fh:
+                    fh.write(str(time.time_ns()))
 
             if message:
                 worker_pool.submit_job(
@@ -825,10 +825,9 @@ def run(args):
 
     except BaseException as e:
         log.info(f"Shutting down worker pool due to exception: {e}")
+        os.remove("/tmp/healthy")
         worker_pool.close()
         varys_client.close()
-        time.sleep(1)
-        sys.exit(1)
 
 
 def main():

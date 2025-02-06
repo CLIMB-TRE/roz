@@ -421,19 +421,37 @@ def csv_create(
 
                     return (False, True, payload)
 
-            except (OnyxServerError, OnyxConfigError) as e:
-                log.error(f"Unhandled csv_create Onyx error: {e}")
+            except OnyxServerError as e:
+                log.error(f"Internal csv_create Onyx error: {e}")
                 if test_submission:
                     payload.setdefault("onyx_test_create_errors", {})
                     payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
                     payload["onyx_test_create_errors"]["onyx_errors"].append(
-                        f"Unhandled csv_create Onyx error: {e}"
+                        f"Internal Onyx Server error during csv_create: {e}"
                     )
                 else:
                     payload.setdefault("onyx_create_errors", {})
                     payload["onyx_create_errors"].setdefault("onyx_errors", [])
                     payload["onyx_create_errors"]["onyx_errors"].append(
                         f"Unhandled csv_create Onyx error: {e}"
+                    )
+                    payload["rerun"] = True
+
+                return (False, False, payload)
+
+            except OnyxConfigError as e:
+                log.error(f"Local Onyx config error: {e}")
+                if test_submission:
+                    payload.setdefault("onyx_test_create_errors", {})
+                    payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(
+                        f"Local Onyx configuration error during csv_create: {e}"
+                    )
+                else:
+                    payload.setdefault("onyx_create_errors", {})
+                    payload["onyx_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_create_errors"]["onyx_errors"].append(
+                        f"Local Onyx configuration error during csv_create: {e}"
                     )
                     payload["rerun"] = True
 
