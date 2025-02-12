@@ -16,6 +16,7 @@
         "uhs.mscape": "uploader",
         "ripl.mscape": "uploader",
         "cuh.mscape": "uploader",
+        "uclh.mscape": "uploader",
         "mscape": "analysis"
       },
       "bucket_policies": {
