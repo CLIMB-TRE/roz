@@ -235,6 +235,15 @@ class pipeline:
                         job_completed = True
                         break
 
+                if resp.status.start_time:
+                    if time.time() - resp.status.start_time.timestamp() > timeout:
+                        api_instance.delete_namespaced_job(
+                            name=f"roz-{job_id}", namespace=namespace
+                        )
+                        returncode = 1
+                        job_completed = True
+                        break
+
                 time.sleep(random.uniform(2.0, 3.0))
 
         except BaseException as e:
