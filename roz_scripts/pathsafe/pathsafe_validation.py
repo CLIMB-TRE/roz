@@ -800,10 +800,11 @@ def run(args):
         nxf_image=args.nxf_image,
     )
 
-    worker_pool = worker_pool_handler(
-        workers=args.n_workers, logger=log, varys_client=varys_client
-    )
     try:
+        worker_pool = worker_pool_handler(
+            workers=args.n_workers, logger=log, varys_client=varys_client
+        )
+
         while True:
             time.sleep(0.5)
             message = varys_client.receive(
@@ -823,8 +824,8 @@ def run(args):
                     message=message, args=args, ingest_pipe=ingest_pipe
                 )
 
-    except BaseException as e:
-        log.info(f"Shutting down worker pool due to exception: {e}")
+    except BaseException:
+        log.exception("Shutting down worker pool due to exception:")
         os.remove("/tmp/healthy")
         worker_pool.close()
         varys_client.close()

@@ -1638,8 +1638,8 @@ def run(args):
                     message=message, args=args, ingest_pipe=ingest_pipe
                 )
 
-    except BaseException as e:
-        log.info(f"Shutting down worker pool due to exception: {e}")
+    except BaseException:
+        log.exception("Shutting down worker pool due to exception:")
         os.remove("/tmp/healthy")
         worker_pool.close()
         varys_client.close()
