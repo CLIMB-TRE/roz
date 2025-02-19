@@ -229,7 +229,9 @@ class pipeline:
                 if resp.status.failed:
                     if resp.status.failed >= 5:
                         api_instance.delete_namespaced_job(
-                            name=f"roz-{job_id}", namespace=namespace
+                            name=f"roz-{job_id}",
+                            namespace=namespace,
+                            propagation_policy="Foreground",
                         )
                         returncode = 1
                         job_completed = True
@@ -238,7 +240,9 @@ class pipeline:
                 if resp.status.start_time:
                     if time.time() - resp.status.start_time.timestamp() > timeout:
                         api_instance.delete_namespaced_job(
-                            name=f"roz-{job_id}", namespace=namespace
+                            name=f"roz-{job_id}",
+                            namespace=namespace,
+                            propagation_policy="Foreground",
                         )
                         returncode = 1
                         job_completed = True
