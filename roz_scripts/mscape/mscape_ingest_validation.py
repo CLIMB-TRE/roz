@@ -1613,13 +1613,13 @@ def run(args):
         # timeout=args.pipeline_timeout,
     )
 
-    worker_pool = worker_pool_handler(
-        workers=args.n_workers,
-        logger=log,
-        varys_client=varys_client,
-        project=args.project,
-    )
     try:
+        worker_pool = worker_pool_handler(
+            workers=args.n_workers,
+            logger=log,
+            varys_client=varys_client,
+            project=args.project,
+        )
         while True:
             time.sleep(0.5)
             message = varys_client.receive(
@@ -1640,6 +1640,7 @@ def run(args):
 
     except BaseException as e:
         log.info(f"Shutting down worker pool due to exception: {e}")
+        os.remove("/tmp/healthy")
         worker_pool.close()
         varys_client.close()
         time.sleep(1)
