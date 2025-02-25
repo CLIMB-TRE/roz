@@ -354,6 +354,36 @@ def put_linkage_json(payload: dict, log: logging.getLogger):
         raise e
 
 
+def are_files_empty(*s3_uris: str) -> bool:
+    """Check if the files at the given S3 URIs are empty
+
+    Returns:
+        bool: True if any files are empty or nonexistant, False otherwise
+    """
+
+    s3_credentials = get_s3_credentials()
+
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=s3_credentials.access_key,
+        aws_secret_access_key=s3_credentials.secret_key,
+        endpoint_url=s3_credentials.endpoint,
+    )
+
+    try:
+        for s3_uri in s3_uris:
+            bucket, key = s3_uri.split("/", 3)[2:]
+            obj = s3_client.head_object(Bucket=bucket, Key=key)
+            if obj["ContentLength"] == 0:
+                return True
+
+    except ClientError:
+
+        return True
+
+    return False
+
+
 def csv_create(
     payload: dict,
     log: logging.getLogger,
