@@ -1651,8 +1651,9 @@ def run(args):
             varys_client=varys_client,
             project=args.project,
         )
-        while True:
+        while os.path.exists("/tmp/healthy"):
             time.sleep(0.5)
+
             message = varys_client.receive(
                 exchange=f"inbound-to_validate-{args.project}",
                 queue_suffix="validator",
@@ -1660,14 +1661,17 @@ def run(args):
                 timeout=60,
             )
 
-            if os.path.exists("/tmp/healthy"):
-                with open("/tmp/healthy", "w") as fh:
-                    fh.write(str(time.time_ns()))
+            with open("/tmp/healthy", "w") as fh:
+                fh.write(str(time.time_ns()))
 
             if message:
                 worker_pool.submit_job(
                     message=message, args=args, ingest_pipe=ingest_pipe
                 )
+
+        worker_pool.close()
+        varys_client.close()
+        time.sleep(1)
 
     except BaseException:
         log.exception("Shutting down worker pool due to exception:")
