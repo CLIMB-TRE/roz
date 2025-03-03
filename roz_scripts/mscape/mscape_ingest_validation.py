@@ -1651,6 +1651,7 @@ def run(args):
             varys_client=varys_client,
             project=args.project,
         )
+
         while os.path.exists("/tmp/healthy"):
             time.sleep(0.5)
 
@@ -1669,6 +1670,7 @@ def run(args):
                     message=message, args=args, ingest_pipe=ingest_pipe
                 )
 
+        log.error("Shutting down worker pool due to missing '/tmp/healthy' file")
         worker_pool.close()
         varys_client.close()
         time.sleep(1)
