@@ -155,12 +155,17 @@ class pipeline:
                                 },
                             },
                         ],
-                        "nodeSelector": {"hub.jupyter.org/node-purpose": "user"},
+                        "nodeSelector": {
+                            "hub.jupyter.org/node-purpose": "user-compute"
+                        },
                         "containers": [
                             {
                                 "name": f"roz-{job_id}",
                                 "image": str(self.nxf_image),
-                                "resources": {"requests": {"cpu": "2", "memory": "4G"}},
+                                "resources": {
+                                    "requests": {"cpu": "1", "memory": "8G"},
+                                    "limits": {"cpu": "1", "memory": "8G"},
+                                },
                                 "volumeMounts": [
                                     {
                                         "mountPath": "/shared/public/",
