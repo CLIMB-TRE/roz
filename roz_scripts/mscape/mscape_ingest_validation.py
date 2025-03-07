@@ -1626,25 +1626,25 @@ def validate(
 
 
 def run(args):
-    log = init_logger(f"{args.project}.ingest", args.logfile, args.log_level)
-
-    varys_client = Varys(
-        profile="roz",
-        logfile=args.logfile,
-        log_level=args.log_level,
-        auto_acknowledge=False,
-    )
-
-    ingest_pipe = pipeline(
-        pipe=args.ingest_pipeline,
-        branch=args.pipeline_branch,
-        profile="docker",
-        config=args.nxf_config,
-        nxf_image=args.nxf_image,
-        # timeout=args.pipeline_timeout,
-    )
-
     try:
+        log = init_logger(f"{args.project}.ingest", args.logfile, args.log_level)
+
+        varys_client = Varys(
+            profile="roz",
+            logfile=args.logfile,
+            log_level=args.log_level,
+            auto_acknowledge=False,
+        )
+
+        ingest_pipe = pipeline(
+            pipe=args.ingest_pipeline,
+            branch=args.pipeline_branch,
+            profile="docker",
+            config=args.nxf_config,
+            nxf_image=args.nxf_image,
+            # timeout=args.pipeline_timeout,
+        )
+
         worker_pool = worker_pool_handler(
             workers=args.n_workers,
             logger=log,

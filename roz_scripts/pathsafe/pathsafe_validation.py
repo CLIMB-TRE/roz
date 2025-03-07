@@ -783,24 +783,24 @@ def validate(
 
 
 def run(args):
-    log = init_logger("pathsafe.validate", args.logfile, args.log_level)
-
-    varys_client = Varys(
-        profile="roz",
-        logfile=args.logfile,
-        log_level=args.log_level,
-        auto_acknowledge=False,
-    )
-
-    ingest_pipe = pipeline(
-        pipe="CLIMB-TRE/path-safe_assembler",
-        branch="main",
-        profile="docker",
-        config=args.nxf_config,
-        nxf_image=args.nxf_image,
-    )
-
     try:
+        log = init_logger("pathsafe.validate", args.logfile, args.log_level)
+
+        varys_client = Varys(
+            profile="roz",
+            logfile=args.logfile,
+            log_level=args.log_level,
+            auto_acknowledge=False,
+        )
+
+        ingest_pipe = pipeline(
+            pipe="CLIMB-TRE/path-safe_assembler",
+            branch="main",
+            profile="docker",
+            config=args.nxf_config,
+            nxf_image=args.nxf_image,
+        )
+
         worker_pool = worker_pool_handler(
             workers=args.n_workers, logger=log, varys_client=varys_client
         )
