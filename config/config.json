@@ -19,6 +19,7 @@
         "uclh.mscape": "uploader",
         "mscape": "analysis"
       },
+      "csv_updates": false,
       "bucket_policies": {
         "site_ingest": [
           "get",
@@ -163,6 +164,7 @@
         "synthscape.ukhsa": "analysis",
         "synthscape": "analysis"
       },
+      "csv_updates": false,
       "bucket_policies": {
         "site_ingest": [
           "get",
@@ -299,6 +301,7 @@
         "cgps.pathsafe": "analysis",
         "pathsafe": "analysis"
       },
+      "csv_updates": true,
       "bucket_policies": {
         "site_ingest": [
           "get",
@@ -371,6 +374,7 @@
         "analysis.openmgs": "analysis",
         "openmgs": "analysis"
       },
+      "csv_updates": false,
       "bucket_policies": {
         "site_ingest": [
           "get",
