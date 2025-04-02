@@ -348,7 +348,7 @@ def csv_update(parsed_messsage, config_dict, log):
     return (True, payload)
 
 
-def run(args):
+def main(args):
     try:
         log = init_logger("s3_onyx_updater", args.logfile, args.log_level)
 
@@ -395,3 +395,6 @@ def run(args):
         varys_client.close()
         time.sleep(1)
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()
