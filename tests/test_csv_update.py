@@ -486,6 +486,80 @@ class test_s3_onyx_updates(unittest.TestCase):
             self.assertTrue(update_success)
             self.assertFalse(payload)
 
+    def test_csv_mismatch(self):
+        csv_record = {
+            "Records": [
+                {
+                    "eventVersion": "2.2",
+                    "eventSource": "ceph:s3",
+                    "awsRegion": "",
+                    "eventTime": "2023-10-10T06:39:35.470367Z",
+                    "eventName": "ObjectCreated:Put",
+                    "userIdentity": {"principalId": "testuser"},
+                    "requestParameters": {"sourceIPAddress": ""},
+                    "responseElements": {
+                        "x-amz-request-id": "testdata",
+                        "x-amz-id-2": "testdata",
+                    },
+                    "s3": {
+                        "s3SchemaVersion": "1.0",
+                        "configurationId": "inbound.s3",
+                        "bucket": {
+                            "name": "project2-site1-illumina-prod",
+                            "ownerIdentity": {"principalId": "bryn-site1"},
+                            "arn": "arn:aws:s3:::project2-site1-illumina-prod",
+                            "id": "testdata",
+                        },
+                        "object": {
+                            "key": "project2.sample1.run1.csv",
+                            "size": 123123123,
+                            "eTag": "",
+                            "versionId": "",
+                            "sequencer": "",
+                            "metadata": [
+                                {
+                                    "key": "",
+                                    "val": "",
+                                },
+                                {"key": "", "val": ""},
+                            ],
+                            "tags": [],
+                        },
+                    },
+                    "eventId": "",
+                    "opaqueData": "",
+                }
+            ]
+        }
+
+        self.s3_client.put_object(
+            Bucket="project2-site1-illumina-prod",
+            Key="project2.sample1.run1.csv",
+            Body="run_index,run_id,some_field\nsample2,run21,some_entry\n",
+        )
+
+        resp = self.s3_client.head_object(
+            Bucket="project2-site1-illumina-prod",
+            Key="project2.sample1.run1.csv",
+        )
+
+        csv_record["Records"][0]["s3"]["object"]["eTag"] = resp["ETag"].replace('"', "")
+
+        with unittest.mock.patch("roz_scripts.utils.utils.OnyxClient") as mock_client, unittest.mock.patch("roz_scripts.general.s3_onyx_updates.OnyxClient") as mock_client_2:
+            mock_client_2.return_value.__enter__.return_value.identify.return_value = {"identifier": "fake_identifier"}
+            mock_client_2.return_value.__enter__.return_value.filter.return_value = iter(
+                ([{"climb_id": "fake_climb_id", "is_published": True}])
+            )
+            mock_client.return_value.__enter__.return_value.update.return_value = {"status": "success"}
+
+
+            update_success, payload = csv_update(parsed_messsage=csv_record, config_dict=fake_roz_cfg_dict, log=self.logger)
+
+            print(payload)
+
+            self.assertTrue(update_success)
+            self.assertTrue(payload)
+
     def test_non_csv(self):
         non_csv_record = {
             "Records": [

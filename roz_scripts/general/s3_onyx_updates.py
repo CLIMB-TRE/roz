@@ -184,7 +184,9 @@ def csv_update(parsed_messsage, config_dict, log):
 
     # ignore files from test buckets
     if parsed_bucket_name["test_flag"] == "test":
-        log.info(f"Ignoring file: {record["s3"]["object"]["key"]} from test bucket: {bucket_name}")
+        log.info(
+            f"Ignoring file: {record["s3"]["object"]["key"]} from test bucket: {bucket_name}"
+        )
         return (True, False)
 
     # Skip new files from projects which do not have csv_updates enabled
@@ -206,9 +208,7 @@ def csv_update(parsed_messsage, config_dict, log):
         return (True, False)
 
     if extension != ".csv":
-        log.info(
-            f"File: {record['s3']['object']['key']} is not a CSV file. Ignoring"
-        )
+        log.info(f"File: {record['s3']['object']['key']} is not a CSV file. Ignoring")
         return (True, False)
 
     run_index_fail, run_index = onyx_identify_simple(
@@ -240,7 +240,9 @@ def csv_update(parsed_messsage, config_dict, log):
         return (False, False)
 
     if not all([run_id, run_index]):
-        log.info(f"Either run_id or run_index is unknown to onyx for {record['s3']['object']['key']}")
+        log.info(
+            f"Either run_id or run_index is unknown to onyx for {record['s3']['object']['key']}"
+        )
         return (True, False)
 
     climb_id_fail, climb_id = onyx_climb_identify(
@@ -288,9 +290,29 @@ def csv_update(parsed_messsage, config_dict, log):
         return (False, payload)
 
     if not field_check_status:
-        log.info(
-            f"Field check failed: {payload}"
+        log.info(f"Field check failed: {payload}")
+        payload.pop("climb_id")
+        payload.pop("files")
+        payload.pop("uuid")
+        payload.pop("artifact")
+
+        s3_credentials = get_s3_credentials()
+
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=s3_credentials.endpoint,
+            aws_access_key_id=s3_credentials.access_key,
+            aws_secret_access_key=s3_credentials.secret_key,
         )
+
+        payload["update_status"] = "failed"
+
+        s3_client.put_object(
+            Bucket=f"{parsed_bucket_name['project']}-{parsed_bucket_name['site_str']}-results",
+            Key=f"{parsed_bucket_name['project']}.{run_index}.{run_id}.update.json",
+            Body=json.dumps(payload),
+        )
+
         return (True, payload)
 
     csv_s3_uri = f"s3://{bucket_name}/{record['s3']['object']['key']}"
@@ -301,9 +323,7 @@ def csv_update(parsed_messsage, config_dict, log):
         records = [record for record in reader]
 
         if len(records) > 1:
-            log.info(
-                f"Multiple records found in CSV for {csv_s3_uri}. Skipping update"
-            )
+            log.info(f"Multiple records found in CSV for {csv_s3_uri}. Skipping update")
             return (True, payload)
 
         record = records[0]
@@ -344,7 +364,9 @@ def csv_update(parsed_messsage, config_dict, log):
         Body=json.dumps(payload),
     )
 
-    log.info(f"Update status for {parsed_bucket_name['project']}.{run_index}.{run_id}: {payload['update_status']}")
+    log.info(
+        f"Update status for {parsed_bucket_name['project']}.{run_index}.{run_id}: {payload['update_status']}"
+    )
     return (True, payload)
 
 
@@ -395,6 +417,7 @@ def main(args):
         varys_client.close()
         time.sleep(1)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
