@@ -170,6 +170,7 @@ fake_aws_cred_dict = {
     },
 }
 
+
 class MockResponse:
     def __init__(self, status_code, json_data=None, ok=True):
         self.status_code = status_code
@@ -178,6 +179,7 @@ class MockResponse:
 
     def json(self):
         return self.json_data
+
 
 class test_s3_onyx_updates(unittest.TestCase):
     def setUp(self):
@@ -213,11 +215,12 @@ class test_s3_onyx_updates(unittest.TestCase):
             Bucket="project2-site1-illumina-prod",
         )
         self.s3_client.create_bucket(
-            Bucket="project2-site1-results"
-            ,
+            Bucket="project2-site1-results",
         )
 
-        self.logger = init_logger("test_s3_onyx_updates", S3_ONYX_UPDATE_LOG_FILENAME, "DEBUG")
+        self.logger = init_logger(
+            "test_s3_onyx_updates", S3_ONYX_UPDATE_LOG_FILENAME, "DEBUG"
+        )
 
     def tearDown(self):
         self.mock_s3.stop()
@@ -282,15 +285,26 @@ class test_s3_onyx_updates(unittest.TestCase):
 
         csv_record["Records"][0]["s3"]["object"]["eTag"] = resp["ETag"].replace('"', "")
 
-        with unittest.mock.patch("roz_scripts.utils.utils.OnyxClient") as mock_client, unittest.mock.patch("roz_scripts.general.s3_onyx_updates.OnyxClient") as mock_client_2:
-            mock_client_2.return_value.__enter__.return_value.identify.return_value = {"identifier": "fake_identifier"}
-            mock_client_2.return_value.__enter__.return_value.filter.return_value = iter(
-                ([{"climb_id": "fake_climb_id", "is_published": True}])
+        with unittest.mock.patch(
+            "roz_scripts.utils.utils.OnyxClient"
+        ) as mock_client, unittest.mock.patch(
+            "roz_scripts.general.s3_onyx_updates.OnyxClient"
+        ) as mock_client_2:
+            mock_client_2.return_value.__enter__.return_value.identify.return_value = {
+                "identifier": "fake_identifier"
+            }
+            mock_client_2.return_value.__enter__.return_value.filter.return_value = (
+                iter(([{"climb_id": "fake_climb_id", "is_published": True}]))
             )
-            mock_client.return_value.__enter__.return_value.update.return_value = {"status": "success"}
+            mock_client.return_value.__enter__.return_value.update.return_value = {
+                "status": "success"
+            }
 
-
-            update_success, payload = csv_update(parsed_messsage=csv_record, config_dict=fake_roz_cfg_dict, log=self.logger)
+            update_success, payload = csv_update(
+                parsed_messsage=csv_record,
+                config_dict=fake_roz_cfg_dict,
+                log=self.logger,
+            )
 
             print(payload)
 
@@ -299,10 +313,9 @@ class test_s3_onyx_updates(unittest.TestCase):
             self.assertEqual(payload["run_index"], "sample1")
             self.assertEqual(payload["run_id"], "run1")
             self.assertEqual(payload["project"], "project2")
-            self.assertNotIn("climb_id", payload.keys())
             self.assertNotIn("files", payload.keys())
             self.assertEqual(payload["update_status"], "success")
-        
+
     def test_onyx_update_failure(self):
         csv_record = {
             "Records": [
@@ -362,10 +375,16 @@ class test_s3_onyx_updates(unittest.TestCase):
 
         csv_record["Records"][0]["s3"]["object"]["eTag"] = resp["ETag"].replace('"', "")
 
-        with unittest.mock.patch("roz_scripts.utils.utils.OnyxClient") as mock_client, unittest.mock.patch("roz_scripts.general.s3_onyx_updates.OnyxClient") as mock_client_2:
-            mock_client_2.return_value.__enter__.return_value.identify.return_value = {"identifier": "fake_identifier"}
-            mock_client_2.return_value.__enter__.return_value.filter.return_value = iter(
-                ([{"climb_id": "fake_climb_id", "is_published": True}])
+        with unittest.mock.patch(
+            "roz_scripts.utils.utils.OnyxClient"
+        ) as mock_client, unittest.mock.patch(
+            "roz_scripts.general.s3_onyx_updates.OnyxClient"
+        ) as mock_client_2:
+            mock_client_2.return_value.__enter__.return_value.identify.return_value = {
+                "identifier": "fake_identifier"
+            }
+            mock_client_2.return_value.__enter__.return_value.filter.return_value = (
+                iter(([{"climb_id": "fake_climb_id", "is_published": True}]))
             )
             mock_client.return_value.__enter__.return_value.update = unittest.mock.Mock(
                 side_effect=OnyxRequestError(
@@ -382,10 +401,11 @@ class test_s3_onyx_updates(unittest.TestCase):
                 )
             )
 
-            
-
-
-            update_success, payload = csv_update(parsed_messsage=csv_record, config_dict=fake_roz_cfg_dict, log=self.logger)
+            update_success, payload = csv_update(
+                parsed_messsage=csv_record,
+                config_dict=fake_roz_cfg_dict,
+                log=self.logger,
+            )
 
             print(payload)
 
@@ -394,7 +414,6 @@ class test_s3_onyx_updates(unittest.TestCase):
             self.assertEqual(payload["run_index"], "sample1")
             self.assertEqual(payload["run_id"], "run1")
             self.assertEqual(payload["project"], "project2")
-            self.assertNotIn("climb_id", payload.keys())
             self.assertNotIn("files", payload.keys())
             self.assertNotIn("uuid", payload.keys())
             self.assertNotIn("artifact", payload.keys())
@@ -459,10 +478,16 @@ class test_s3_onyx_updates(unittest.TestCase):
 
         csv_record["Records"][0]["s3"]["object"]["eTag"] = resp["ETag"].replace('"', "")
 
-        with unittest.mock.patch("roz_scripts.utils.utils.OnyxClient") as mock_client, unittest.mock.patch("roz_scripts.general.s3_onyx_updates.OnyxClient") as mock_client_2:
-            mock_client_2.return_value.__enter__.return_value.identify.return_value = {"identifier": "fake_identifier"}
-            mock_client_2.return_value.__enter__.return_value.filter.return_value = iter(
-                ([{"climb_id": "fake_climb_id", "is_published": False}])
+        with unittest.mock.patch(
+            "roz_scripts.utils.utils.OnyxClient"
+        ) as mock_client, unittest.mock.patch(
+            "roz_scripts.general.s3_onyx_updates.OnyxClient"
+        ) as mock_client_2:
+            mock_client_2.return_value.__enter__.return_value.identify.return_value = {
+                "identifier": "fake_identifier"
+            }
+            mock_client_2.return_value.__enter__.return_value.filter.return_value = (
+                iter(([{"climb_id": "fake_climb_id", "is_published": False}]))
             )
             mock_client.return_value.__enter__.return_value.update = unittest.mock.Mock(
                 side_effect=OnyxRequestError(
@@ -479,7 +504,11 @@ class test_s3_onyx_updates(unittest.TestCase):
                 )
             )
 
-            update_success, payload = csv_update(parsed_messsage=csv_record, config_dict=fake_roz_cfg_dict, log=self.logger)
+            update_success, payload = csv_update(
+                parsed_messsage=csv_record,
+                config_dict=fake_roz_cfg_dict,
+                log=self.logger,
+            )
 
             print(payload)
 
@@ -545,15 +574,26 @@ class test_s3_onyx_updates(unittest.TestCase):
 
         csv_record["Records"][0]["s3"]["object"]["eTag"] = resp["ETag"].replace('"', "")
 
-        with unittest.mock.patch("roz_scripts.utils.utils.OnyxClient") as mock_client, unittest.mock.patch("roz_scripts.general.s3_onyx_updates.OnyxClient") as mock_client_2:
-            mock_client_2.return_value.__enter__.return_value.identify.return_value = {"identifier": "fake_identifier"}
-            mock_client_2.return_value.__enter__.return_value.filter.return_value = iter(
-                ([{"climb_id": "fake_climb_id", "is_published": True}])
+        with unittest.mock.patch(
+            "roz_scripts.utils.utils.OnyxClient"
+        ) as mock_client, unittest.mock.patch(
+            "roz_scripts.general.s3_onyx_updates.OnyxClient"
+        ) as mock_client_2:
+            mock_client_2.return_value.__enter__.return_value.identify.return_value = {
+                "identifier": "fake_identifier"
+            }
+            mock_client_2.return_value.__enter__.return_value.filter.return_value = (
+                iter(([{"climb_id": "fake_climb_id", "is_published": True}]))
             )
-            mock_client.return_value.__enter__.return_value.update.return_value = {"status": "success"}
+            mock_client.return_value.__enter__.return_value.update.return_value = {
+                "status": "success"
+            }
 
-
-            update_success, payload = csv_update(parsed_messsage=csv_record, config_dict=fake_roz_cfg_dict, log=self.logger)
+            update_success, payload = csv_update(
+                parsed_messsage=csv_record,
+                config_dict=fake_roz_cfg_dict,
+                log=self.logger,
+            )
 
             print(payload)
 
@@ -606,7 +646,11 @@ class test_s3_onyx_updates(unittest.TestCase):
             ]
         }
 
-        update_success, payload = csv_update(parsed_messsage=non_csv_record, config_dict=fake_roz_cfg_dict, log=self.logger)
+        update_success, payload = csv_update(
+            parsed_messsage=non_csv_record,
+            config_dict=fake_roz_cfg_dict,
+            log=self.logger,
+        )
 
         print(payload)
 
@@ -659,7 +703,11 @@ class test_s3_onyx_updates(unittest.TestCase):
             ]
         }
 
-        update_success, payload = csv_update(parsed_messsage=non_csv_record, config_dict=fake_roz_cfg_dict, log=self.logger)
+        update_success, payload = csv_update(
+            parsed_messsage=non_csv_record,
+            config_dict=fake_roz_cfg_dict,
+            log=self.logger,
+        )
 
         print(payload)
 

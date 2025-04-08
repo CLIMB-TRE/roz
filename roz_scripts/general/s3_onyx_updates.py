@@ -270,6 +270,7 @@ def csv_update(parsed_messsage, config_dict, log):
         "run_index": parsed_object_key["run_index"],
         "run_id": parsed_object_key["run_id"],
         "site": site,
+        "site_str": parsed_bucket_name["site_str"],
         "files": {
             ".csv": {
                 "uri": f"s3://{bucket_name}/{record['s3']['object']['key']}",
@@ -342,7 +343,6 @@ def csv_update(parsed_messsage, config_dict, log):
         payload=payload, fields=update_fields, log=log
     )
 
-    payload.pop("climb_id")
     payload.pop("files")
     payload.pop("uuid")
     payload.pop("artifact")
@@ -407,10 +407,18 @@ def main(args):
 
                 if success:
                     varys_client.acknowledge_message(message)
-                    continue
 
-                log.error(f"Failed to process message: {json.loads(message.body)}")
-                varys_client.nack_message(message)
+                    if payload["update_status"] == "success":
+                        varys_client.send(
+                            message=payload,
+                            exchange=f"inbound-onyx-updates-{payload['project']}",
+                            queue_suffix="onyx_updates",
+                        )
+
+                else:
+
+                    log.error(f"Failed to process message: {json.loads(message.body)}")
+                    varys_client.nack_message(message)
 
     except BaseException:
         os.remove("/tmp/healthy")
