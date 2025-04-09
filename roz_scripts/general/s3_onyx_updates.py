@@ -408,6 +408,12 @@ def run(args):
                 if success:
                     varys_client.acknowledge_message(message)
 
+                    if not payload:
+                        log.info(
+                            f"No work to do for message: {json.loads(message.body)}"
+                        )
+                        continue
+
                     if payload["update_status"] == "success":
                         varys_client.send(
                             message=payload,
