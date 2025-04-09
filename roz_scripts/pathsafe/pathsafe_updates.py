@@ -205,7 +205,7 @@ def main():
         help="Log file name",
     )
     parser.add_argument(
-        "--log-level",
+        "--log_level",
         type=str,
         default="info",
         help="Log level",
