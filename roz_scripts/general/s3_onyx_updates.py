@@ -52,7 +52,7 @@ def onyx_climb_identify(run_index: str, run_id: str, project: str, log):
 
                 if len(response) == 0:
                     log.info(
-                        f"Failed to find records with Onyx for: {project}.{run_index}.{run_id} despite successful identification by Onyx"
+                        f"Failed to find records with Onyx for: {project}, {run_index}, {run_id} despite successful identification by Onyx"
                     )
                     return (False, False)
 
@@ -260,13 +260,13 @@ def csv_update(parsed_message, config_dict, log):
 
     if climb_id_fail:
         log.error(
-            f"Failed to identify climb_id for {parsed_bucket_name['project']}.{run_index}.{run_id}"
+            f"Failed to identify climb_id for {parsed_bucket_name['project']}.{parsed_object_key['run_index']}.{parsed_object_key['run_id']}"
         )
         return (False, False)
 
     if not climb_id:
         log.info(
-            f"Climb_id not found for {parsed_bucket_name['project']}.{run_index}.{run_id}"
+            f"Climb_id not found for {parsed_bucket_name['project']}.{parsed_object_key['run_index']}.{parsed_object_key['run_id']}"
         )
         return (True, False)
 
@@ -291,9 +291,7 @@ def csv_update(parsed_message, config_dict, log):
     field_check_status, alert, payload = csv_field_checks(payload=payload)
 
     if alert:
-        log.error(
-            f"Field check failed for {parsed_bucket_name['project']}.{run_index}.{run_id}."
-        )
+        log.error(f"Field check failed for {payload['artifact']}.")
         return (False, payload)
 
     if not field_check_status:
@@ -301,7 +299,6 @@ def csv_update(parsed_message, config_dict, log):
         payload.pop("climb_id")
         payload.pop("files")
         payload.pop("uuid")
-        payload.pop("artifact")
 
         s3_credentials = get_s3_credentials()
 
@@ -316,7 +313,7 @@ def csv_update(parsed_message, config_dict, log):
 
         s3_client.put_object(
             Bucket=f"{parsed_bucket_name['project']}-{parsed_bucket_name['site_str']}-results",
-            Key=f"{parsed_bucket_name['project']}.{parsed_object_key['run_index']}.{parsed_object_key['run_index']}.update.json",
+            Key=f"{payload['artifact']}.update.json",
             Body=json.dumps(payload),
         )
 
@@ -351,7 +348,6 @@ def csv_update(parsed_message, config_dict, log):
 
     payload.pop("files")
     payload.pop("uuid")
-    payload.pop("artifact")
 
     s3_credentials = get_s3_credentials()
 
@@ -366,13 +362,11 @@ def csv_update(parsed_message, config_dict, log):
 
     s3_client.put_object(
         Bucket=f"{parsed_bucket_name['project']}-{parsed_bucket_name['site_str']}-results",
-        Key=f"{parsed_bucket_name['project']}.{parsed_object_key['run_index']}.{parsed_object_key['run_index']}.update.json",
+        Key=f"{payload['artifact']}.update.json",
         Body=json.dumps(payload),
     )
 
-    log.info(
-        f"Update status for {parsed_bucket_name['project']}.{run_index}.{run_id}: {payload['update_status']}"
-    )
+    log.info(f"Update status for {payload['artifact']}: {payload['update_status']}")
     return (True, payload)
 
 
