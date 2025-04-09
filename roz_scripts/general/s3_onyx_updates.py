@@ -370,7 +370,7 @@ def csv_update(parsed_messsage, config_dict, log):
     return (True, payload)
 
 
-def main(args):
+def run(args):
     try:
         log = init_logger("s3_onyx_updater", args.logfile, args.log_level)
 
@@ -427,7 +427,7 @@ def main(args):
         sys.exit(1)
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -445,4 +445,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(args)
+    run(args)
+
+
+if __name__ == "__main__":
+    main()
