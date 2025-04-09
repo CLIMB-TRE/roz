@@ -45,7 +45,7 @@ def pathogenwatch_update(climb_id: str, payload: dict, log) -> tuple[bool, dict]
         )
 
         payload["update_status"] = "failed"
-        return (True, payload)
+        return (False, payload)
 
     ignore_fields = ["is_published", "published_date", "pathogenwatch_uuid"]
 
@@ -59,7 +59,7 @@ def pathogenwatch_update(climb_id: str, payload: dict, log) -> tuple[bool, dict]
     try:
         body = {"id": record["pathogenwatch_uuid"]}
 
-        resp = requests.get(f"{base_url}/genomes/details", headers=headers, json=body)
+        resp = requests.get(f"{base_url}/genomes/details", headers=headers, params=body)
 
         if resp.status_code != 200:
             log.error(
@@ -98,7 +98,7 @@ def pathogenwatch_update(climb_id: str, payload: dict, log) -> tuple[bool, dict]
 
     try:
         r = requests.post(
-            url=f"{base_url}/climb/genome/upsert", headers=headers, json=body
+            url=f"{base_url}/climb/genomes/upsert", headers=headers, data=body
         )
 
         if r.status_code != 200:
@@ -107,7 +107,7 @@ def pathogenwatch_update(climb_id: str, payload: dict, log) -> tuple[bool, dict]
             )
             payload.setdefault("update_errors", [])
             payload["update_errors"].append(
-                f"Pathogenwatch update failed with status code: {r.status_code}, due to error: {r.text}"
+                f"Pathogenwatch update failed with status code: {r.status_code}, due to error: {r.json()}"
             )
             payload["update_status"] = "failed"
             return (False, payload)

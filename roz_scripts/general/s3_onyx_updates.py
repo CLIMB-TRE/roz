@@ -329,7 +329,7 @@ def csv_update(parsed_messsage, config_dict, log):
 
         record = records[0]
 
-    field_blacklist = ["climb_id", "run_index", "run_id", "biosample_id"]
+    field_blacklist = ["run_index", "run_id", "biosample_id"]
 
     update_fields = {}
 
