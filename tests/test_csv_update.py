@@ -191,6 +191,7 @@ class test_s3_onyx_updates(unittest.TestCase):
         os.environ["MOTO_S3_CUSTOM_ENDPOINTS"] = "https://s3.climb.ac.uk"
         os.environ["ONYX_DOMAIN"] = "testing"
         os.environ["ONYX_TOKEN"] = "testing"
+        os.environ["ONYX_ROZ_TOKEN"] = "testing"
         os.environ["FAKE_VARYS_CFG_PATH"] = FAKE_VARYS_CFG_PATH
         os.environ["FAKE_ROZ_CFG_PATH"] = FAKE_ROZ_CFG_PATH
 

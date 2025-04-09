@@ -9,7 +9,6 @@ import boto3
 from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
-    get_onyx_credentials,
     onyx_update,
     s3_to_fh,
     csv_field_checks,
@@ -19,6 +18,7 @@ from varys import Varys
 
 from onyx import (
     OnyxClient,
+    OnyxConfig,
 )
 
 from onyx.exceptions import (
@@ -32,7 +32,11 @@ from onyx.exceptions import (
 
 def onyx_climb_identify(run_index: str, run_id: str, project: str, log):
 
-    with OnyxClient(config=get_onyx_credentials()) as client:
+    onyx_config = OnyxConfig(
+        domain=os.getenv("ONYX_DOMAIN"), token=os.getenv("ONYX_ROZ_TOKEN")
+    )
+
+    with OnyxClient(config=onyx_config) as client:
         reconnect_count = 0
         while reconnect_count <= 3:
             try:
@@ -104,7 +108,9 @@ def onyx_climb_identify(run_index: str, run_id: str, project: str, log):
 def onyx_identify_simple(
     identifier: str, identity_field: str, project: str, site: str, log
 ):
-    onyx_config = get_onyx_credentials()
+    onyx_config = OnyxConfig(
+        domain=os.getenv("ONYX_DOMAIN"), token=os.getenv("ONYX_ROZ_TOKEN")
+    )
 
     with OnyxClient(config=onyx_config) as client:
         reconnect_count = 0
