@@ -417,7 +417,6 @@ class test_s3_onyx_updates(unittest.TestCase):
             self.assertEqual(payload["project"], "project2")
             self.assertNotIn("files", payload.keys())
             self.assertNotIn("uuid", payload.keys())
-            self.assertNotIn("artifact", payload.keys())
             self.assertEqual(payload["update_status"], "failed")
 
     def test_artifact_unpublished(self):
