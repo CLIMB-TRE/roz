@@ -164,9 +164,9 @@ def onyx_identify_simple(
                 return (True, False)
 
 
-def csv_update(parsed_messsage, config_dict, log):
+def csv_update(parsed_message, config_dict, log):
 
-    record = parsed_messsage["Records"][0]
+    record = parsed_message["Records"][0]
     bucket_name = record["s3"]["bucket"]["name"]
 
     parsed_bucket_name = {
