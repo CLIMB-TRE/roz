@@ -428,4 +428,21 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--logfile",
+        type=str,
+        default="/tmp/s3_onyx_updater.log",
+        help="Path to the log file",
+    )
+    parser.add_argument(
+        "--log_level",
+        type=str,
+        default="INFO",
+        help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+    )
+    args = parser.parse_args()
+
+    main(args)

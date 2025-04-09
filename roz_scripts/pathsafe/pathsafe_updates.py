@@ -191,4 +191,25 @@ def main(args):
         time.sleep(1)
         sys.exit(1)
 
-if __name
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--logfile",
+        type=str,
+        default="pathsafe_updater.log",
+        help="Log file name",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="info",
+        help="Log level",
+    )
+
+    args = parser.parse_args()
+
+    main(args)
