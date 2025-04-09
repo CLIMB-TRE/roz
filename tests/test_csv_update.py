@@ -301,7 +301,7 @@ class test_s3_onyx_updates(unittest.TestCase):
             }
 
             update_success, payload = csv_update(
-                parsed_messsage=csv_record,
+                parsed_message=csv_record,
                 config_dict=fake_roz_cfg_dict,
                 log=self.logger,
             )
@@ -402,7 +402,7 @@ class test_s3_onyx_updates(unittest.TestCase):
             )
 
             update_success, payload = csv_update(
-                parsed_messsage=csv_record,
+                parsed_message=csv_record,
                 config_dict=fake_roz_cfg_dict,
                 log=self.logger,
             )
@@ -505,7 +505,7 @@ class test_s3_onyx_updates(unittest.TestCase):
             )
 
             update_success, payload = csv_update(
-                parsed_messsage=csv_record,
+                parsed_message=csv_record,
                 config_dict=fake_roz_cfg_dict,
                 log=self.logger,
             )
@@ -590,7 +590,7 @@ class test_s3_onyx_updates(unittest.TestCase):
             }
 
             update_success, payload = csv_update(
-                parsed_messsage=csv_record,
+                parsed_message=csv_record,
                 config_dict=fake_roz_cfg_dict,
                 log=self.logger,
             )
@@ -647,7 +647,7 @@ class test_s3_onyx_updates(unittest.TestCase):
         }
 
         update_success, payload = csv_update(
-            parsed_messsage=non_csv_record,
+            parsed_message=non_csv_record,
             config_dict=fake_roz_cfg_dict,
             log=self.logger,
         )
@@ -704,7 +704,7 @@ class test_s3_onyx_updates(unittest.TestCase):
         }
 
         update_success, payload = csv_update(
-            parsed_messsage=non_csv_record,
+            parsed_message=non_csv_record,
             config_dict=fake_roz_cfg_dict,
             log=self.logger,
         )
