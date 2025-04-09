@@ -316,7 +316,7 @@ def csv_update(parsed_message, config_dict, log):
 
         s3_client.put_object(
             Bucket=f"{parsed_bucket_name['project']}-{parsed_bucket_name['site_str']}-results",
-            Key=f"{parsed_bucket_name['project']}.{run_index}.{run_id}.update.json",
+            Key=f"{parsed_bucket_name['project']}.{parsed_object_key['run_index']}.{parsed_object_key['run_index']}.update.json",
             Body=json.dumps(payload),
         )
 
@@ -366,7 +366,7 @@ def csv_update(parsed_message, config_dict, log):
 
     s3_client.put_object(
         Bucket=f"{parsed_bucket_name['project']}-{parsed_bucket_name['site_str']}-results",
-        Key=f"{parsed_bucket_name['project']}.{run_index}.{run_id}.update.json",
+        Key=f"{parsed_bucket_name['project']}.{parsed_object_key['run_index']}.{parsed_object_key['run_index']}.update.json",
         Body=json.dumps(payload),
     )
 
