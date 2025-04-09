@@ -186,6 +186,7 @@ def run(args):
                     varys_client.nack_message(message)
 
     except BaseException:
+        log.exception("Exception in main loop:")
         os.remove("/tmp/healthy")
         varys_client.close()
         time.sleep(1)
