@@ -421,6 +421,7 @@ def run(args):
                     varys_client.nack_message(message)
 
     except BaseException:
+        log.exception("Unhandled error: ")
         os.remove("/tmp/healthy")
         varys_client.close()
         time.sleep(1)
