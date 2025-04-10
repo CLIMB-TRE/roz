@@ -161,10 +161,10 @@ def run(args):
 
                 if success:
                     if payload["update_status"] == "success":
-                        varys_client.publish(
+                        varys_client.send(
+                            message=payload,
                             exchange="inbound-onyx-updates",
-                            routing_key="onyx_updates",
-                            body=json.dumps(payload),
+                            queue_suffix="onyx_updates",
                         )
 
                         log.info(
