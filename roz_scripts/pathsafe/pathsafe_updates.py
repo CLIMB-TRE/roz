@@ -98,7 +98,7 @@ def pathogenwatch_update(climb_id: str, payload: dict, log) -> tuple[bool, dict]
 
     try:
         r = requests.post(
-            url=f"{base_url}/climb/genomes/upsert", headers=headers, data=body
+            url=f"{base_url}/climb/genomes/upsert", headers=headers, json=body
         )
 
         if r.status_code != 200:
