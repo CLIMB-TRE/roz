@@ -157,7 +157,7 @@ def onyx_identify_simple(
                 return (True, False)
 
             except OnyxRequestError as e:
-                if e.response.status_code == 400:
+                if e.response.status_code in [400, 404]:
                     return (False, False)
 
                 log.error(
