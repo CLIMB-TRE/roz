@@ -59,12 +59,12 @@ def onyx_climb_identify(run_index: str, run_id: str, project: str, log):
                 else:
                     if response[0]["is_published"]:
                         log.info(
-                            f"Successfully identified climb_id: {response[0]['climb_id']} for {project}.{run_index}.{run_id}"
+                            f"Successfully identified climb_id: {response[0]['climb_id']} for {project}, {run_index}, {run_id}"
                         )
                         return (False, response[0]["climb_id"])
 
                     log.info(
-                        f"Found record with Onyx for: {project}.{run_index}.{run_id} but not published therefore skipping update"
+                        f"Found record with Onyx: {project}, {run_index}, {run_id} but not published therefore skipping update"
                     )
                     return (False, False)
 
@@ -90,13 +90,13 @@ def onyx_climb_identify(run_index: str, run_id: str, project: str, log):
 
             except OnyxClientError as e:
                 log.error(
-                    f"Onyx filter failed for artifact: {project}.{run_index}.{run_id}. Error: {e}"
+                    f"Onyx filter failed for artifact: {project}, {run_index}, {run_id}. Error: {e}"
                 )
                 return (True, False)
 
             except OnyxRequestError as e:
                 log.error(
-                    f"Onyx filter failed for artifact: {project}.{run_index}.{run_id}. Error: {e}"
+                    f"Onyx filter failed for artifact: {project}, {run_index}, {run_id}. Error: {e}"
                 )
                 return (True, False)
 
