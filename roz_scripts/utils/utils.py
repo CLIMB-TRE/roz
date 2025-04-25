@@ -257,7 +257,9 @@ class pipeline:
 
         except BaseException as e:
             # proc = SimpleNamespace(returncode=1, stdout=str(k8s_exception), stderr="")
-            print(f"Failed to execute pipeline due to exception: {e}")
+            # print(f"Failed to execute pipeline due to exception: {e}")
+            with open(stderr_path, "w") as stderr_fh:
+                stderr_fh.write(f"Failed to execute pipeline due to exception: {e}")
             returncode = 1
 
         return returncode
