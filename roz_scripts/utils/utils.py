@@ -999,6 +999,10 @@ def ensure_file_unseen(
                 return (True, True, True, payload)
 
             except OnyxRequestError as e:
+                if e.response.status_code == 404:
+                    # 404 means there's nothing, that's fine!
+                    return (False, True, False, payload)
+
                 log.error(
                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
