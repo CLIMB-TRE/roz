@@ -20,6 +20,15 @@ statement_template = {
     "Resource": ["arn:aws:s3:::{}/*"],
 }
 
+ssl_only_statement_template = {
+    "Sid": "AllowSSLRequestsOnly",
+    "Action": "s3:*",
+    "Effect": "Deny",
+    "Resource": [],
+    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+    "Principal": "*",
+}
+
 in_actions_template = [
     "s3:GetObject",
     "s3:PutObject",
@@ -599,10 +608,22 @@ def generate_site_policy(
 
     # admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
 
+    # Force SSL only
+
+    ssl_only_statement = copy.deepcopy(ssl_only_statement_template)
+    ssl_only_statement["Resource"] = [
+        f"arn:aws:s3:::{bucket_arn}/*",
+        f"arn:aws:s3:::{bucket_arn}",
+    ]
+
+    policy["Statement"].append(ssl_only_statement)
+
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
+    admin_obj_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"
+    ]
 
     admin_obj_statement["Action"] = admin_obj_actions_template
 
@@ -614,7 +635,9 @@ def generate_site_policy(
 
     admin_bucket_statement = copy.deepcopy(statement_template)
 
-    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
+    admin_bucket_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"
+    ]
 
     admin_bucket_statement["Action"] = admin_bucket_actions_template
 
@@ -688,10 +711,21 @@ def generate_project_policy(
 
     # admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
 
+    # Force SSL only
+    ssl_only_statement = copy.deepcopy(ssl_only_statement_template)
+    ssl_only_statement["Resource"] = [
+        f"arn:aws:s3:::{bucket_arn}/*",
+        f"arn:aws:s3:::{bucket_arn}",
+    ]
+
+    policy["Statement"].append(ssl_only_statement)
+
     # Add the admin object permissions statement
     admin_obj_statement = copy.deepcopy(statement_template)
 
-    admin_obj_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
+    admin_obj_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"
+    ]
 
     admin_obj_statement["Action"] = admin_obj_actions_template
 
@@ -703,7 +737,9 @@ def generate_project_policy(
 
     admin_bucket_statement = copy.deepcopy(statement_template)
 
-    admin_bucket_statement["Principal"]["AWS"] = [f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"]
+    admin_bucket_statement["Principal"]["AWS"] = [
+        f"arn:aws:iam:::user/{aws_credentials_dict["admin"]["username"]}"
+    ]
 
     admin_bucket_statement["Action"] = admin_bucket_actions_template
 
@@ -1231,7 +1267,11 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
 
 
 def apply_policies(
-    to_fix: dict, aws_credentials_dict: dict, config_dict: dict, dry_run: bool, force: bool
+    to_fix: dict,
+    aws_credentials_dict: dict,
+    config_dict: dict,
+    dry_run: bool,
+    force: bool,
 ) -> list:
     """Apply the correct policies to all buckets that need to be fixed
 
@@ -1361,7 +1401,6 @@ def apply_policies(
                             f"Dry run, not applying policy: {json.dumps(policy)} for bucket {bucket_arn}",
                             file=sys.stdout,
                         )
-
 
 
 def setup_sns_topic(
@@ -1644,7 +1683,9 @@ def run(args):
 
         to_fix = test_policies(audit_dict=audit_dict, config_dict=config_dict)
 
-        if (not to_fix["site_buckets"] and not to_fix["project_buckets"]) and not args.force:
+        if (
+            not to_fix["site_buckets"] and not to_fix["project_buckets"]
+        ) and not args.force:
             print("All buckets have correct policies", file=sys.stdout)
         else:
             apply_policies(
@@ -1736,8 +1777,13 @@ def run(args):
                 f"Failed to apply policies to {len(retest_to_fix['site_buckets']) + len(retest_to_fix['project_buckets'])} buckets",
                 file=sys.stdout,
             )
-            print(f"Site Buckets to fix: {retest_to_fix['site_buckets']}", file=sys.stdout)
-            print(f"Project Buckets to fix: {retest_to_fix['project_buckets']}", file=sys.stdout)
+            print(
+                f"Site Buckets to fix: {retest_to_fix['site_buckets']}", file=sys.stdout
+            )
+            print(
+                f"Project Buckets to fix: {retest_to_fix['project_buckets']}",
+                file=sys.stdout,
+            )
 
             # varys_client = Varys(
             #     profile="roz",
@@ -1777,7 +1823,11 @@ def main():
         action="store_true",
         help="Whether or not to setup messaging",
     )
-    parser.add_argument("--force", action="store_true", help="Set policies on all buckets regardless of current state")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Set policies on all buckets regardless of current state",
+    )
     args = parser.parse_args()
 
     run(args)
