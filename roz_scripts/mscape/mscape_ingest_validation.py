@@ -1652,9 +1652,7 @@ def run(args):
             project=args.project,
         )
 
-        while os.path.exists("/tmp/healthy"):
-            time.sleep(0.5)
-
+        while True:
             message = varys_client.receive(
                 exchange=f"inbound-to_validate-{args.project}",
                 queue_suffix="validator",
@@ -1662,18 +1660,15 @@ def run(args):
                 timeout=60,
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            # Add timestamp to file to indicate health
+            if os.path.exists("/tmp/healthy"):
+                with open("/tmp/healthy", "w") as fh:
+                    fh.write(str(time.time_ns()))
 
             if message:
                 worker_pool.submit_job(
                     message=message, args=args, ingest_pipe=ingest_pipe
                 )
-
-        log.error("Shutting down worker pool due to missing '/tmp/healthy' file")
-        worker_pool.close()
-        varys_client.close()
-        time.sleep(1)
 
     except BaseException:
         log.exception("Shutting down worker pool due to exception:")
