@@ -208,18 +208,18 @@ def get_bakta_db():
 
         doi_url = f"{doi.get_real_url_from_doi(db['doi'])}"
 
-        db_url = f"{requests.get(doi_url).url}/files/db.tar.gz"
+        db_url = f"{requests.get(doi_url).url}/files/db.tar.xz"
 
         if not dry_run:
             urllib.request.urlretrieve(
-                db_url, f"{base_db_path}/bakta/{db['date']}/db.tar.gz"
+                db_url, f"{base_db_path}/bakta/{db['date']}/db.tar.xz"
             )
 
             os.system(
-                f"tar -xvf {base_db_path}/bakta/{db['date']}/db.tar.gz -C {base_db_path}/bakta/{db['date']}"
+                f"tar -xvf {base_db_path}/bakta/{db['date']}/db.tar.xz -C {base_db_path}/bakta/{db['date']}"
             )
 
-            os.system(f"rm {base_db_path}/bakta/{db['date']}/db.tar.gz")
+            os.system(f"rm {base_db_path}/bakta/{db['date']}/db.tar.xz")
 
             try:
                 os.remove(os.path.join(base_db_path, "bakta", "latest"))
