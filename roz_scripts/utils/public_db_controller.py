@@ -200,26 +200,20 @@ def get_bakta_db():
             print(f"Already have latest bakta db: {db['date']}")
             break
 
-        if not dry_run:
-            os.makedirs(os.path.join(base_db_path, "bakta", db["date"]))
-
-        else:
-            print(f"Would make dir: {os.path.join(base_db_path, 'bakta', db['date'])}")
-
         doi_url = f"{doi.get_real_url_from_doi(db['doi'])}"
 
         db_url = f"{requests.get(doi_url).url}/files/db.tar.xz"
 
         if not dry_run:
-            urllib.request.urlretrieve(
-                db_url, f"{base_db_path}/bakta/{db['date']}/db.tar.xz"
-            )
+            urllib.request.urlretrieve(db_url, f"{base_db_path}/db.tar.xz")
+
+            os.makedirs(os.path.join(base_db_path, "bakta", db["date"]))
 
             os.system(
-                f"tar -xvf {base_db_path}/bakta/{db['date']}/db.tar.xz -C {base_db_path}/bakta/{db['date']}"
+                f"tar -xvf {base_db_path}/db.tar.xz -C {base_db_path}/bakta/{db['date']}"
             )
 
-            os.system(f"rm {base_db_path}/bakta/{db['date']}/db.tar.xz")
+            os.system(f"rm {base_db_path}/db.tar.xz")
 
             try:
                 os.remove(os.path.join(base_db_path, "bakta", "latest"))
