@@ -546,21 +546,21 @@ def csv_create(
                         if not artifact_published:
                             return (True, alert, payload)
 
-                    if test_submission:
-                        payload.setdefault("onyx_test_create_errors", {})
-                        for field, messages in e.response.json()["messages"].items():
-                            payload["onyx_test_create_errors"].setdefault(field, [])
-                            payload["onyx_test_create_errors"][field].extend(messages)
+                if test_submission:
+                    payload.setdefault("onyx_test_create_errors", {})
+                    for field, messages in e.response.json()["messages"].items():
+                        payload["onyx_test_create_errors"].setdefault(field, [])
+                        payload["onyx_test_create_errors"][field].extend(messages)
 
-                        return (False, alert, payload)
+                    return (False, alert, payload)
 
-                    else:
-                        payload.setdefault("onyx_create_errors", {})
-                        for field, messages in e.response.json()["messages"].items():
-                            payload["onyx_create_errors"].setdefault(field, [])
-                            payload["onyx_create_errors"][field].extend(messages)
+                else:
+                    payload.setdefault("onyx_create_errors", {})
+                    for field, messages in e.response.json()["messages"].items():
+                        payload["onyx_create_errors"].setdefault(field, [])
+                        payload["onyx_create_errors"][field].extend(messages)
 
-                        return (False, alert, payload)
+                    return (False, alert, payload)
 
             except EtagMismatchError:
                 log.error(
