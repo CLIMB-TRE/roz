@@ -528,32 +528,29 @@ def csv_create(
                     f"Onyx csv create failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
                 )
 
-                if test_submission:
-                    # Handle the case where the record already exists but isn't published when field is added to onyx
-                    payload.setdefault("onyx_test_create_errors", {})
-                    for field, messages in e.response.json()["messages"].items():
-                        payload["onyx_test_create_errors"].setdefault(field, [])
-                        payload["onyx_test_create_errors"][field].extend(messages)
+                artifact_published, alert, payload = check_artifact_published(
+                    payload=payload, log=log
+                )
 
-                    return (False, False, payload)
+                if alert:
+                    return (False, True, payload)
 
-                else:
-                    artifact_published, alert, payload = check_artifact_published(
-                        payload=payload, log=log
-                    )
+                if artifact_published:
+                    if test_submission:
+                        payload.setdefault("onyx_test_create_errors", {})
+                        for field, messages in e.response.json()["messages"].items():
+                            payload["onyx_test_create_errors"].setdefault(field, [])
+                            payload["onyx_test_create_errors"][field].extend(messages)
 
-                    if alert:
-                        return (False, True, payload)
-
-                    if artifact_published:
+                    else:
                         payload.setdefault("onyx_create_errors", {})
                         for field, messages in e.response.json()["messages"].items():
                             payload["onyx_create_errors"].setdefault(field, [])
                             payload["onyx_create_errors"][field].extend(messages)
 
-                        return (False, alert, payload)
+                    return (False, alert, payload)
 
-                    return (True, alert, payload)
+                return (True, alert, payload)
 
             except EtagMismatchError:
                 log.error(
