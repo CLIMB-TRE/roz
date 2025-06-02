@@ -184,6 +184,7 @@ def run(args):
 
                     log.error(f"Failed to process message: {json.loads(message.body)}")
                     varys_client.nack_message(message)
+                    time.sleep(1)
 
     except BaseException:
         log.exception("Exception in main loop:")
