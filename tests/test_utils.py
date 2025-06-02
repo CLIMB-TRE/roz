@@ -240,7 +240,9 @@ class test_utils(unittest.TestCase):
                 payload["onyx_test_create_errors"]["onyx_errors"],
             )
 
-        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client, patch(
+            "roz_scripts.utils.utils.check_artifact_published"
+        ) as mock_published_check:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
                     message="test csv_create error handling",
@@ -255,6 +257,8 @@ class test_utils(unittest.TestCase):
                     ),
                 )
             )
+
+            mock_published_check.return_value = (False, False, payload)
 
             success, alert, payload = csv_create(
                 payload=self.example_match,
