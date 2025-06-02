@@ -1845,7 +1845,9 @@ class Test_mscape_validator(unittest.TestCase):
                         json_data={
                             "data": [],
                             "messages": {
-                                "run_index": ["Test run_index error handling"]
+                                "non_field_errors": [
+                                    "This combination of run_index, run_id already exists."
+                                ]
                             },
                         },
                     ),
