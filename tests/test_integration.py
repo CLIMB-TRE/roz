@@ -2598,9 +2598,6 @@ class Test_pathsafe_validator(unittest.TestCase):
             patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
             patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
-            patch(
-                "roz_scripts.utils.utils.check_artifact_published"
-            ) as mock_published_check,
         ):
             mock_pipeline.return_value.execute.return_value = 0
 
@@ -2786,8 +2783,6 @@ class Test_pathsafe_validator(unittest.TestCase):
                 "value": "hidden-value",
                 "identifier": "S-1234567890",
             }
-
-            mock_published_check.return_value = (False, False, {})
 
             result_path = os.path.join(DIR, example_pathsafe_validator_message["uuid"])
             pipeline_info_path = os.path.join(result_path, "pipeline_info")

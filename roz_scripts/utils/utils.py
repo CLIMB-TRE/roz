@@ -528,29 +528,49 @@ def csv_create(
                     f"Onyx csv create failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
                 )
 
-                artifact_published, alert, payload = check_artifact_published(
-                    payload=payload, log=log
-                )
+                error_messages = e.response.json()["messages"]
 
-                if alert:
-                    return (False, True, payload)
+                if error_messages.get("non_field_errors"):
+                    if (
+                        "This combination of run_index, run_id already exists."
+                        in error_messages["non_field_errors"]
+                    ):
 
-                if artifact_published:
-                    if test_submission:
-                        payload.setdefault("onyx_test_create_errors", {})
-                        for field, messages in e.response.json()["messages"].items():
-                            payload["onyx_test_create_errors"].setdefault(field, [])
-                            payload["onyx_test_create_errors"][field].extend(messages)
+                        artifact_published, alert, payload = check_artifact_published(
+                            payload=payload, log=log
+                        )
 
-                    else:
-                        payload.setdefault("onyx_create_errors", {})
-                        for field, messages in e.response.json()["messages"].items():
-                            payload["onyx_create_errors"].setdefault(field, [])
-                            payload["onyx_create_errors"][field].extend(messages)
+                        if alert:
+                            return (False, True, payload)
 
-                    return (False, alert, payload)
+                        if artifact_published:
+                            if test_submission:
+                                payload.setdefault("onyx_test_create_errors", {})
+                                for field, messages in e.response.json()[
+                                    "messages"
+                                ].items():
+                                    payload["onyx_test_create_errors"].setdefault(
+                                        field, []
+                                    )
+                                    payload["onyx_test_create_errors"][field].extend(
+                                        messages
+                                    )
 
-                return (True, alert, payload)
+                                return (False, alert, payload)
+
+                            else:
+                                payload.setdefault("onyx_create_errors", {})
+                                for field, messages in e.response.json()[
+                                    "messages"
+                                ].items():
+                                    payload["onyx_create_errors"].setdefault(field, [])
+                                    payload["onyx_create_errors"][field].extend(
+                                        messages
+                                    )
+
+                                return (False, alert, payload)
+
+                        return (True, alert, payload)
 
             except EtagMismatchError:
                 log.error(
