@@ -552,7 +552,7 @@ def csv_create(
                         payload["onyx_test_create_errors"].setdefault(field, [])
                         payload["onyx_test_create_errors"][field].extend(messages)
 
-                    return (False, alert, payload)
+                    return (False, False, payload)
 
                 else:
                     payload.setdefault("onyx_create_errors", {})
@@ -560,7 +560,7 @@ def csv_create(
                         payload["onyx_create_errors"].setdefault(field, [])
                         payload["onyx_create_errors"][field].extend(messages)
 
-                    return (False, alert, payload)
+                    return (False, False, payload)
 
             except EtagMismatchError:
                 log.error(
