@@ -195,13 +195,15 @@ class test_utils(unittest.TestCase):
         ) as mock_published_check:
             mock_client.return_value.__enter__.return_value.csv_create = Mock(
                 side_effect=OnyxRequestError(
-                    message="test csv_create error handling",
+                    message="test csv_create exception",
                     response=MockResponse(
                         status_code=400,
                         json_data={
                             "data": [],
                             "messages": {
-                                "run_index": ["Test sample_id error handling"]
+                                "non_field_errors": [
+                                    "This combination of run_index, run_id already exists."
+                                ]
                             },
                         },
                     ),
