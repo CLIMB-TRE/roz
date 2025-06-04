@@ -145,7 +145,7 @@ def get_ncbi_blast():
 
         for segment in segments:
 
-            if segment.endswith(".tar.gz") and db in ("nt", "nr"):
+            if segment.endswith(".tar.gz") and db in ("nr", "nt", "nt_viruses"):
                 if dry_run:
                     print(
                         f"Would get: {segment} to path: {str(os.path.join(base_db_path, 'blast', db))}"
