@@ -540,9 +540,6 @@ def csv_create(
                             payload=payload, log=log
                         )
 
-                        if alert:
-                            return (False, True, payload)
-
                         if not artifact_published:
                             return (True, alert, payload)
 

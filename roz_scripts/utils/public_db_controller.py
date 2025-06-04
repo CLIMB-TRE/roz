@@ -127,7 +127,7 @@ def get_ncbi_blast():
 
     for segment in segments:
         db = segment.split(".")[0]
-        if db not in ("nr", "nt"):
+        if db not in ("nr", "nt", "nt_viruses"):
             continue
 
         if os.path.exists(os.path.join(base_db_path, "blast", db)):
