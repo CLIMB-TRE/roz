@@ -122,7 +122,7 @@
         "published_hcid_reports": {
           "name_layout": "{project}-published-hcid",
           "policy": {
-            "analysis": "project_read"
+            "analysis": "project_read_list"
           },
           "owner": "admin"
         }
