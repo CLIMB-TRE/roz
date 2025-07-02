@@ -270,7 +270,7 @@ def init_logger(name, log_path, log_level):
     log.propagate = False
     log.setLevel(log_level)
     if not (log.hasHandlers()):
-        logging_fh = logging.handlers.TimedRotatingFileHandler(log_path, when="W0")
+        logging_fh = logging.handlers.FileHandler(log_path)
         logging_fh.setFormatter(
             logging.Formatter("%(name)s\t::%(levelname)s::%(asctime)s::\t%(message)s")
         )
