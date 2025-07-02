@@ -222,9 +222,9 @@ def execute_validation_pipeline(
         "unique_id": payload["uuid"],
         "climb": "",
         "max_human_reads_before_rejection": "10000",
-        "k2_host": args.k2_host,  # Parameterise this and deal with DNS stuff
-        "k2_port": "8080",
-        "database": k2_db_path,
+        "kraken_database.default.host": args.k2_host,  # Parameterise this and deal with DNS stuff
+        "kraken_database.default.port": "8080",
+        "kraken_database.default.path": k2_db_path,
         "taxonomy": taxonomy_path,
     }
 
@@ -446,6 +446,7 @@ def add_taxon_records(
                 "avg_quality": taxa["qc_metrics"]["avg_qual"],
                 "mean_len": taxa["qc_metrics"]["mean_len"],
                 "rank": taxa["tax_level"],
+                "total_bases": taxa["qc_metrics"]["total_len"],
             }
         except KeyError as e:
             log.error(
@@ -1044,38 +1045,45 @@ def ret_0_parser(
                         f"At least one FASTQ in the pair appear to not contain valid header lines, please resubmit valid FASTQ files or contact the {payload['project']} admin team if you believe this to be in error"
                     )
                     ingest_fail = True
+
                 elif process.startswith("paired_concatenate") and trace["exit"] == "8":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Paired FASTQ read headers do not appear to match between files, please resubmit valid FASTQ files or contact the {payload['project']} admin team if you believe this to be in error"
                     )
                     ingest_fail = True
-                elif (
-                    process.startswith("extract_taxa_reads")
-                    or process.startswith("extract_taxa_paired_reads")
-                ) and trace["exit"] == "2":
+
+                elif process.startswith("extract_taxa_") and trace["exit"] == "2":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
                     )
                     ingest_fail = True
-                elif (
-                    process.startswith("extract_taxa_reads")
-                    or process.startswith("extract_taxa_paired_reads")
-                ) and trace["exit"] == "3":
+
+                elif process.startswith("extract_taxa_") and trace["exit"] == "3":
                     continue
+
                 elif process.startswith("fastp") and trace["exit"] == "255":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the {payload['project']} admin team for assistance"
                     )
                     ingest_fail = True
+
                 elif process.startswith("fastp") and trace["exit"] == "10":
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"No reads left after fastp filtering, either all reads fail QC or at least one FASTQ is malformed, please contact the {payload['project']} admin team if you believe this to be in error"
                     )
                     ingest_fail = True
+
+                elif process.startswith("check_single_fastq") and trace["exit"] == "11":
+                    payload.setdefault("ingest_errors", [])
+                    payload["ingest_errors"].append(
+                        f"Input FASTQ file has duplicate read IDs, please ensure that the FASTQ file is valid and does not contain duplicate read IDs, or contact the {payload['project']} admin team if you believe this to be in error"
+                    )
+                    ingest_fail = True
+
                 else:
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
@@ -1128,8 +1136,9 @@ def handle_hcid(
 
             full_path = os.path.join(hcid_path, path)
 
-            if not path.endswith(".warning.json") and not path.endswith(
-                "hcid.counts.csv"
+            if not any(
+                path.endswith(ext)
+                for ext in (".warning.json", "hcid.counts.csv", ".reads.fq")
             ):
                 continue
 
@@ -1140,7 +1149,7 @@ def handle_hcid(
 
                 hcid_alerts.append(hcid_message)
 
-            s3_key = f"{payload['climb_id']}/{path}"
+            s3_key = f"{payload['climb_id']}/{payload['climb_id']}.{path}"
 
             try:
                 s3_client.upload_file(
@@ -1459,6 +1468,23 @@ def validate(
 
     payload["onyx_create_status"] = True
     payload["created"] = True
+
+    total_length_path = os.path.join(result_path, "qc", "total_length.json")
+
+    with open(total_length_path, "rt") as total_length_fh:
+        total_length = json.load(total_length_fh)
+
+    total_bases_fail, alert, payload = onyx_update(
+        payload=payload,
+        fields={
+            "total_bases": total_length["total_len"],
+        },
+        log=log,
+    )
+
+    if total_bases_fail:
+        log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
+        return (False, alert, hcid_alerts, payload, message)
 
     scylla_version_fail, alert, payload = onyx_update(
         payload=payload,
