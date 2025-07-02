@@ -2314,7 +2314,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(spike_summary, f)
 
             with open(os.path.join(qc_path, "total_length.json"), "w") as f:
-                json.dump({"total_len": 69})
+                json.dump({"total_len": 69}, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
