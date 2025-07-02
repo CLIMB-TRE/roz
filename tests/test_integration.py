@@ -1127,7 +1127,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(spike_summary, f)
 
             with open(os.path.join(qc_path, "total_length.json"), "w") as f:
-                json.dump({"total_len": 69})
+                json.dump({"total_len": 69}, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1327,7 +1327,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(spike_summary, f)
 
             with open(os.path.join(qc_path, "total_length.json"), "w") as f:
-                json.dump({"total_len": 69})
+                json.dump({"total_len": 69}, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1498,7 +1498,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(spike_summary, f)
 
             with open(os.path.join(qc_path, "total_length.json"), "w") as f:
-                json.dump({"total_len": 69})
+                json.dump({"total_len": 69}, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -1770,7 +1770,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(spike_summary, f)
 
             with open(os.path.join(qc_path, "total_length.json"), "w") as f:
-                json.dump({"total_len": 69})
+                json.dump({"total_len": 69}, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
@@ -2044,7 +2044,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(example_reads_summary, f)
 
             with open(os.path.join(qc_path, "total_length.json"), "w") as f:
-                json.dump({"total_len": 69})
+                json.dump({"total_len": 69}, f)
 
             spike_count_summary = {
                 "zymo-mc_D6320": {
@@ -2074,7 +2074,7 @@ class Test_mscape_validator(unittest.TestCase):
                 json.dump(spike_summary, f)
 
             with open(os.path.join(qc_path, "total_length.json"), "w") as f:
-                json.dump({"total_len": 69})
+                json.dump({"total_len": 69}, f)
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
