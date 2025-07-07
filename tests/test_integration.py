@@ -535,7 +535,7 @@ example_reads_summary = [
 ]
 
 example_params = {
-    "database_set": "PlusPF",
+    "kraken_database": {"default": {"name": "PlusPF"}},
 }
 
 example_k2_out = {
