@@ -1665,7 +1665,7 @@ def run(args):
         ingest_pipe = pipeline(
             pipe=args.ingest_pipeline,
             branch=args.pipeline_branch,
-            profile="docker",
+            profile="docker,climb",
             config=args.nxf_config,
             nxf_image=args.nxf_image,
             # timeout=args.pipeline_timeout,
