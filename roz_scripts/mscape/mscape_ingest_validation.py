@@ -646,7 +646,7 @@ def add_classifier_calls(
         classifier_calls_path = os.path.join(
             result_path,
             "classifications",
-            f"{pipe_params['database_set']}.kraken_report.json",
+            f"{pipe_params['kraken_database']['default']['name']}.kraken_report.json",
         )
 
         with open(classifier_calls_path, "rt") as classifier_calls_fh:
