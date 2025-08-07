@@ -391,6 +391,34 @@ def are_files_empty(*s3_uris: str) -> bool:
     return False
 
 
+def do_uris_exist(*s3_uris: str) -> bool:
+    """Check if the files at the given S3 URIs exist
+
+    Returns:
+        bool: True if any files are non-existent, False otherwise
+    """
+
+    s3_credentials = get_s3_credentials()
+
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=s3_credentials.access_key,
+        aws_secret_access_key=s3_credentials.secret_key,
+        endpoint_url=s3_credentials.endpoint,
+    )
+
+    try:
+        for s3_uri in s3_uris:
+            bucket, key = s3_uri.split("/", 3)[2:]
+            s3_client.head_object(Bucket=bucket, Key=key)
+
+    except ClientError:
+
+        return False
+
+    return True
+
+
 def csv_create(
     payload: dict,
     log: logging.getLogger,

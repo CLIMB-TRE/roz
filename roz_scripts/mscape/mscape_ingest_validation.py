@@ -28,6 +28,7 @@ from roz_scripts.utils.utils import (
     put_linkage_json,
     s3_to_fh,
     are_files_empty,
+    do_uris_exist,
     EtagMismatchError,
 )
 from varys import Varys
@@ -1284,6 +1285,20 @@ def validate(
             )
             return (False, alert, hcid_alerts, payload, message)
 
+        fastq_exists = do_uris_exist(
+            to_validate["files"][".fastq.gz"]["uri"],
+        )
+
+        if not fastq_exists:
+            log.error(
+                f"Fastq file for UUID: {payload['uuid']} does not exist, skipping validation"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                f"Fastq file does not exist, this probably means that the file has been deleted/renamed in the ingest bucket. Please contact the {payload['project']} admin team if you believe this to be in error."
+            )
+            return (False, alert, hcid_alerts, payload, message)
+
         file_empty = are_files_empty(to_validate["files"][".fastq.gz"]["uri"])
 
         if file_empty:
@@ -1353,6 +1368,21 @@ def validate(
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
                 f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the {payload['project']} admin team if you believe this to be in error."
+            )
+            return (False, alert, hcid_alerts, payload, message)
+
+        fastqs_exist = do_uris_exist(
+            to_validate["files"][".1.fastq.gz"]["uri"],
+            to_validate["files"][".2.fastq.gz"]["uri"],
+        )
+
+        if not fastqs_exist:
+            log.error(
+                f"At least one Fastq file for UUID: {payload['uuid']} does not exist, skipping validation"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                f"At least one Fastq file does not exist, this probably means that the file has been deleted/renamed in the ingest bucket. Please contact the {payload['project']} admin team if you believe this to be in error."
             )
             return (False, alert, hcid_alerts, payload, message)
 
