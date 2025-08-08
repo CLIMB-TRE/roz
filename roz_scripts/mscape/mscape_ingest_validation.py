@@ -221,8 +221,7 @@ def execute_validation_pipeline(
     parameters = {
         "outdir": args.result_dir,
         "unique_id": payload["uuid"],
-        "climb": "",
-        "max_human_reads_before_rejection": "10000",
+        "max_human_reads_before_rejection": str(args.max_human_reads),
         "kraken_database.default.host": args.k2_host,  # Parameterise this and deal with DNS stuff
         "kraken_database.default.port": "8080",
         "kraken_database.default.path": k2_db_path,
@@ -1750,6 +1749,7 @@ def main():
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)
     parser.add_argument("--retry-delay", type=int, default=180)
+    parser.add_argument("--max_human_reads", type=int, default=10000)
 
     global args
     args = parser.parse_args()
