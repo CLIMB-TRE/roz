@@ -107,7 +107,7 @@ class pipeline:
                 ]
             )
 
-        cmd.extend(["run", "-r", self.branch, "-latest", self.pipe])
+        cmd.extend(["run", "-r", self.branch, "-latest", self.pipe, "-resume"])
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])
