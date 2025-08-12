@@ -394,7 +394,7 @@ def dynamic_timeout(*s3_uris: str) -> int:
 
     size = content_length / 1000000
 
-    timeout = floor(4000 * log(size)) - 20000
+    timeout = floor(4700 * log(size)) - 20000
 
     if timeout < 1800:
         timeout = 1800
