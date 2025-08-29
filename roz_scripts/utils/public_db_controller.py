@@ -45,12 +45,12 @@ def k2_db_generator():
             size = size.lstrip("0")
 
             db = f"{db}_{size}"
-        elif len(key.split("_")) == 5 and key.split("_")[4] == "GB":
+        elif len(key.split("_")) == 5 and key.split("_")[3] == "GB":
             k2, db, size, gb, date = key.split("_")
 
             size = size.lstrip("0")
 
-            db = f"{db}_{size}"
+            db = f"{db}_{size}gb"
         else:
             print(f"Unknown key format: {key} -> skipping")
 
