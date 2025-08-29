@@ -8,6 +8,7 @@ from urllib.error import URLError
 import datetime
 import requests
 import doi
+import re
 
 base_db_path = "/shared/public/db/kraken2/"
 
@@ -231,6 +232,56 @@ def get_bakta_db():
             )
 
 
+def get_sylph_globdb():
+    index = urllib.request.urlopen("https://fileshare.lisc.univie.ac.at/globdb/")
+    resp = index.read()
+
+    versions = re.findall(r"globdb_r...", resp.decode("utf-8"))
+
+    versions = set(versions)
+
+    latest_version = max(versions, key=lambda x: int(x.replace("globdb_r", "")))
+
+    if os.path.exists(os.path.join(base_db_path, "sylph", "globdb", latest_version)):
+        print(f"Found existing globdb version: {latest_version}")
+        return
+    else:
+        print(f"New globdb version found: {latest_version}")
+
+    if not dry_run:
+        os.makedirs(os.path.join(base_db_path, "sylph", "globdb", latest_version))
+    else:
+        print(
+            f"Would make dir: {os.path.join(base_db_path, 'sylph', 'globdb', latest_version)}"
+        )
+
+    # Download the latest globdb version
+    globdb_url = f"https://fileshare.lisc.univie.ac.at/globdb/{latest_version}/taxonomic_profiling/"
+
+    version_index = urllib.request.urlopen(globdb_url)
+    resp = version_index.read()
+
+    files = re.findall(r'href="%s_.+?"' % latest_version, resp.decode("utf-8"))
+
+    files = set(files)
+
+    for file in files:
+        file = file.replace('href="', "").replace('"', "")
+        if "sylph" not in file:
+            continue
+
+        file_url = f"https://fileshare.lisc.univie.ac.at/globdb/{latest_version}/taxonomic_profiling/{file}"
+
+        if not dry_run:
+            urllib.request.urlretrieve(
+                file_url, f"{base_db_path}/sylph/globdb/{latest_version}/{file}"
+            )
+        else:
+            print(
+                f"Would get: {file_url} to path: {str(os.path.join(base_db_path, 'sylph', 'globdb', latest_version, file))}"
+            )
+
+
 def run():
     k2_to_get = {}
 
@@ -310,6 +361,8 @@ def run():
     get_ncbi_blast()
 
     get_bakta_db()
+
+    get_sylph_globdb()
 
 
 def main():
