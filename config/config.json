@@ -18,6 +18,9 @@
         "cuh.mscape": "uploader",
         "uclh.mscape": "uploader",
         "nuth.mscape": "uploader",
+        "ukhsamanc.mscape": "uploader",
+        "ukhsabris.mscape": "uploader",
+        "ucl.mscape": "uploader",
         "mscape": "analysis"
       },
       "csv_updates": false,
