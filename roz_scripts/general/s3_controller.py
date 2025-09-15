@@ -1701,65 +1701,66 @@ def run(args):
                 file=sys.stdout,
             )
 
-    to_setup_messaging = audit_bucket_messaging(
-        aws_credentials_dict=aws_credentials_dict,
-        config_map=config_map,
-        config_dict=config_dict,
-        dry_run=args.dry_run,
-    )
-
-    if not to_setup_messaging:
-        print("All buckets have correct messaging configuration", file=sys.stdout)
-
-    # for project, project_config in config_dict["configs"].items():
-    if not args.dry_run and args.setup_messaging:
-        for bucket, bucket_arn, project, site in to_setup_messaging:
-            amqp_host = os.getenv("AMQP_HOST")
-            amqp_user = os.getenv("AMQP_USER")
-            amqp_pass = os.getenv("AMQP_PASS")
-            topic_arn = setup_sns_topic(
-                aws_credentials_dict=aws_credentials_dict,
-                topic_name=config_dict["configs"][project][
-                    "notification_bucket_configs"
-                ][bucket]["rmq_exchange"],
-                amqp_host=amqp_host,
-                amqp_user=amqp_user,
-                amqp_pass=amqp_pass,
-                amqp_exchange=config_dict["configs"][project][
-                    "notification_bucket_configs"
-                ][bucket]["rmq_exchange"],
-                amqps=True,
-            )
-
-            success = setup_messaging(
-                aws_credentials_dict=aws_credentials_dict,
-                bucket_name=bucket_arn,
-                project=project,
-                site=site,
-                topic_arn=topic_arn,
-                amqp_topic=config_dict["configs"][project][
-                    "notification_bucket_configs"
-                ][bucket]["rmq_exchange"],
-            )
-            if success:
-                print(f"Setup messaging for bucket {bucket_arn}", file=sys.stdout)
-            else:
-                print(
-                    f"Failed to setup messaging for bucket {bucket_arn}",
-                    file=sys.stdout,
-                )
-
-        retest_messaging = audit_bucket_messaging(
+    if args.setup_messaging:
+        to_setup_messaging = audit_bucket_messaging(
             aws_credentials_dict=aws_credentials_dict,
             config_map=config_map,
             config_dict=config_dict,
+            dry_run=args.dry_run,
         )
 
-        if retest_messaging:
-            print(
-                f"Failed to setup messaging for {len(retest_messaging)} buckets in project: {project}",
-                file=sys.stdout,
+    # for project, project_config in config_dict["configs"].items():
+    if not args.dry_run and args.setup_messaging:
+        if not to_setup_messaging:
+            print("All buckets have correct messaging configuration", file=sys.stdout)
+        else:
+            for bucket, bucket_arn, project, site in to_setup_messaging:
+                amqp_host = os.getenv("AMQP_HOST")
+                amqp_user = os.getenv("AMQP_USER")
+                amqp_pass = os.getenv("AMQP_PASS")
+                topic_arn = setup_sns_topic(
+                    aws_credentials_dict=aws_credentials_dict,
+                    topic_name=config_dict["configs"][project][
+                        "notification_bucket_configs"
+                    ][bucket]["rmq_exchange"],
+                    amqp_host=amqp_host,
+                    amqp_user=amqp_user,
+                    amqp_pass=amqp_pass,
+                    amqp_exchange=config_dict["configs"][project][
+                        "notification_bucket_configs"
+                    ][bucket]["rmq_exchange"],
+                    amqps=True,
+                )
+
+                success = setup_messaging(
+                    aws_credentials_dict=aws_credentials_dict,
+                    bucket_name=bucket_arn,
+                    project=project,
+                    site=site,
+                    topic_arn=topic_arn,
+                    amqp_topic=config_dict["configs"][project][
+                        "notification_bucket_configs"
+                    ][bucket]["rmq_exchange"],
+                )
+                if success:
+                    print(f"Setup messaging for bucket {bucket_arn}", file=sys.stdout)
+                else:
+                    print(
+                        f"Failed to setup messaging for bucket {bucket_arn}",
+                        file=sys.stdout,
+                    )
+
+            retest_messaging = audit_bucket_messaging(
+                aws_credentials_dict=aws_credentials_dict,
+                config_map=config_map,
+                config_dict=config_dict,
             )
+
+            if retest_messaging:
+                print(
+                    f"Failed to setup messaging for {len(retest_messaging)} buckets in project: {project}",
+                    file=sys.stdout,
+                )
 
     if (to_fix["site_buckets"] or to_fix["project_buckets"]) and not args.dry_run:
         retest_audit_dict = audit_all_buckets(
