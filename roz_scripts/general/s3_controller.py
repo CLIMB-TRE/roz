@@ -1249,14 +1249,14 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
                             continue
                         else:
                             print(
-                                f"Incorrect policy for bucket {bucket} detected",
+                                f"Incorrect policy for bucket {bucket} detected\nSite: {site}, Audit site: {audit_site}, Permission: {permission}, Result: {result}, Correct perms: {correct_perms}",
                                 file=sys.stdout,
                             )
                             to_fix["project_buckets"].add((bucket, bucket_arn, project))
                     else:
                         if permission in correct_perms or audit_site == "admin":
                             print(
-                                f"Missing policy for bucket {bucket} detected",
+                                f"Missing policy for bucket {bucket} detected\nSite: {site}, Audit site: {audit_site}, Permission: {permission}, Result: {result}, Correct perms: {correct_perms}",
                                 file=sys.stdout,
                             )
                             to_fix["project_buckets"].add((bucket, bucket_arn, project))
