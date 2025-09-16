@@ -288,6 +288,61 @@ def get_sylph_globdb():
             )
 
 
+def get_gtdb_db():
+    index = urllib.request.urlopen(
+        "https://data.ace.uq.edu.au/public/gtdb/data/releases/"
+    )
+
+    resp = index.read()
+
+    versions = re.findall(r"release\d{2,4}", resp.decode("utf-8"))
+    versions = set(versions)
+
+    version_numbers = [int(x.replace("release", "")) for x in versions]
+
+    latest_version = max(versions, key=lambda x: int(x.replace("release", "")))
+    latest_version_number = max(version_numbers)
+
+    if os.path.exists(os.path.join(base_db_path, "gtdb", latest_version)):
+        print(f"Found existing gtdb version: {latest_version}")
+        return
+    else:
+        print(f"New gtdb version found: {latest_version}")
+
+    if not dry_run:
+        os.makedirs(os.path.join(base_db_path, "gtdb", latest_version))
+    else:
+        print(f"Would make dir: {os.path.join(base_db_path, 'gtdb', latest_version)}")
+
+    # Download the latest gtdb version
+    gtdb_url = f"https://data.ace.uq.edu.au/public/gtdb/data/releases/{latest_version}/{latest_version_number}.0/auxillary_files/gtdbtk_package/full_package/gtdbtk_r{latest_version_number}_data.tar.gz"
+
+    if not dry_run:
+        urllib.request.urlretrieve(
+            gtdb_url, f"{base_db_path}/gtdb/gtdbtk_r{latest_version_number}_data.tar.gz"
+        )
+
+        os.system(
+            f"tar -xvf {base_db_path}/gtdb/gtdbtk_r{latest_version_number}_data.tar.gz -C {base_db_path}/gtdb/{latest_version}"
+        )
+
+        os.system(f"rm {base_db_path}/gtdb/gtdbtk_r{latest_version_number}_data.tar.gz")
+
+        try:
+            os.remove(os.path.join(base_db_path, "gtdb", "latest"))
+        except OSError:
+            pass
+
+        os.symlink(
+            latest_version,
+            os.path.join(base_db_path, "gtdb", "latest"),
+        )
+    else:
+        print(
+            f"Would get: {gtdb_url} to path: {str(os.path.join(base_db_path, 'gtdb', latest_version))}"
+        )
+
+
 def run():
     k2_to_get = {}
 
@@ -369,6 +424,8 @@ def run():
     get_bakta_db()
 
     get_sylph_globdb()
+
+    get_gtdb_db()
 
 
 def main():
