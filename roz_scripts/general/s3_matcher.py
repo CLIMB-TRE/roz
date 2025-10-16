@@ -219,7 +219,7 @@ def is_artifact_dict_complete(
 
 def parse_new_object_message(
     existing_object_dict: dict, new_object_message: dict, config_dict: dict
-) -> tuple[bool, dict, tuple]:
+) -> tuple[bool, dict, tuple, str]:
     """Parses a new object message and adds it to the existing object dict.
 
     Args:
@@ -228,7 +228,7 @@ def parse_new_object_message(
         config_dict (dict): Dictionary parsed from the config file
 
     Returns:
-        tuple[bool, dict, tuple]: Tuple containing a bool indicating if the artifact dict is complete, the updated artifact dict, and the index tuple
+        tuple[bool, dict, tuple, str]: Tuple containing a boolean indicating if the artifact is complete, the updated existing object dict, the index tuple, and the parsed bucket name
     """
 
     # There should only ever be one record here

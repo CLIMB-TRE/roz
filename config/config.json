@@ -128,6 +128,13 @@
             "analysis": "project_read_list"
           },
           "owner": "admin"
+        },
+        "chimera_bams": {
+          "name_layout": "{project}-chimera-bams",
+          "policy": {
+            "analysis": "project_read"
+          },
+          "owner": "admin"
         }
       },
       "file_specs": {
