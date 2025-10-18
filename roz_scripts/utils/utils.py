@@ -91,6 +91,7 @@ class pipeline:
             job_id (str): The job id
             stdout_path (str): Path to the stdout file
             stderr_path (str): Path to the stderr file
+            resume (bool): Whether to resume the pipeline
 
         Returns:
             int: The (fake) return code of the job
@@ -107,7 +108,10 @@ class pipeline:
                 ]
             )
 
-        cmd.extend(["run", "-r", self.branch, "-latest", self.pipe, "-resume"])
+        cmd.extend(["run", "-r", self.branch, "-latest", self.pipe])
+
+        if resume:
+            cmd.append("-resume")
 
         if self.config:
             cmd.extend(["-c", self.config.resolve()])
