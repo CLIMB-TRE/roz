@@ -27,6 +27,6 @@ RUN pip3 install ./roz
 
 RUN rm -rf /roz
 
-USER jovyan:users
+USER 1000:100
 
 CMD ["/bin/bash"]
