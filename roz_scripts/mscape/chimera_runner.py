@@ -334,7 +334,7 @@ def run(args):
                 "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
                 "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
                 "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-                "NXF_HOME": "/shared/team/nxf_work/roz_chimera/nextflow.worker/",
+                "NXF_HOME": "/shared/team/nxf_work/roz_chimera/.nextflow/",
             }
 
             rc = chimera_pipe.execute(
@@ -346,7 +346,7 @@ def run(args):
                 job_id=payload["match_uuid"],
                 stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
                 stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
-                workingdir=Path("/shared/team/nxf_work/roz/nextflow.worker/"),
+                workingdir=Path("/shared/team/nxf_work/roz/.nextflow/"),
             )
 
             if rc != 0:
