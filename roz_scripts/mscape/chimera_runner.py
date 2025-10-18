@@ -334,7 +334,7 @@ def run(args):
                 "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
                 "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
                 "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-                "NXF_HOME": f"/shared/team/nxf_work/roz_chimera/nextflow.worker.{os.getpid()}/",
+                "NXF_HOME": "/shared/team/nxf_work/roz_chimera/nextflow.worker/",
             }
 
             rc = chimera_pipe.execute(
