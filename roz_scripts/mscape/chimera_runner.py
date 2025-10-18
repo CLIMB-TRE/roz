@@ -381,7 +381,9 @@ def run(args):
                 log.info(f"Processing record for {record['climb_id']}")
 
                 alignment_report_path = os.path.join(
-                    record_outdir, f"{record['climb_id']}.alignment_report.tsv"
+                    record_outdir,
+                    record["climb_id"],
+                    f"{record['climb_id']}.alignment_report.tsv",
                 )
 
                 if not os.path.exists(alignment_report_path):
@@ -405,7 +407,9 @@ def run(args):
                     continue
 
                 sylph_report_path = os.path.join(
-                    record_outdir, f"{record['climb_id']}.sylph_report.tsv"
+                    record_outdir,
+                    record["climb_id"],
+                    f"{record['climb_id']}.sylph_report.tsv",
                 )
                 if not os.path.exists(sylph_report_path):
                     log.info(
