@@ -328,7 +328,6 @@ def run(args):
                 "sylph_taxdb": args.sylph_taxdb,
                 "database_metadata": args.database_metadata,
                 "outdir": record_outdir,
-                "samplesheet": os.path.join(record_outdir, "samplesheet.csv"),
             }
 
             env_vars = {
