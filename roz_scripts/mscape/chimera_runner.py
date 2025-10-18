@@ -346,6 +346,7 @@ def run(args):
                 job_id=payload["match_uuid"],
                 stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
                 stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
+                workingdir=Path("/shared/team/nxf_work/roz/nextflow.worker/"),
             )
 
             if rc != 0:

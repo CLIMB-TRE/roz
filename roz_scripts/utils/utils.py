@@ -78,6 +78,7 @@ class pipeline:
         job_id: str,
         stdout_path: str,
         stderr_path: str,
+        workingdir: Path,
         resume: bool = False,
     ) -> int:
         """
@@ -93,6 +94,7 @@ class pipeline:
             stdout_path (str): Path to the stdout file
             stderr_path (str): Path to the stderr file
             resume (bool): Whether to resume the pipeline
+            workingdir (Path): Path to the nextflow work directory
 
         Returns:
             int: The (fake) return code of the job
@@ -182,7 +184,7 @@ class pipeline:
                                         "name": "shared-team",
                                     },
                                 ],
-                                "workingDir": f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
+                                "workingDir": str(workingdir),
                                 "env": pod_env_vars,
                                 "args": [
                                     "/bin/sh",

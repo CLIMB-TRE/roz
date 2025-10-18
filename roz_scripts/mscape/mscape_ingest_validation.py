@@ -271,6 +271,7 @@ def execute_validation_pipeline(
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
+        workingdir=f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
     )
 
 

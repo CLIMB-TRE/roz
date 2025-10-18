@@ -421,6 +421,7 @@ def execute_assembly_pipeline(
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
+        workingdir=Path(f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/"),
     )
 
 
