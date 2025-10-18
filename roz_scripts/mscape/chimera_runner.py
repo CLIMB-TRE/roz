@@ -306,11 +306,11 @@ def run(args):
                 )
                 sys.exit(1)
 
-            record_outdir = os.path.join(args.outdir, payload["match_uuid"])
+            record_outdir = Path(os.path.join(args.outdir, payload["match_uuid"]))
 
             metadata_list = [metadata]
 
-            os.mkdir(record_outdir)
+            record_outdir.mkdir(parents=True, exist_ok=True)
             log.info(f"Creating samplesheet for {payload['match_uuid']}")
 
             create_samplesheet(
