@@ -144,8 +144,8 @@ class pipeline:
                         "securityContext": {
                             "runAsNonRoot": True,
                             "runAsUser": 1000,
-                            "runAsGroup": 1000,
-                            "fsGroup": 1000,
+                            "runAsGroup": 100,
+                            "fsGroup": 100,
                         },
                         "restartPolicy": "Never",
                         "volumes": [
