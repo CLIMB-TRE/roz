@@ -334,7 +334,7 @@ def run(args):
                 "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
                 "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
                 "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-                "NXF_HOME": f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
+                "NXF_HOME": f"/shared/team/nxf_work/roz_chimera/nextflow.worker.{os.getpid()}/",
             }
 
             rc = chimera_pipe.execute(
@@ -451,8 +451,8 @@ def run(args):
                     payload=payload,
                     fields={
                         "chimera_bam": bam_uri,
-                        "zeus_db_version": args.alignment_db_version,
-                        "chimera_published": True,
+                        "alignment_db_version": args.alignment_db_version,
+                        "is_chimera_published": True,
                         "sylph_db_version": args.sylph_db_version,
                     },
                     log=log,
