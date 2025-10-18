@@ -277,7 +277,7 @@ def run(args):
         )
 
         chimera_pipe = pipeline(
-            pipe=args.ingest_pipeline,
+            pipe="CLIMB-TRE/chimera",
             branch=args.chimera_release,
             config=args.nxf_config,
             nxf_image=args.nxf_image,
