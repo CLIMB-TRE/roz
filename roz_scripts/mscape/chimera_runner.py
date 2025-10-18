@@ -321,6 +321,7 @@ def run(args):
             log.info(f"Running chimera pipeline for {payload['match_uuid']}")
 
             pipeline_params = {
+                "input": os.path.join(record_outdir, "samplesheet.csv"),
                 "mm2_index": args.mm2_index,
                 "bwa_index_prefix": args.bwa_index_prefix,
                 "sylph_db": args.sylph_db,
