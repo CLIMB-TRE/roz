@@ -78,6 +78,7 @@ class pipeline:
         job_id: str,
         stdout_path: str,
         stderr_path: str,
+        resume: bool = False,
     ) -> int:
         """
         Execute the pipeline as a k8s job
