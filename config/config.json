@@ -280,13 +280,6 @@
             "analysis": "project_read"
           },
           "owner": "admin"
-        },
-        "zeus_databases": {
-          "name_layout": "{project}-zeus-databases",
-          "policy": {
-            "analysis": "project_read"
-          },
-          "owner": "admin"
         }
       },
       "file_specs": {
@@ -500,13 +493,6 @@
         },
         "chimera_bams": {
           "name_layout": "{project}-chimera-bams",
-          "policy": {
-            "analysis": "project_read"
-          },
-          "owner": "admin"
-        },
-        "zeus_databases": {
-          "name_layout": "{project}-zeus-databases",
           "policy": {
             "analysis": "project_read"
           },
