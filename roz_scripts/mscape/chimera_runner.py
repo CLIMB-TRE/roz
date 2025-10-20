@@ -132,13 +132,9 @@ def ret_0_parser(
         with open(latest_trace) as trace_fh:
             reader = csv.DictReader(trace_fh, delimiter="\t")
 
-            trace_dict = {}
-            for process in reader:
-                trace_dict[process["name"].split(":")[-1]] = process
-
-        for process, trace in trace_dict.items():
+        for trace in reader:
             if trace["exit"] != "0":
-                if process.endswith("SYLPH_TAXONOMY") and trace["exit"] == "2":
+                if trace["name"].endswith("SYLPH_TAXONOMY") and trace["exit"] == "2":
                     log.info(
                         f"No Sylph hits found for {payload['match_uuid']}, skipping"
                     )
@@ -146,15 +142,15 @@ def ret_0_parser(
 
                 else:
                     log.error(
-                        f"Process {process} failed with exit code {trace['exit']} for UUID: {payload['uuid']}"
+                        f"Process {trace['name']} failed with exit code {trace['exit']} for UUID: {payload['match_uuid']}"
                     )
                     raise Exception(
-                        f"Process {process} failed with unexpected exit code {trace['exit']}"
+                        f"Process {trace['name']} failed with unexpected exit code {trace['exit']}"
                     )
 
     except Exception:
         log.exception(
-            f"Could not open pipeline trace for UUID: {payload['uuid']} despite NXF exit code 0 due to error:"
+            f"Could not open pipeline trace for UUID: {payload['match_uuid']} despite NXF exit code 0 due to error:"
         )
         raise
 
