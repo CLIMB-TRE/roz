@@ -8,6 +8,7 @@ import os
 import csv
 from itertools import batched
 import boto3
+from glob import glob
 
 from onyx import (
     OnyxClient,
@@ -116,13 +117,19 @@ def ret_0_parser(
         tuple[bool, dict]: Tuple containing the ingest fail boolean and the payload dictionary
     """
     try:
-        with open(
+
+        execution_traces = glob(
             os.path.join(
                 result_path,
                 "pipeline_info",
-                "execution_trace.txt",
+                "execution_trace*.txt",
             )
-        ) as trace_fh:
+        )
+
+        # Get the most recent trace file
+        latest_trace = max(execution_traces, key=os.path.getmtime)
+
+        with open(latest_trace) as trace_fh:
             reader = csv.DictReader(trace_fh, delimiter="\t")
 
             trace_dict = {}
