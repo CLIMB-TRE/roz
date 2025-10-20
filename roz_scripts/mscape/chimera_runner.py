@@ -181,7 +181,7 @@ def handle_alignment_report(
         for row in reader:
             alignment_rows.append(
                 {
-                    "taxon_id": int(row["tax_id"]),
+                    "taxon_id": int(row["taxon_id"]),
                     "human_readable": row["human_readable"],
                     "unique_accession": row["unique_accession"],
                     "accession_description": row["accession_description"],
