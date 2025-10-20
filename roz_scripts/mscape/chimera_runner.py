@@ -72,22 +72,27 @@ def onyx_get_metadata(
                     log.exception(
                         f"Failed to connect to Onyx {reconnect_count} times due to error:"
                     )
+                    raise
 
             except (OnyxServerError, OnyxConfigError):
                 log.exception("Unhandled Onyx error:")
+                raise
 
             except OnyxClientError:
                 log.exception(
                     f"Onyx get failed for climb_id: {climb_id}, UUID: {uuid}. Error:"
                 )
+                raise
 
             except OnyxRequestError:
                 log.exception(
                     f"Onyx get failed for climb_id: {climb_id}, UUID: {uuid}. Error:"
                 )
+                raise
 
             except Exception:
                 log.exception("Unhandled onyx_update error:")
+                raise
 
     # This should never be reached
     return False
@@ -144,6 +149,7 @@ def ret_0_parser(
         log.exception(
             f"Could not open pipeline trace for UUID: {payload['uuid']} despite NXF exit code 0 due to error:"
         )
+        raise
 
     return (ingest_fail, payload)
 
@@ -261,6 +267,7 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
         log.exception(
             f"Failed to upload BAM to S3 for UUID: {payload['match_uuid']}, error:"
         )
+        raise
 
     return s3_uri
 
@@ -479,6 +486,7 @@ def run(args):
         varys_client.close()
         time.sleep(1)
         log.exception("Shutting down chimera runner due to exception:")
+        raise
 
 
 def main():
