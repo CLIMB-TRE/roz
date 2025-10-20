@@ -849,7 +849,7 @@ def main():
         "--nxf_config", type=Path, required=False, help="Path to nxf config file"
     )
     parser.add_argument(
-        "--nxf_image", required=False, default="quay.io/climb-tre/nextflow:25.04.7"
+        "--nxf_image", required=False, default="quay.io/climb-tre/nextflow:25.04.8"
     )
     parser.add_argument(
         "--n_workers",

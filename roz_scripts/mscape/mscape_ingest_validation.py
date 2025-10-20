@@ -1745,7 +1745,7 @@ def main():
     parser.add_argument("--pipeline_branch", type=str, default="main")
     parser.add_argument("--project", type=str, default="mscape")
     parser.add_argument("--nxf_config")
-    parser.add_argument("--nxf_image", default="quay.io/climb-tre/nextflow:25.04.7")
+    parser.add_argument("--nxf_image", default="quay.io/climb-tre/nextflow:25.04.8")
     parser.add_argument("--k2_host", type=str)
     parser.add_argument("--result_dir", type=Path)
     parser.add_argument("--n_workers", type=int, default=5)

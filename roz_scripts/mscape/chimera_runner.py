@@ -138,12 +138,12 @@ def ret_0_parser(
                     continue
 
                 else:
-                    payload.setdefault("ingest_errors", [])
-                    payload["ingest_errors"].append(
-                        f"{payload['project']} validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
+                    log.error(
+                        f"Process {process} failed with exit code {trace['exit']} for UUID: {payload['uuid']}"
                     )
-                    ingest_fail = True
-                    payload["rerun"] = True
+                    raise Exception(
+                        f"Process {process} failed with unexpected exit code {trace['exit']}"
+                    )
 
     except Exception:
         log.exception(
@@ -296,7 +296,6 @@ def run(args):
                 queue_suffix="chimera",
                 prefetch_count=1,
             )
-            log.info(f"Received message: {message.body}")
 
             payload = json.loads(message.body)
 
@@ -523,7 +522,7 @@ def main():
         "--sylph_taxdb", type=Path, required=True, help="Path to sylph taxdb"
     )
     parser.add_argument("--sylph_db_version", type=str, help="Sylph DB version")
-    parser.add_argument("--nxf_image", default="quay.io/climb-tre/nextflow:25.04.7")
+    parser.add_argument("--nxf_image", default="quay.io/climb-tre/nextflow:25.04.8")
     parser.add_argument("--logfile", type=Path, default=Path("chimera_runner.log"))
     parser.add_argument("--log_level", type=str, default="DEBUG")
     parser.add_argument(
