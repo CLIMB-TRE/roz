@@ -179,6 +179,7 @@ def handle_alignment_report(
         reader = csv.DictReader(report_fh, delimiter="\t")
         alignment_rows = []
         for row in reader:
+            # Sort out the field types
             alignment_rows.append(
                 {
                     "taxon_id": int(row["taxon_id"]),
@@ -186,10 +187,10 @@ def handle_alignment_report(
                     "unique_accession": row["unique_accession"],
                     "accession_description": row["accession_description"],
                     "sequence_length": int(row["sequence_length"]),
-                    "evenness_value": float(row["evenness_value"]),
-                    "mean_depth": float(row["mean_depth"]),
-                    "coverage_1x": float(row["coverage_1x"]),
-                    "coverage_10x": float(row["coverage_10x"]),
+                    "evenness_value": int(row["evenness_value"]),
+                    "mean_depth": int(row["mean_depth"]),
+                    "coverage_1x": int(row["coverage_1x"]),
+                    "coverage_10x": int(row["coverage_10x"]),
                     "mapped_reads": int(row["mapped_reads"]),
                     "uniquely_mapped_reads": int(row["uniquely_mapped_reads"]),
                     "mapped_bases": int(row["mapped_bases"]),
