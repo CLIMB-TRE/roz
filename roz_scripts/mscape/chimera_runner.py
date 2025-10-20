@@ -437,7 +437,9 @@ def run(args):
                     f"Successfully processed alignment / sylph reports for {record['climb_id']}"
                 )
 
-                bam_path = os.path.join(record_outdir, f"{record['climb_id']}.bam")
+                bam_path = os.path.join(
+                    record_outdir, record["climb_id"], f"{record['climb_id']}.bam"
+                )
 
                 if not os.path.exists(bam_path):
                     log.error(
