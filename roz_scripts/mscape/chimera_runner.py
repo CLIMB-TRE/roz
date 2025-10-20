@@ -134,10 +134,8 @@ def ret_0_parser(
 
             for trace in reader:
                 if trace["exit"] != "0":
-                    if (
-                        trace["name"].endswith("SYLPH_TAXONOMY")
-                        and trace["exit"] == "2"
-                    ):
+                    process, tag = trace["name"].split()
+                    if process.endswith("SYLPH_TAXONOMY") and trace["exit"] == "2":
                         log.info(
                             f"No Sylph hits found for {payload['match_uuid']}, skipping"
                         )
@@ -145,10 +143,10 @@ def ret_0_parser(
 
                     else:
                         log.error(
-                            f"Process {trace['name']} failed with exit code {trace['exit']} for UUID: {payload['match_uuid']}"
+                            f"Process '{process}' failed with exit code '{trace['exit']}' for UUID: {payload['match_uuid']}"
                         )
                         raise Exception(
-                            f"Process {trace['name']} failed with unexpected exit code {trace['exit']}"
+                            f"Process '{process}' failed with unexpected exit code '{trace['exit']}'"
                         )
 
     except Exception:
