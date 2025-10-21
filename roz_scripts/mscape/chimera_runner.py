@@ -218,19 +218,19 @@ def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logg
                     "gtdb_taxon_string": row["taxon_string"],
                     "gtdb_assembly_id": row["contig_id"],
                     "gtdb_contig_header": row["Contig_name"],
-                    "taxonomic_abundance": float(row["Taxonomic_abundance"]),
-                    "sequence_abundance": float(row["Sequence_abundance"]),
-                    "adjusted_ani": float(row["Adjusted_ANI"]),
+                    "taxonomic_abundance": row["Taxonomic_abundance"],
+                    "sequence_abundance": row["Sequence_abundance"],
+                    "adjusted_ani": row["Adjusted_ANI"],
                     "ani_confidence_interval": row["ANI_5-95_percentile"],
-                    "effective_coverage": float(row["Eff_cov"]),
+                    "effective_coverage": row["Eff_cov"],
                     "effective_coverage_confidence_interval": row[
                         "Lambda_5-95_percentile"
                     ],
-                    "median_kmer_cov": int(row["Median_cov"]),
-                    "mean_kmer_cov": float(row["Mean_cov_geq1"]),
+                    "median_kmer_cov": row["Median_cov"],
+                    "mean_kmer_cov": row["Mean_cov_geq1"],
                     "containment_index": row["Containment_ind"],
-                    "naive_ani": float(row["Naive_ANI"]),
-                    "kmers_reassigned": int(row["kmers_reassigned"]),
+                    "naive_ani": row["Naive_ANI"],
+                    "kmers_reassigned": row["kmers_reassigned"],
                 }
             )
 
@@ -493,7 +493,7 @@ def run(args):
 
     except BaseException:
         varys_client.close()
-        time.sleep(1)
+        time.sleep(300)
         log.exception("Shutting down chimera runner due to exception:")
         raise
 
