@@ -139,6 +139,11 @@ def ret_0_parser(
                         log.info(
                             f"No Sylph hits found for {payload['match_uuid']}, skipping"
                         )
+                        payload.setdefault("chimera_info", {})
+                        payload["chimera_info"]["SYLPH_TAXONOMY"] = {
+                            "status": "no_hits",
+                            "message": "No Sylph hits found above 95% ANI",
+                        }
                         continue
 
                     else:
@@ -419,12 +424,31 @@ def run(args):
                 sylph_report_path = os.path.join(
                     record_outdir,
                     record["climb_id"],
-                    f"{record['climb_id']}.sylph_report.tsv",
+                    f"{record['climb_id']}.sylph_taxonomy_report.tsv",
                 )
                 if not os.path.exists(sylph_report_path):
-                    log.info(
-                        f"No Sylph report found for {payload['match_uuid']}, this just means that no hits were observed > 95% ANI"
-                    )
+                    if not payload.get("chimera_info"):
+                        log.info(
+                            f"No Sylph report found for {payload['match_uuid']}, this just means that no hits were observed > 95% ANI"
+                        )
+                    else:
+                        sylph_taxonomy_info = payload["chimera_info"].get(
+                            "SYLPH_TAXONOMY"
+                        )
+                        if (
+                            sylph_taxonomy_info
+                            and sylph_taxonomy_info.get("status") == "no_hits"
+                        ):
+                            log.info(
+                                f"No Sylph report found for {payload['match_uuid']}, this just means that no hits were observed > 95% ANI"
+                            )
+                        else:
+                            log.error(
+                                f"Sylph report not found for {payload['match_uuid']} at expected path {sylph_report_path}"
+                            )
+                            varys_client.nack_message(message)
+                            continue
+
                 else:
                     sylph_success = handle_sylph_report(
                         sylph_report_path=sylph_report_path,
