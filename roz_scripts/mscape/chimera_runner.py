@@ -251,6 +251,8 @@ def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logg
             )
             return False
 
+    return True
+
 
 def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
 
