@@ -218,7 +218,7 @@ def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logg
         for row in reader:
             out_rows.append(
                 {
-                    "taxon_id": int(row["tax_id"]),
+                    "taxon_id": row["tax_id"],
                     "human_readable": row["human_readable"],
                     "gtdb_taxon_string": row["taxon_string"],
                     "gtdb_assembly_id": row["contig_id"],
@@ -428,9 +428,12 @@ def run(args):
                 )
                 if not os.path.exists(sylph_report_path):
                     if not payload.get("chimera_info"):
-                        log.info(
-                            f"No Sylph report found for {payload['match_uuid']}, this just means that no hits were observed > 95% ANI"
+                        log.error(
+                            f"Sylph report not found for {payload['match_uuid']} at expected path {sylph_report_path}"
                         )
+                        varys_client.nack_message(message)
+                        continue
+
                     else:
                         sylph_taxonomy_info = payload["chimera_info"].get(
                             "SYLPH_TAXONOMY"
@@ -507,13 +510,13 @@ def run(args):
 
                 log.info(f"Successfully updated Onyx for {record['climb_id']}")
 
-            varys_client.acknowledge_message(message)
+                varys_client.acknowledge_message(message)
 
-            varys_client.send(
-                message=payload,
-                exchange=f"downstream-chimera-{args.project}",
-                queue_suffix="chimera",
-            )
+                varys_client.send(
+                    message=payload,
+                    exchange=f"downstream-chimera-{args.project}",
+                    queue_suffix="chimera",
+                )
 
     except BaseException:
         varys_client.close()
