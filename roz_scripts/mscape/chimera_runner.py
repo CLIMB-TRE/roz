@@ -247,7 +247,7 @@ def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logg
 
         if update_fail or update_alert:
             log.error(
-                f"Failed to update Onyx with sylph results for UUID: {payload['match_uuid']}"
+                f"Failed to update Onyx with sylph results for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
             )
             return False
 
