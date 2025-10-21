@@ -485,6 +485,12 @@ def run(args):
 
             varys_client.acknowledge_message(message)
 
+            varys_client.send(
+                message=payload,
+                exchange=f"downstream-chimera-{args.project}",
+                queue_suffix="chimera",
+            )
+
     except BaseException:
         varys_client.close()
         time.sleep(1)
