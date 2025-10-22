@@ -302,13 +302,34 @@ def run(args):
         )
 
         while True:
-            message = varys_client.receive(
+            priority_message = varys_client.receive(
                 exchange=f"inbound-new_artifact-{args.project}",
                 queue_suffix="chimera",
                 prefetch_count=1,
+                timeout=1,
             )
 
-            payload = json.loads(message.body)
+            rerun_message = varys_client.receive(
+                exchange=f"inbound-new_artifact_rerun-{args.project}",
+                queue_suffix="chimera",
+                prefetch_count=1,
+                timeout=1,
+            )
+
+            if not priority_message and not rerun_message:
+                time.sleep(60)
+                continue
+
+            if priority_message:
+                message = priority_message
+                payload = json.loads(message.body)
+            elif rerun_message:
+                message = rerun_message
+                payload = json.loads(message.body)
+                rerun = True
+            else:
+                log.error("This should never happen, no message received")
+                continue
 
             metadata = onyx_get_metadata(
                 args=args,
