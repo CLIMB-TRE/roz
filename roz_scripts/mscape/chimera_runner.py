@@ -305,12 +305,14 @@ def run(args):
             priority_message = varys_client.receive(
                 exchange=f"inbound-new_artifact-{args.project}",
                 queue_suffix="chimera",
+                prefetch_count=1,
                 timeout=10,
             )
 
             rerun_message = varys_client.receive(
                 exchange=f"inbound-new_artifact_rerun-{args.project}",
                 queue_suffix="chimera",
+                prefetch_count=1,
                 timeout=10,
             )
 
