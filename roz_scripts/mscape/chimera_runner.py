@@ -378,7 +378,7 @@ def run(args):
             rc = chimera_pipe.execute(
                 params=pipeline_params,
                 logdir=record_outdir,
-                timeout=21600,
+                timeout=3600,
                 env_vars=env_vars,
                 namespace=f"ns-{args.project}",
                 job_id=payload["match_uuid"],
