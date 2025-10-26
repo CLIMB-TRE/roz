@@ -132,27 +132,32 @@ def ret_0_parser(
         with open(latest_trace) as trace_fh:
             reader = csv.DictReader(trace_fh, delimiter="\t")
 
+            process_status = {}
+
             for trace in reader:
                 if trace["exit"] != "0":
                     process, tag = trace["name"].split()
-                    if process.endswith("SYLPH_TAXONOMY") and trace["exit"] == "2":
-                        log.info(
-                            f"No Sylph hits found for {payload['match_uuid']}, skipping"
-                        )
-                        payload.setdefault("chimera_info", {})
-                        payload["chimera_info"]["SYLPH_TAXONOMY"] = {
-                            "status": "no_hits",
-                            "message": "No Sylph hits found above 95% ANI",
-                        }
-                        continue
+                    process_status[process] = trace["exit"]
 
-                    else:
-                        log.error(
-                            f"Process '{process}' failed with exit code '{trace['exit']}' for UUID: {payload['match_uuid']}"
-                        )
-                        raise Exception(
-                            f"Process '{process}' failed with unexpected exit code '{trace['exit']}'"
-                        )
+            for process, exit_code in process_status.items():
+                if process.endswith("SYLPH_TAXONOMY") and exit_code == "2":
+                    log.info(
+                        f"No Sylph hits found for {payload['match_uuid']}, skipping"
+                    )
+                    payload.setdefault("chimera_info", {})
+                    payload["chimera_info"]["SYLPH_TAXONOMY"] = {
+                        "status": "no_hits",
+                        "message": "No Sylph hits found above 95% ANI",
+                    }
+                    continue
+
+                else:
+                    log.error(
+                        f"Process '{process}' failed with exit code '{trace['exit']}' for UUID: {payload['match_uuid']}"
+                    )
+                    raise Exception(
+                        f"Process '{process}' failed with unexpected exit code '{trace['exit']}'"
+                    )
 
     except Exception:
         log.exception(
