@@ -180,6 +180,7 @@
       "artifact_layout": "project|run_index|run_id",
       "sites": {
         "synthscape.ukhsa": "analysis",
+        "bham.synthscape": "analysis",
         "synthscape": "analysis"
       },
       "csv_updates": false,
