@@ -1698,7 +1698,7 @@ def run(args):
             profile="docker,climb",
             config=args.nxf_config,
             nxf_image=args.nxf_image,
-            # timeout=args.pipeline_timeout,
+            job_prefix="ingest",
         )
 
         worker_pool = worker_pool_handler(

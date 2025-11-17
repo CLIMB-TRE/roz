@@ -304,6 +304,7 @@ def run(args):
             branch=args.chimera_release,
             config=args.nxf_config,
             nxf_image=args.nxf_image,
+            job_prefix="chimera",
         )
 
         while True:

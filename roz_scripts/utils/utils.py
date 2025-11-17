@@ -47,6 +47,7 @@ class pipeline:
         branch: str,
         config: Path,
         nxf_image: str,
+        job_prefix: str,
         profile=None,
     ):
         """
@@ -66,6 +67,7 @@ class pipeline:
         self.nxf_image = nxf_image
         # self.timeout = timeout
         self.profile = profile
+        self.job_prefix = job_prefix
         self.cmd = None
 
     def execute(
@@ -133,13 +135,13 @@ class pipeline:
         job_manifest = {
             "apiVersion": "batch/v1",
             "kind": "Job",
-            "metadata": {"name": f"roz-{job_id}"},
+            "metadata": {"name": f"roz-{self.job_prefix}-{job_id}"},
             "spec": {
                 "ttlSecondsAfterFinished": 120,
                 "backoffLimit": 5,
                 "template": {
                     "spec": {
-                        "hostname": f"roz-{job_id}",
+                        "hostname": f"roz-{self.job_prefix}-{job_id}",
                         "subdomain": namespace,
                         "securityContext": {
                             "runAsNonRoot": True,
@@ -167,7 +169,7 @@ class pipeline:
                         },
                         "containers": [
                             {
-                                "name": f"roz-{job_id}",
+                                "name": f"roz-{self.job_prefix}-{job_id}",
                                 "image": str(self.nxf_image),
                                 "resources": {
                                     "requests": {"cpu": "1", "memory": "8G"},
@@ -219,7 +221,7 @@ class pipeline:
 
             try:
                 resp = api_instance.read_namespaced_job_status(
-                    name=f"roz-{job_id}", namespace=namespace
+                    name=f"roz-{self.job_prefix}-{job_id}", namespace=namespace
                 )
 
             except Exception:
@@ -230,7 +232,7 @@ class pipeline:
             job_completed = False
             while not job_completed:
                 resp = api_instance.read_namespaced_job_status(
-                    name=f"roz-{job_id}", namespace=namespace
+                    name=f"roz-{self.job_prefix}-{job_id}", namespace=namespace
                 )
                 if resp.status.succeeded:
                     if resp.status.succeeded >= 1:
@@ -241,7 +243,7 @@ class pipeline:
                 if resp.status.failed:
                     if resp.status.failed >= 5:
                         api_instance.delete_namespaced_job(
-                            name=f"roz-{job_id}",
+                            name=f"roz-{self.job_prefix}-{job_id}",
                             namespace=namespace,
                             propagation_policy="Foreground",
                         )
@@ -252,7 +254,7 @@ class pipeline:
                 if resp.status.start_time:
                     if time.time() - resp.status.start_time.timestamp() > timeout:
                         api_instance.delete_namespaced_job(
-                            name=f"roz-{job_id}",
+                            name=f"roz-{self.job_prefix}-{job_id}",
                             namespace=namespace,
                             propagation_policy="Foreground",
                         )
