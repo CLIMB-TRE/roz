@@ -328,7 +328,8 @@ def run(args):
             if priority_message:
                 message = priority_message
                 payload = json.loads(message.body)
-                varys_client.nack_message(rerun_message)
+                if rerun_message:
+                    varys_client.nack_message(rerun_message)
             elif rerun_message:
                 message = rerun_message
                 payload = json.loads(message.body)
