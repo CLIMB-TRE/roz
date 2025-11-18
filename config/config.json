@@ -181,6 +181,7 @@
       "sites": {
         "synthscape.ukhsa": "analysis",
         "bham.synthscape": "analysis",
+        "pipelines.ukhsa.synthscape": "uploader",
         "synthscape": "analysis"
       },
       "csv_updates": false,
