@@ -847,7 +847,7 @@ def create_project_bucket(
 
 def create_site_bucket(
     bucket_arn: str,
-    site: str,
+    slug: str,
     policy: dict,
 ) -> bool:
     """Create a bucket via bryn
@@ -866,9 +866,7 @@ def create_site_bucket(
 
     bryn_url = os.getenv("BRYN_API_URL")
 
-    site_slug = site[0:16].replace(".", "-")
-
-    endpoint_url = f"{bryn_url}/admin-api/teams/{site_slug}/ceph/s3/buckets/"
+    endpoint_url = f"{bryn_url}/admin-api/teams/{slug}/ceph/s3/buckets/"
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
@@ -1101,6 +1099,10 @@ def check_bucket_exist_and_create(
 
                 print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
 
+                site_slug = aws_credentials_dict[project][site]["username"][
+                    0:16
+                ].replace(".", "-")
+
                 policy = generate_site_policy(
                     bucket_name=bucket,
                     bucket_arn=bucket_arn,
@@ -1112,7 +1114,7 @@ def check_bucket_exist_and_create(
 
                 create_success = create_site_bucket(
                     bucket_arn=bucket_arn,
-                    site=site,
+                    slug=site_slug,
                     policy=policy,
                 )
 
