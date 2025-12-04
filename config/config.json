@@ -132,14 +132,14 @@
         "chimera_bams": {
           "name_layout": "{project}-chimera-bams",
           "policy": {
-            "analysis": "project_read"
+            "analysis": "project_read_list"
           },
           "owner": "admin"
         },
         "zeus_databases": {
           "name_layout": "{project}-zeus-databases",
           "policy": {
-            "analysis": "project_read"
+            "analysis": "project_read_list"
           },
           "owner": "admin"
         }
@@ -279,7 +279,7 @@
         "chimera_bams": {
           "name_layout": "{project}-chimera-bams",
           "policy": {
-            "analysis": "project_read"
+            "analysis": "project_read_list"
           },
           "owner": "admin"
         }
@@ -496,7 +496,7 @@
         "chimera_bams": {
           "name_layout": "{project}-chimera-bams",
           "policy": {
-            "analysis": "project_read"
+            "analysis": "project_read_list"
           },
           "owner": "admin"
         }
