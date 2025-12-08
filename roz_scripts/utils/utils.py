@@ -172,8 +172,8 @@ class pipeline:
                                 "name": f"roz-{self.job_prefix}-{job_id}",
                                 "image": str(self.nxf_image),
                                 "resources": {
-                                    "requests": {"cpu": "1", "memory": "16G"},
-                                    "limits": {"cpu": "1", "memory": "16G"},
+                                    "requests": {"cpu": "2", "memory": "16G"},
+                                    "limits": {"cpu": "2", "memory": "16G"},
                                 },
                                 "volumeMounts": [
                                     {
