@@ -391,17 +391,17 @@ def dynamic_timeout(*s3_uris: str) -> int:
             f"Failed to get object metadata for S3 URI: {s3_uri} due to client error: {dynamic_timeout_exception}"
         )
 
-        return 1800
+        return 3600
 
     if content_length <= 1:
-        return 1800
+        return 3600
 
     size = content_length / 1000000
 
     timeout = floor(4700 * log(size)) - 20000
 
-    if timeout < 1800:
-        timeout = 1800
+    if timeout < 3600:
+        timeout = 3600
 
     return timeout
 
