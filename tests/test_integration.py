@@ -2339,7 +2339,6 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
-                publish_delay_log="publish_delay",
             )
 
             pipeline = utils.pipeline(
