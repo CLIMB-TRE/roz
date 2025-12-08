@@ -311,6 +311,7 @@ example_validator_message = {
     "uploaders": ["mscape-testuser"],
     "platform": "ont",
     "ingest_timestamp": 1694780451766213337,
+    "match_timestamp": 1697036668222422871,
     "climb_id": False,
     "site": "birm",
     "created": False,
