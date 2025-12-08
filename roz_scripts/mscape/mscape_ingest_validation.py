@@ -1238,6 +1238,24 @@ def validate(
         )
         return (False, alert, hcid_alerts, payload, message)
 
+    except ClientError as ce:
+        if ce.response["Error"]["Code"] == "NoSuchKey":
+            log.error(f"Could not find CSV file for UUID: {payload['uuid']}")
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                "Could not find CSV file in ingest bucket, this probably means that the file has been deleted/renamed."
+            )
+            return (False, alert, hcid_alerts, payload, message)
+        else:
+            log.error(
+                f"Could not open CSV file for UUID: {payload['uuid']} due to client error: {ce}"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append("Could not open CSV file")
+            payload["rerun"] = True
+            time.sleep(args.retry_delay)
+            return (False, alert, hcid_alerts, payload, message)
+
     except Exception as e:
         log.error(
             f"Could not open CSV file for UUID: {payload['uuid']} due to error: {e}"
