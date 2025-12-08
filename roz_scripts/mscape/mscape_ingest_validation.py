@@ -245,6 +245,9 @@ def execute_validation_pipeline(
         )
 
     if payload["platform"].startswith("illumina"):
+        timeout *= 3
+
+    if payload["platform"].startswith("illumina"):
         parameters["read_type"] = "illumina"
 
     log_path = Path(args.result_dir, payload["uuid"])
@@ -1673,6 +1676,19 @@ def validate(
     if publish_fail:
         return (False, alert, hcid_alerts, payload, message)
 
+    if args.publish_delay_log:
+        with open(args.publish_delay_log, "a") as publish_delay_fh:
+            publish_delay_fh.write(
+                json.dumps(
+                    {
+                        "publish_date": time.strftime("%Y-%m-%d", time.gmtime()),
+                        "climb_id": payload["climb_id"],
+                        "publish_delay": time.time_ns() - payload["match_timestamp"],
+                    }
+                )
+                + "\n"
+            )
+
     payload["published"] = True
     log.info(
         f"Sending successful ingest result for UUID: {payload['uuid']}, with CID: {payload['climb_id']}"
@@ -1751,6 +1767,7 @@ def main():
     parser.add_argument("--n_workers", type=int, default=5)
     parser.add_argument("--retry-delay", type=int, default=180)
     parser.add_argument("--max_human_reads", type=int, default=10000)
+    parser.add_argument("--publish_delay_log", type=Path)
 
     global args
     args = parser.parse_args()

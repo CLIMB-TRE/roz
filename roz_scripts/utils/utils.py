@@ -258,7 +258,7 @@ class pipeline:
                             namespace=namespace,
                             propagation_policy="Foreground",
                         )
-                        returncode = 1
+                        returncode = 124
                         job_completed = True
                         break
 

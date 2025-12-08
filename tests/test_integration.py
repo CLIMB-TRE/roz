@@ -27,6 +27,7 @@ DIR = os.path.dirname(__file__)
 S3_MATCHER_LOG_FILENAME = os.path.join(DIR, "s3_matcher.log")
 ROZ_INGEST_LOG_FILENAME = os.path.join(DIR, "ingest.log")
 MSCAPE_VALIDATION_LOG_FILENAME = os.path.join(DIR, "mscape_validation.log")
+MSCAPE_PUBLISH_DELAY_LOG_FILENAME = os.path.join(DIR, "publish_delay.log")
 PATHSAFE_VALIDATION_LOG_FILENAME = os.path.join(DIR, "pathsafe_validation.log")
 TEST_MESSAGE_LOG_FILENAME = os.path.join(DIR, "test_messages.log")
 
@@ -1131,6 +1132,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 config="test",
@@ -1332,6 +1334,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 config="test",
@@ -1504,6 +1507,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 config="test",
@@ -1777,6 +1781,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 nxf_config="test",
@@ -2082,6 +2087,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 config="test",
@@ -2323,6 +2329,7 @@ class Test_mscape_validator(unittest.TestCase):
 
             args = SimpleNamespace(
                 logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
                 config="test",
@@ -2332,6 +2339,7 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
+                publish_delay_log="publish_delay",
             )
 
             pipeline = utils.pipeline(
