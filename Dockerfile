@@ -21,7 +21,7 @@ COPY . ./roz/
 
 RUN pip3 install varys-client
 
-RUN pip3 install climb-onyx-client
+RUN pip3 install "climb-onyx-client>=4.8.2"
 
 RUN pip3 install ./roz
 
