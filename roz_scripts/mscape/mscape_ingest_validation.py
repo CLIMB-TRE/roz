@@ -80,8 +80,6 @@ class worker_pool_handler:
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
             )
 
-            self._varys_client.acknowledge_message(message)
-
             self._varys_client.send(
                 message=payload,
                 exchange=f"inbound-results-{payload['project']}-{payload['site']}",
@@ -123,6 +121,8 @@ class worker_pool_handler:
                         exchange=f"{payload['project']}-restricted-hcid",
                         queue_suffix="alert",
                     )
+
+            self._varys_client.acknowledge_message(message)
 
         else:
             self._log.info(
