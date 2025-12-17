@@ -326,6 +326,7 @@
         "fsa.pathsafe": "uploader",
         "phs.pathsafe": "uploader",
         "cgps.pathsafe": "analysis",
+        "ace.pathsafe": "uploader",
         "pathsafe": "analysis"
       },
       "csv_updates": true,
