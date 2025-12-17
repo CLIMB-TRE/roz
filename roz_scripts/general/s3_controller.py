@@ -950,11 +950,12 @@ def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
         return False
     else:
         print(
-            f"Failed to check if bucket {bucket_arn} exists, Bryn response:\n{response.json()}",
+            f"Failed to check if bucket {bucket_arn} exists, Bryn response:\n{response.text}",
             file=sys.stderr,
         )
         print(f"URL: {response.url}", file=sys.stderr)
         print(f"Request: {response.request.body}", file=sys.stderr)
+        print(f"Status code: {response.status_code}", file=sys.stderr)
         sys.exit(response.status_code)
 
 
