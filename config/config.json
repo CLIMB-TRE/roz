@@ -21,6 +21,7 @@
         "ukhsamanc.mscape": "uploader",
         "ukhsabris.mscape": "uploader",
         "ucl.mscape": "uploader",
+        "barts.mscape": "uploader",
         "mscape": "analysis"
       },
       "csv_updates": false,

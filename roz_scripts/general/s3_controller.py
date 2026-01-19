@@ -1460,18 +1460,18 @@ def setup_sns_topic(
                     "Effect": "Deny",
                     "Principal": "*",
                     "Action": ["sns:GetTopicAttributes"],
-                    "Resource": [f"arn:aws:sns:s3::{amqp_exchange}"],
+                    "Resource": [f"arn:aws:sns:s3::{topic_name}"],
                 }
             ],
         }
     )
 
     attributes = {
-        "push-endpoint": push_endpoint,
         "amqp-exchange": amqp_exchange,
+        "push-endpoint": push_endpoint,
         "amqp-ack-level": "broker",
         "verify-ssl": "false",
-        "max_retries": "20",
+        "max_retries": "10080",
         "retry_sleep_duration": "60",
         "persistent": "false",
         "Policy": topic_policy,
