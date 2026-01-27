@@ -593,7 +593,7 @@
         }
       },
       "file_specs": {
-        "no_platform": {
+        "noplatform": {
           ".fasta": {
             "layout": "project.run_index.run_id.ftype"
           },
