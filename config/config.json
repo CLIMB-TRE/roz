@@ -538,7 +538,7 @@
     "hprugretb": {
       "artifact_layout": "project|run_index|run_id",
       "sites": {
-        "hprugretb": "admin"
+        "hprugre": "admin"
       },
       "csv_updates": false,
       "bucket_policies": {
