@@ -534,6 +534,77 @@
           }
         }
       }
+    },
+    "hprugretb": {
+      "artifact_layout": "project|run_index|run_id",
+      "sites": {
+        "hprugretb": "admin"
+      },
+      "csv_updates": false,
+      "bucket_policies": {
+        "full_access": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "project_read_list": [
+          "get",
+          "list"
+        ]
+      },
+      "site_buckets": {
+        "ingest": {
+          "name_layout": "{project}-{site}-{platform}-{test_flag}",
+          "policy": {
+            "admin": "full_access"
+          },
+          "owner": "{site}"
+        },
+        "results": {
+          "name_layout": "{project}-{site}-results",
+          "policy": {
+            "admin": "full_access"
+          },
+          "owner": "{site}"
+        }
+      },
+      "notification_bucket_configs": {
+        "ingest": {
+          "rmq_exchange": "inbound-s3",
+          "rmq_queue_env": "s3_matcher",
+          "amqps": false
+        }
+      },
+      "project_buckets": {
+        "published_fasta": {
+          "name_layout": "{project}-published-fasta",
+          "policy": {
+            "admin": "full_access"
+          },
+          "owner": "admin"
+        },
+        "published_vcf": {
+          "name_layout": "{project}-published-vcf",
+          "policy": {
+            "admin": "full_access"
+          },
+          "owner": "admin"
+        }
+      },
+      "file_specs": {
+        "no_platform": {
+          ".fasta": {
+            "layout": "project.run_index.run_id.ftype"
+          },
+          ".vcf": {
+            "layout": "project.run_index.run_id.ftype"
+          },
+          ".csv": {
+            "layout": "project.run_index.run_id.ftype"
+          }
+        }
+      }
     }
   }
 }
