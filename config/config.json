@@ -222,7 +222,8 @@
           "name_layout": "{project}-{site}-{platform}-{test_flag}",
           "policy": {
             "analysis": "site_ingest",
-            "uploader": "site_ingest"
+            "uploader": "site_ingest",
+            "service": "site_ingest"
           },
           "owner": "{site}"
         },
@@ -230,7 +231,8 @@
           "name_layout": "{project}-{site}-results",
           "policy": {
             "analysis": "site_ingest",
-            "uploader": "site_ingest"
+            "uploader": "site_ingest",
+            "service": "site_ingest"
           },
           "owner": "{site}"
         }
