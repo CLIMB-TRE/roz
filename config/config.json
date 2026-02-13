@@ -321,7 +321,7 @@
           "owner": "admin"
         },
         "streptococcus_pneumoniae_results": {
-          "name_layout": "{project}-published-streptococcus_pneumoniae",
+          "name_layout": "{project}-published-streptococcus-pneumoniae",
           "policy": {
             "analysis": "project_read_list",
             "service": "project_write"
@@ -345,7 +345,7 @@
           "owner": "admin"
         },
         "influenza_a_results": {
-          "name_layout": "{project}-published-influenza_a",
+          "name_layout": "{project}-published-influenza-a",
           "policy": {
             "analysis": "project_read_list",
             "service": "project_write"
@@ -353,7 +353,7 @@
           "owner": "admin"
         },
         "epi_dataset_results": {
-          "name_layout": "{project}-published-epi_datasets",
+          "name_layout": "{project}-published-epi-datasets",
           "policy": {
             "analysis": "project_read_list",
             "service": "project_write"
