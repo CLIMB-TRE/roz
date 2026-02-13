@@ -182,7 +182,7 @@
       "sites": {
         "synthscape.ukhsa": "analysis",
         "bham.synthscape": "analysis",
-        "pipelines.ukhsa.synthscape": "analysis",
+        "pipelines.ukhsa.synthscape": "service",
         "synthscape": "analysis"
       },
       "csv_updates": false,
@@ -194,6 +194,12 @@
           "delete"
         ],
         "project_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "project_write": [
           "get",
           "put",
           "list",
@@ -245,42 +251,112 @@
         "published_binned_reads": {
           "name_layout": "{project}-published-binned-reads",
           "policy": {
-            "analysis": "project_read_list"
+            "analysis": "project_read_list",
+            "service": "project_read_list"
           },
           "owner": "admin"
         },
         "published-read-fractions": {
           "name_layout": "{project}-published-read-fractions",
           "policy": {
-            "analysis": "project_read_list"
+            "analysis": "project_read_list",
+            "service": "project_read_list"
           },
           "owner": "admin"
         },
         "published_taxon_reports": {
           "name_layout": "{project}-published-taxon-reports",
           "policy": {
-            "analysis": "project_read_list"
+            "analysis": "project_read_list",
+            "service": "project_read_list"
           },
           "owner": "admin"
         },
         "published_scylla_reports": {
           "name_layout": "{project}-published-reports",
           "policy": {
-            "analysis": "project_read"
+            "analysis": "project_read",
+            "service": "project_read"
           },
           "owner": "admin"
         },
         "published_hcid_reports": {
           "name_layout": "{project}-published-hcid",
           "policy": {
-            "analysis": "project_read"
+            "analysis": "project_read_list",
+            "service": "project_read_list"
           },
           "owner": "admin"
         },
         "chimera_bams": {
           "name_layout": "{project}-chimera-bams",
           "policy": {
-            "analysis": "project_read_list"
+            "analysis": "project_read_list",
+            "service": "project_read_list"
+          },
+          "owner": "admin"
+        },
+        "orange_box_results": {
+          "name_layout": "{project}-published-orange-box",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "amr_results": {
+          "name_layout": "{project}-published-amr",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "sars_cov_2_results": {
+          "name_layout": "{project}-published-sc2",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "streptococcus_pneumoniae_results": {
+          "name_layout": "{project}-published-streptococcus_pneumoniae",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "rsv_results": {
+          "name_layout": "{project}-published-rsv",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "adenovirus_results": {
+          "name_layout": "{project}-published-adenovirus",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "influenza_a_results": {
+          "name_layout": "{project}-published-influenza_a",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "epi_dataset_results": {
+          "name_layout": "{project}-published-epi_datasets",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
           },
           "owner": "admin"
         }
