@@ -22,6 +22,7 @@
         "ukhsabris.mscape": "uploader",
         "ucl.mscape": "uploader",
         "barts.mscape": "uploader",
+        "pipelines.ukhsa.mscape": "service",
         "mscape": "analysis"
       },
       "csv_updates": false,
@@ -33,6 +34,12 @@
           "delete"
         ],
         "project_ingest": [
+          "get",
+          "put",
+          "list",
+          "delete"
+        ],
+        "project_write": [
           "get",
           "put",
           "list",
@@ -141,6 +148,70 @@
           "name_layout": "{project}-zeus-databases",
           "policy": {
             "analysis": "project_read_list"
+          },
+          "owner": "admin"
+        },
+        "orange_box_results": {
+          "name_layout": "{project}-published-orange-box",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "amr_results": {
+          "name_layout": "{project}-published-amr",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "sars_cov_2_results": {
+          "name_layout": "{project}-published-sc2",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "streptococcus_pneumoniae_results": {
+          "name_layout": "{project}-published-streptococcus-pneumoniae",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "rsv_results": {
+          "name_layout": "{project}-published-rsv",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "adenovirus_results": {
+          "name_layout": "{project}-published-adenovirus",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "influenza_a_results": {
+          "name_layout": "{project}-published-influenza-a",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
+          },
+          "owner": "admin"
+        },
+        "epi_dataset_results": {
+          "name_layout": "{project}-published-epi-datasets",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_write"
           },
           "owner": "admin"
         }
