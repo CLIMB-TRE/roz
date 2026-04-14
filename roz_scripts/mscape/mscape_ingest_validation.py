@@ -46,7 +46,7 @@ class worker_pool_handler:
 
         self._project = project
 
-    def submit_job(self, message, args, ingest_pipe):
+    def submit_job(self, message, args, ingest_pipe, low_priority=False):
         self._log.info(
             f"Submitting job to the worker pool for UUID: {json.loads(message.body)['uuid']}"
         )
@@ -57,7 +57,12 @@ class worker_pool_handler:
 
         self.worker_pool.apply_async(
             func=validate,
-            kwds={"message": message, "args": args, "ingest_pipe": ingest_pipe},
+            kwds={
+                "message": message,
+                "args": args,
+                "ingest_pipe": ingest_pipe,
+                "low_priority": low_priority,
+            },
             callback=self.callback,
             error_callback=self.error_callback,
         )
@@ -106,13 +111,20 @@ class worker_pool_handler:
                         "anonymised_biosample_source_id"
                     ]
 
-                put_linkage_json(payload=payload, log=self._log)
+                if not payload["low_priority"]:
+                    put_linkage_json(payload=payload, log=self._log)
 
-                self._varys_client.send(
-                    message=new_artifact_payload,
-                    exchange=f"inbound-new_artifact-{payload['project']}",
-                    queue_suffix="validator",
-                )
+                    self._varys_client.send(
+                        message=new_artifact_payload,
+                        exchange=f"inbound-new_artifact-{payload['project']}",
+                        queue_suffix="validator",
+                    )
+                else:
+                    self._varys_client.send(
+                        message=new_artifact_payload,
+                        exchange=f"inbound-new_artifact_rerun-{payload['project']}",
+                        queue_suffix="validator",
+                    )
 
                 for alert in hcid_alerts:
                     alert["climb_id"] = payload["climb_id"]
@@ -165,7 +177,6 @@ class worker_pool_handler:
                     self._log.info(
                         f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
                     )
-                    self._varys_client.nack_message(message)
 
             else:
                 self._varys_client.acknowledge_message(message)
@@ -1190,6 +1201,7 @@ def validate(
     message: namedtuple,
     args: argparse.Namespace,
     ingest_pipe: pipeline,
+    low_priority: bool = False,
 ) -> tuple[bool, bool, dict, namedtuple]:
     """Function to validate a single artifact and update the Onyx record accordingly
 
@@ -1215,6 +1227,8 @@ def validate(
     to_validate = json.loads(message.body)
 
     payload = copy.deepcopy(to_validate)
+
+    payload["low_priority"] = low_priority
 
     payload.setdefault("rerun", False)
 
@@ -1743,17 +1757,35 @@ def run(args):
         )
 
         while True:
-            message = varys_client.receive(
+            priority_message = varys_client.receive(
                 exchange=f"inbound-to_validate-{args.project}",
                 queue_suffix="validator",
                 prefetch_count=args.n_workers,
-                timeout=60,
+                timeout=10,
+            )
+
+            rerun_message = varys_client.receive(
+                exchange=f"inbound-to_validate_rerun-{args.project}",
+                queue_suffix="validator",
+                prefetch_count=args.n_workers,
+                timeout=10,
             )
 
             # Add timestamp to file to indicate health
             if os.path.exists("/tmp/healthy"):
                 with open("/tmp/healthy", "w") as fh:
                     fh.write(str(time.time_ns()))
+
+            if not priority_message and not rerun_message:
+                time.sleep(60)
+                continue
+
+            if priority_message:
+                message = priority_message
+                if rerun_message:
+                    varys_client.nack_message(rerun_message)
+            elif rerun_message:
+                message = rerun_message
 
             if message:
                 worker_pool.submit_job(
