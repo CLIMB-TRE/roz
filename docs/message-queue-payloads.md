@@ -11,9 +11,10 @@ This document describes the RabbitMQ (AMQP) message payload structures used acro
 1. [S3 Matcher](#1-s3-matcher)
 2. [Generic Ingest (pre-project validator)](#2-generic-ingest-pre-project-validator)
 3. [mscape](#3-mscape)
-4. [synthscape / openmgs](#4-synthscape--openmgs)
-5. [pathsafe](#5-pathsafe)
-6. [Shared Payload Reference](#6-shared-payload-reference)
+4. [Chimera Runner](#4-chimera-runner)
+5. [synthscape / openmgs](#5-synthscape--openmgs)
+6. [pathsafe](#6-pathsafe)
+7. [Shared Payload Reference](#7-shared-payload-reference)
 
 ---
 
@@ -89,17 +90,23 @@ Sent on any unexpected/unrecoverable error (e.g. Onyx connection failure). Conta
 
 The mscape validator (`roz_scripts/mscape/mscape_ingest_validation.py`) runs the Scylla metagenomics pipeline and updates Onyx with results.
 
-### 3.1 Input — `inbound-to_validate-mscape` / `validator`
+### 3.1 Priority input — `inbound-to_validate-mscape` / `validator`
 
-The payload from §2.2 (all fields from §1.2 plus `validate`, `onyx_test_create_status`, `biosample_id`). Messages for other projects are silently ignored.
+The payload from §2.2 (all fields from §1.2 plus `validate`, `onyx_test_create_status`, `biosample_id`). Messages for other projects are silently ignored. This is the **high-priority** queue for new first-time submissions.
 
-### 3.2 Output (result) — `inbound-results-mscape-{site}` / `validator`
+### 3.2 Rerun input — `inbound-to_validate_rerun-mscape` / `validator`
+
+Identical payload structure to §3.1. Used for lower-priority re-validation of previously submitted artifacts (e.g. triggered externally by an admin tool). Not populated by any component within this codebase.
+
+**Priority selection logic**: on each loop iteration the validator polls both queues. If messages are available on both simultaneously, the priority message (§3.1) is processed and the rerun message is **nack'd** (returned to the queue for a later iteration). If only one queue has a message it is processed regardless of which queue it came from. The `low_priority` field in the result payload (§3.3) reflects which input queue the message arrived on: `true` for §3.2, `false` for §3.1. This in turn determines whether the new-artifact notification goes to the standard or rerun downstream queue (§3.4 vs §3.5).
+
+### 3.3 Output (result) — `inbound-results-mscape-{site}` / `validator`
 
 Sent on both success and non-rerunnable failure. Contains the full accumulated payload. Additional fields set during validation:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `low_priority` | boolean | `true` if the job was submitted as a rerun/low-priority task |
+| `low_priority` | boolean | `true` if the message was received from the rerun input queue (§3.2) |
 | `rerun` | boolean | `true` if the failure is considered transient and eligible for retry |
 | `ingest_errors` | array[string] | Human-readable validation error messages (absent if no errors) |
 | `ingest_warnings` | array[string] | Human-readable warning messages (absent if no warnings) |
@@ -115,9 +122,9 @@ Sent on both success and non-rerunnable failure. Contains the full accumulated p
 | `anonymised_biosample_source_id` | string | Onyx-anonymised biosample source ID (only present if the CSV includes `biosample_source_id`) |
 | `scylla_version` | string | Version of the Scylla pipeline that processed this artifact |
 
-### 3.3 Output (new artifact) — `inbound-new_artifact-mscape` / `validator`
+### 3.4 Output (new artifact) — `inbound-new_artifact-mscape` / `validator`
 
-Sent on successful validation of a non-test, non-rerun artifact. This is the downstream trigger for further analysis (e.g. chimera detection). Contains only a small subset of fields:
+Sent on successful validation of a non-test artifact arriving via the priority queue (§3.1). This is the downstream trigger for further analysis (e.g. chimera detection). Contains only a small subset of fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -132,15 +139,15 @@ Sent on successful validation of a non-test, non-rerun artifact. This is the dow
 | `match_uuid` | string | UUID from the original matched artifact payload |
 | `project` | string | Project name (`mscape`) |
 
-### 3.4 Output (rerun artifact) — `inbound-new_artifact_rerun-mscape` / `validator`
+### 3.5 Output (rerun artifact) — `inbound-new_artifact_rerun-mscape` / `validator`
 
-Identical structure to §3.3. Sent instead of §3.3 when `low_priority` is `true` (i.e. the artifact was submitted as a rerun).
+Identical structure to §3.4. Sent instead of §3.4 when `low_priority` is `true` (i.e. the message arrived via the rerun input queue §3.2).
 
-### 3.5 Output (alert) — `mscape-restricted-announce` / `alert`
+### 3.6 Output (alert) — `mscape-restricted-announce` / `alert`
 
 The full payload dict forwarded on unexpected errors requiring manual intervention.
 
-### 3.6 Output (HCID alert) — `mscape-restricted-hcid` / `alert`
+### 3.7 Output (HCID alert) — `mscape-restricted-hcid` / `alert`
 
 Sent once per `.warning.json` file found in the Scylla pipeline QC output. The message body is the parsed content of the warning JSON file with one field appended:
 
@@ -150,46 +157,95 @@ Sent once per `.warning.json` file found in the Scylla pipeline QC output. The m
 
 The remaining fields are defined by the Scylla pipeline's HCID warning schema.
 
-### 3.7 Output (dead letter) — `mscape-restricted-announce` / `dead_letter`
+### 3.8 Output (dead letter) — `mscape-restricted-announce` / `dead_letter`
 
 Sent when a rerunnable artifact has failed 5 or more consecutive validation attempts. Contains the full payload with an additional error entry in `ingest_errors`.
 
-### 3.8 Output (dead worker) — `mscape-restricted-announce` / `dead_worker`
+### 3.9 Output (dead worker) — `mscape-restricted-announce` / `dead_worker`
 
 Sent as a plain string (not a JSON payload) when a worker process crashes with an unhandled exception. Format: `"mscape ingest worker failed with unhandled exception: {exception}"`.
 
 ---
 
-## 4. synthscape / openmgs
+## 4. Chimera Runner
 
-synthscape and openmgs use **the same validator code** as mscape (`roz_scripts/mscape/mscape_ingest_validation.py`), invoked with `--project synthscape` or `--project openmgs`. All payload structures and queue names are identical to mscape with the project name substituted.
+`roz_scripts/mscape/chimera_runner.py` — runs the CLIMB-TRE/chimera Nextflow pipeline on each newly published artifact, performing alignment-based chimera detection and Sylph taxonomic profiling. Used by mscape, synthscape, and openmgs. Not used by pathsafe.
+
+### 4.1 Priority input — `inbound-new_artifact-{project}` / `chimera`
+
+The new-artifact payload from §3.4. Fields used by the runner:
+
+| Field | Description |
+|-------|-------------|
+| `climb_id` | Used to look up the full Onyx record (reads S3 URIs, platform, etc.) |
+| `match_uuid` | Used as the pipeline job ID and output directory name |
+| `project` | Determines namespace and output bucket names |
+
+Additional metadata (human-filtered read URIs, platform) is fetched directly from Onyx at runtime rather than carried in the message.
+
+### 4.2 Rerun input — `inbound-new_artifact_rerun-{project}` / `chimera`
+
+Identical payload structure to §4.1. Populated when the mscape validator processes a message from the rerun validation queue (§3.2), producing the lower-priority new-artifact notification (§3.5).
+
+**Priority selection logic**: mirrors the validator's logic (§3.1/§3.2). On each loop iteration the chimera runner polls both queues. If both have messages simultaneously, the priority message is processed and the rerun message is nack'd. If only one queue has a message it is processed regardless of which queue it came from.
+
+**Failure handling**: on pipeline failure (non-zero exit code or failed process in the execution trace) the message is nack'd without incrementing a retry counter, so it will be redelivered on the next poll. There is no dead-letter queue; persistent failures require manual intervention.
+
+### 4.3 Output — `downstream-chimera-{project}` / `chimera`
+
+Sent after all results have been written to Onyx and the BAM uploaded to S3. The message body is the input payload (§4.1/§4.2) with one field optionally added:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chimera_info` | object | Present only when the Sylph taxonomy step found no hits above 95% ANI. Shape: `{"SYLPH_TAXONOMY": {"status": "no_hits", "message": "No Sylph hits found above 95% ANI"}}` |
+
+The following results are written directly to Onyx (not added to the message payload):
+
+| Onyx field | Source |
+|---|---|
+| `alignment_results` | Alignment report TSV — one row per reference sequence: `process`, `exit_code` |
+| `sylph_results` | Sylph taxonomy TSV — one row per hit: `taxon_id`, `human_readable`, `gtdb_taxon_string`, `gtdb_assembly_id`, `gtdb_contig_header`, `taxonomic_abundance`, `sequence_abundance`, `adjusted_ani`, `ani_confidence_interval`, `effective_coverage`, `effective_coverage_confidence_interval`, `median_kmer_cov`, `mean_kmer_cov`, `containment_index`, `naive_ani`, `kmers_reassigned` |
+| `chimera_bam` | S3 URI of the uploaded BAM: `s3://{project}-chimera-bams/{climb_id}.chimera.bam` |
+| `alignment_db_version` | Version string for the alignment reference database |
+| `sylph_db_version` | Version string for the Sylph database |
+| `is_chimera_published` | Set to `true` on completion |
+
+---
+
+## 5. synthscape / openmgs
+
+synthscape and openmgs use **the same validator code** as mscape (`roz_scripts/mscape/mscape_ingest_validation.py`), invoked with `--project synthscape` or `--project openmgs`. The chimera runner (`roz_scripts/mscape/chimera_runner.py`) also runs for these projects. All payload structures and queue names are identical to mscape with the project name substituted.
 
 ### Queue mapping
 
 | mscape queue | synthscape equivalent | openmgs equivalent |
 |---|---|---|
 | `inbound-to_validate-mscape` / `validator` | `inbound-to_validate-synthscape` / `validator` | `inbound-to_validate-openmgs` / `validator` |
+| `inbound-to_validate_rerun-mscape` / `validator` | `inbound-to_validate_rerun-synthscape` / `validator` | `inbound-to_validate_rerun-openmgs` / `validator` |
 | `inbound-results-mscape-{site}` / `validator` | `inbound-results-synthscape-{site}` / `validator` | `inbound-results-openmgs-{site}` / `validator` |
 | `inbound-new_artifact-mscape` / `validator` | `inbound-new_artifact-synthscape` / `validator` | `inbound-new_artifact-openmgs` / `validator` |
 | `inbound-new_artifact_rerun-mscape` / `validator` | `inbound-new_artifact_rerun-synthscape` / `validator` | `inbound-new_artifact_rerun-openmgs` / `validator` |
+| `inbound-new_artifact-mscape` / `chimera` | `inbound-new_artifact-synthscape` / `chimera` | `inbound-new_artifact-openmgs` / `chimera` |
+| `inbound-new_artifact_rerun-mscape` / `chimera` | `inbound-new_artifact_rerun-synthscape` / `chimera` | `inbound-new_artifact_rerun-openmgs` / `chimera` |
+| `downstream-chimera-mscape` / `chimera` | `downstream-chimera-synthscape` / `chimera` | `downstream-chimera-openmgs` / `chimera` |
 | `mscape-restricted-announce` / `alert` | `synthscape-restricted-announce` / `alert` | `openmgs-restricted-announce` / `alert` |
 | `mscape-restricted-hcid` / `alert` | `synthscape-restricted-hcid` / `alert` | `openmgs-restricted-hcid` / `alert` |
 | `mscape-restricted-announce` / `dead_letter` | `synthscape-restricted-announce` / `dead_letter` | `openmgs-restricted-announce` / `dead_letter` |
 | `mscape-restricted-announce` / `dead_worker` | `synthscape-restricted-announce` / `dead_worker` | `openmgs-restricted-announce` / `dead_worker` |
 
-All payload field definitions from §3.2 – §3.8 apply unchanged; only `project` value differs.
+All payload field definitions from §3.2 – §3.9 and §4 apply unchanged; only `project` value differs.
 
 ---
 
-## 5. pathsafe
+## 6. pathsafe
 
 The pathsafe validator (`roz_scripts/pathsafe/pathsafe_validation.py`) runs an assembly pipeline (etoki/SPAdes via Nextflow), submits the assembly to Pathogenwatch, and uploads the result to S3.
 
-### 5.1 Input — `inbound-to_validate-pathsafe` / `validator`
+### 6.1 Input — `inbound-to_validate-pathsafe` / `validator`
 
 The payload from §2.2. Messages with `project != "pathsafe"` are silently ignored. pathsafe is **Illumina only** and always expects `.1.fastq.gz` and `.2.fastq.gz` in `files`.
 
-### 5.2 Output (result) — `inbound-results-pathsafe-{site}` / `validator`
+### 6.2 Output (result) — `inbound-results-pathsafe-{site}` / `validator`
 
 Sent on both success and non-rerunnable failure. Additional fields set during validation:
 
@@ -206,9 +262,9 @@ Sent on both success and non-rerunnable failure. Additional fields set during va
 | `anonymised_biosample_id` | string | Onyx-anonymised biosample ID |
 | `assembly_presigned_url` | string | Pre-signed S3 URL (24 h TTL) for the uploaded assembly FASTA (present on success) |
 
-### 5.3 Output (new artifact) — `inbound-new_artifact-pathsafe` / `validator`
+### 6.3 Output (new artifact) — `inbound-new_artifact-pathsafe` / `validator`
 
-Sent on successful validation of a non-test artifact. Same structure as the mscape new artifact payload (§3.3) but without `biosample_source_id` and with `project: "pathsafe"`. pathsafe does not distinguish rerun vs. standard new artifact queues.
+Sent on successful validation of a non-test artifact. Same structure as the mscape new artifact payload (§3.4) but without `biosample_source_id` and with `project: "pathsafe"`. pathsafe does not have a rerun input queue and does not distinguish rerun vs. standard new artifact queues.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -222,17 +278,17 @@ Sent on successful validation of a non-test artifact. Same structure as the msca
 | `match_uuid` | string | UUID from the original matched artifact payload |
 | `project` | string | `"pathsafe"` |
 
-### 5.4 Output (dead letter) — `pathsafe-restricted-announce` / `dead_letter`
+### 6.4 Output (dead letter) — `pathsafe-restricted-announce` / `dead_letter`
 
 Sent after 5 consecutive rerunnable failures. Full payload with an error appended to `ingest_errors`.
 
-### 5.5 Output (dead worker) — `pathsafe-restricted-announce` / `dead_worker`
+### 6.5 Output (dead worker) — `pathsafe-restricted-announce` / `dead_worker`
 
 Plain string message (not JSON) sent on unhandled worker exception. Format: `"Pathsafe ingest worker failed with unhandled exception: {exception}"`.
 
-### 5.6 Onyx CSV update input — `inbound-onyx-updates-pathsafe` / `pathsafe_updater`
+### 6.6 Onyx CSV update input — `inbound-onyx-updates-pathsafe` / `pathsafe_updater`
 
-Produced by `s3_onyx_updates.py` (see §5.2) when a CSV update is received for a pathsafe record. The payload is a slim dict built from the S3 notification:
+Produced by `s3_onyx_updates.py` (see §7 S3 CSV Update Payload) when a CSV update is received for a pathsafe record. The payload is a slim dict built from the S3 notification:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -248,13 +304,13 @@ Produced by `s3_onyx_updates.py` (see §5.2) when a CSV update is received for a
 | `update_status` | string | `"success"` or `"failed"` |
 | `update_errors` | array[string] | Error messages (present only on failure) |
 
-### 5.7 Pathogenwatch update output — `inbound-onyx-updates` / `onyx_updates`
+### 6.7 Pathogenwatch update output — `inbound-onyx-updates` / `onyx_updates`
 
-Produced by `pathsafe_updates.py` after a successful Pathogenwatch metadata sync. Same shape as §4.6 but with `climb_id` removed before the S3 result write, and `update_status: "success"` guaranteed.
+Produced by `pathsafe_updates.py` after a successful Pathogenwatch metadata sync. Same shape as §6.6 but with `climb_id` removed before the S3 result write, and `update_status: "success"` guaranteed.
 
 ---
 
-## 6. Shared Payload Reference
+## 7. Shared Payload Reference
 
 ### File Descriptor
 
@@ -276,7 +332,7 @@ Each entry in the `files` map uses this structure:
 }
 ```
 
-The `submitter` and `parsed_fname` fields are only present on entries within the matched artifact payload (§1.1). The slim CSV-update payload (§4.6) omits them.
+The `submitter` and `parsed_fname` fields are only present on entries within the matched artifact payload (§1.2). The slim CSV-update payload (§6.6) omits them.
 
 ### S3 Notification Format
 
@@ -336,7 +392,8 @@ Produced by `s3_onyx_updates.py` for any project with `csv_updates` enabled in `
 |---|---|---|---|
 | `s3_matcher` | `s3_matcher.py` | `inbound-s3` | Match files into complete artifacts |
 | `ingest` | `ingest.py` | `inbound-matched` | Pre-project validation (test-create, field checks) |
-| `validator` | `{project}_validation.py` | `inbound-to_validate-{project}` | Full project-specific pipeline validation |
+| `validator` | `{project}_validation.py` | `inbound-to_validate-{project}`, `inbound-to_validate_rerun-{project}` (mscape/synthscape/openmgs only) | Full project-specific pipeline validation |
+| `chimera` | `chimera_runner.py` | `inbound-new_artifact-{project}`, `inbound-new_artifact_rerun-{project}` | Chimera detection + Sylph taxonomy (mscape/synthscape/openmgs only) |
 | `onyx_updater` | `s3_onyx_updates.py` | `inbound-s3` | Handle CSV metadata update notifications |
 | `onyx_updates` | Onyx update handler | `inbound-onyx-updates-{project}` / `inbound-onyx-updates` | Apply metadata updates to Onyx |
 | `pathsafe_updater` | `pathsafe_updates.py` | `inbound-onyx-updates-pathsafe` | Sync updated metadata to Pathogenwatch |

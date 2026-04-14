@@ -199,6 +199,16 @@ def handle_alignment_report(
         reader = csv.DictReader(report_fh, delimiter="\t")
         alignment_rows = [row for row in reader]
 
+    clear_fail, clear_alert, payload = onyx_update(
+        payload=payload, fields=None, log=log, clear_fields=["alignment_results"]
+    )
+
+    if clear_fail or clear_alert:
+        log.error(
+            f"Failed to clear old alignment results from Onyx for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
+        )
+        return False
+
     # Batch updates to Onyx in groups of 100
     for batch in batched(alignment_rows, 100):
         update_fail, update_alert, payload = onyx_update(
@@ -207,7 +217,7 @@ def handle_alignment_report(
 
         if update_fail or update_alert:
             log.error(
-                f"Failed to update Onyx with alignment results for UUID: {payload['match_uuid']}"
+                f"Failed to update Onyx with alignment results for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
             )
             return False
 
@@ -217,6 +227,16 @@ def handle_alignment_report(
 def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logger):
     with open(sylph_report_path) as report_fh:
         reader = csv.DictReader(report_fh, delimiter="\t")
+
+        clear_fail, clear_alert, payload = onyx_update(
+            payload=payload, fields=None, log=log, clear_fields=["sylph_results"]
+        )
+
+        if clear_fail or clear_alert:
+            log.error(
+                f"Failed to clear old Sylph results from Onyx for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
+            )
+            return False
 
         out_rows = []
 
