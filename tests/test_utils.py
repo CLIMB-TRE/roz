@@ -549,7 +549,7 @@ class test_utils(unittest.TestCase):
             self.assertFalse(alert)
             self.assertIn(
                 "Onyx records for run_index: S-1234567890 disagree for the following fields: adm1_country",
-                payload["onyx_errors"]["reconcile_errors"],
+                payload["onyx_warnings"]["reconcile_errors"],
             )
 
     def test_onyx_reconcile_no_filter_return(self):
