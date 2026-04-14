@@ -320,6 +320,26 @@ def handle_spike_ins(
 
             spike_in_info = []
 
+            clear_fail, clear_alert, payload = onyx_update(
+                payload=payload,
+                fields=None,
+                log=log,
+                clear_fields=["spike_in_info", "spike_in_result"],
+            )
+
+            if clear_fail or clear_alert:
+                log.error(
+                    f"Failed to clear existing spike-in info for UUID: {payload['uuid']} with CID: {payload['climb_id']}"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    "Failed to clear existing spike-in info"
+                )
+                spike_in_fail = True
+                alert = True
+
+                return (spike_in_fail, alert, payload)
+
             for reference, info in spike_in_results.items():
                 spike_in_info.append(
                     {
@@ -418,14 +438,14 @@ def dynamic_timeout(*s3_uris: str) -> int:
 
 
 def add_taxon_records(
-    payload: dict, result_path: str, log: logging.getLogger, s3_client: boto3.client
+    payload: dict, result_path: str, log: logging.Logger, s3_client: boto3.client
 ) -> tuple[bool, dict]:
     """Function to add nested taxon records to an existing Onyx record from a Scylla reads_summary.json file
 
     Args:
         payload (dict): Dict containing the payload for the current artifact
         result_path (str): Result path for the current artifact
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         s3_client (boto3.client): Boto3 client object for S3
 
     Returns:
@@ -435,6 +455,24 @@ def add_taxon_records(
     nested_records = []
     binned_read_fail = False
     alert = False
+
+    clear_fail, clear_alert, payload = onyx_update(
+        payload=payload,
+        fields=None,
+        log=log,
+        clear_fields=["taxa_files"],
+    )
+
+    if clear_fail or clear_alert:
+        log.error(
+            f"Failed to clear existing taxon records for UUID: {payload['uuid']} with CID: {payload['climb_id']}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append("Failed to clear existing taxon records")
+        binned_read_fail = True
+        alert = clear_alert
+
+        return (binned_read_fail, alert, payload)
 
     try:
         with open(
@@ -446,8 +484,8 @@ def add_taxon_records(
         log.info(
             f"Could not find reads_summary_combined.json, this probably means that there are insufficient binned taxa produced by scylla for UUID: {payload['uuid']}"
         )
-        payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append(
+        payload.setdefault("ingest_warnings", [])
+        payload["ingest_warnings"].append(
             "Could not find reads_summary_combined.json, this probably means that no taxa were present above binning thresholds by scylla"
         )
         return (binned_read_fail, alert, payload)
@@ -649,6 +687,24 @@ def add_classifier_calls(
     alert = False
 
     classifier_calls = []
+
+    clear_fail, clear_alert, payload = onyx_update(
+        payload=payload,
+        fields=None,
+        log=log,
+        clear_fields=["classifier_calls"],
+    )
+
+    if clear_fail or clear_alert:
+        log.error(
+            f"Failed to clear existing classifier calls for UUID: {payload['uuid']} with CID: {payload['climb_id']}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append("Failed to clear existing classifier calls")
+        classifier_calls_fail = True
+        alert = clear_alert
+
+        return (classifier_calls_fail, alert, payload)
 
     try:
         pipe_params_path = os.path.join(

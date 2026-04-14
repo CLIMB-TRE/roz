@@ -893,9 +893,9 @@ def onyx_reconcile(
                         fields_of_concern.append(field)
 
                 if fields_of_concern:
-                    payload.setdefault("onyx_errors", {})
-                    payload["onyx_errors"].setdefault("reconcile_errors", [])
-                    payload["onyx_errors"]["reconcile_errors"].append(
+                    payload.setdefault("onyx_warnings", {})
+                    payload["onyx_warnings"].setdefault("reconcile_errors", [])
+                    payload["onyx_warnings"]["reconcile_errors"].append(
                         f"Onyx records for {identifier}: {payload[f'anonymised_{identifier}']} disagree for the following fields: {', '.join(fields_of_concern)}"
                     )
                     return (False, False, payload)
@@ -975,14 +975,14 @@ def onyx_reconcile(
 
 
 def ensure_file_unseen(
-    etag_field: str, etag: str, log: logging.getLogger, payload: dict
+    etag_field: str, etag: str, log: logging.Logger, payload: dict
 ) -> tuple[bool, bool, bool, dict]:
     """Function to check that a file has not already been uploaded to Onyx
 
     Args:
         etag_field (str): The field in Onyx to check for the etag
         etag (str): The etag to check for
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         payload (dict): Payload dict for the current artifact
 
     Returns:
@@ -1066,7 +1066,7 @@ def ensure_file_unseen(
 
 
 def check_artifact_published(
-    payload: dict, log: logging.getLogger
+    payload: dict, log: logging.Logger
 ) -> tuple[bool, bool, dict]:
     run_index_success, run_index_alert, payload = onyx_identify(
         payload=payload, identity_field="run_index", log=log
@@ -1170,15 +1170,19 @@ def check_artifact_published(
 
 
 def onyx_update(
-    payload: dict, fields: dict, log: logging.getLogger
+    payload: dict,
+    fields: dict | None,
+    log: logging.Logger,
+    clear_fields: list | None = None,
 ) -> tuple[bool, bool, dict]:
     """
     Update an existing Onyx record with the given fields
 
     Args:
         payload (dict): Payload dict for the current artifact
-        fields (dict): Fields to update in the format {'field_name': 'field_value'}
-        log (logging.getLogger): Logger object
+        fields (dict | None): Fields to update in the format {'field_name': 'field_value'}
+        log (logging.Logger): Logger object
+        clear_fields (list | None): Fields to clear in the format ['field_name']
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the update failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
@@ -1190,11 +1194,13 @@ def onyx_update(
         reconnect_count = 0
         while reconnect_count <= 3:
             try:
-                client.update(
-                    project=payload["project"],
-                    climb_id=payload["climb_id"],
-                    fields=fields,
-                )
+                if fields:
+                    client.update(
+                        project=payload["project"],
+                        climb_id=payload["climb_id"],
+                        fields=fields,
+                        clear=clear_fields,
+                    )
 
                 return (False, False, payload)
 
