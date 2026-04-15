@@ -191,9 +191,15 @@ Identical payload structure to §4.1. Populated when the mscape validator proces
 
 **Failure handling**: on pipeline failure (non-zero exit code or failed process in the execution trace) the message is nack'd without incrementing a retry counter, so it will be redelivered on the next poll. There is no dead-letter queue; persistent failures require manual intervention.
 
-### 4.3 Output — `downstream-chimera-{project}` / `chimera`
+### 4.3 Output (priority) — `downstream-chimera-{project}` / `chimera`
 
-Sent after all results have been written to Onyx and the BAM uploaded to S3. The message body is the input payload (§4.1/§4.2) with one field optionally added:
+Sent after all results have been written to Onyx and the BAM uploaded to S3, when the message was received from the priority input queue (§4.1). The message body is the input payload with one field optionally added:
+
+### 4.4 Output (rerun) — `downstream-chimera_rerun-{project}` / `chimera`
+
+Identical payload structure to §4.3. Sent instead of §4.3 when the message was received from the rerun input queue (§4.2). Downstream consumers that distinguish between new and rerun chimera results should subscribe to this exchange.
+
+The following applies to both §4.3 and §4.4 — the payload body and the Onyx fields written are identical regardless of which output queue is used:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -228,6 +234,7 @@ synthscape and openmgs use **the same validator code** as mscape (`roz_scripts/m
 | `inbound-new_artifact-mscape` / `chimera` | `inbound-new_artifact-synthscape` / `chimera` | `inbound-new_artifact-openmgs` / `chimera` |
 | `inbound-new_artifact_rerun-mscape` / `chimera` | `inbound-new_artifact_rerun-synthscape` / `chimera` | `inbound-new_artifact_rerun-openmgs` / `chimera` |
 | `downstream-chimera-mscape` / `chimera` | `downstream-chimera-synthscape` / `chimera` | `downstream-chimera-openmgs` / `chimera` |
+| `downstream-chimera_rerun-mscape` / `chimera` | `downstream-chimera_rerun-synthscape` / `chimera` | `downstream-chimera_rerun-openmgs` / `chimera` |
 | `mscape-restricted-announce` / `alert` | `synthscape-restricted-announce` / `alert` | `openmgs-restricted-announce` / `alert` |
 | `mscape-restricted-hcid` / `alert` | `synthscape-restricted-hcid` / `alert` | `openmgs-restricted-hcid` / `alert` |
 | `mscape-restricted-announce` / `dead_letter` | `synthscape-restricted-announce` / `dead_letter` | `openmgs-restricted-announce` / `dead_letter` |

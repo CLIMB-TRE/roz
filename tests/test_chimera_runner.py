@@ -870,6 +870,36 @@ class TestRunPipelineFlow(unittest.TestCase):
         nack_calls = [c for c in mock_varys.nack_message.call_args_list if c == call(msg)]
         self.assertEqual(len(nack_calls), 0)
 
+    def _full_success_mocks(
+        self, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
+        mock_create_ss, mock_ret_0, mock_mkdir, mock_exists,
+        mock_handle_align, mock_handle_sylph, mock_push_bam, mock_onyx_update,
+        priority_msg, rerun_msg=None,
+    ):
+        payload = json.loads(priority_msg.body if priority_msg else rerun_msg.body)
+        mock_varys = mock_varys_cls.return_value
+
+        _call_count = [0]
+
+        def _receive_side_effect(**kwargs):
+            _call_count[0] += 1
+            if _call_count[0] == 1:
+                return priority_msg
+            if _call_count[0] == 2:
+                return rerun_msg
+            raise KeyboardInterrupt()
+
+        mock_varys.receive.side_effect = _receive_side_effect
+        mock_get_metadata.return_value = make_metadata()
+        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
+        mock_ret_0.return_value = (False, payload)
+        mock_exists.return_value = True
+        mock_handle_align.return_value = True
+        mock_handle_sylph.return_value = True
+        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
+        mock_onyx_update.return_value = (False, False, payload)
+        return mock_varys, payload
+
     @patch("roz_scripts.mscape.chimera_runner.onyx_update")
     @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
     @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
@@ -883,23 +913,18 @@ class TestRunPipelineFlow(unittest.TestCase):
     @patch("roz_scripts.mscape.chimera_runner.pipeline")
     @patch("roz_scripts.mscape.chimera_runner.Varys")
     @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_full_success_acknowledges_and_sends_downstream(
+    def test_full_success_priority_sends_to_standard_downstream(
         self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
         mock_create_ss, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
         mock_handle_align, mock_handle_sylph, mock_push_bam, mock_onyx_update
     ):
-        payload = make_payload()
-        msg = make_message(payload)
-        mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-        mock_ret_0.return_value = (False, payload)
-        mock_exists.return_value = True
-        mock_handle_align.return_value = True
-        mock_handle_sylph.return_value = True
-        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
-        mock_onyx_update.return_value = (False, False, payload)
+        msg = make_message()
+        mock_varys, payload = self._full_success_mocks(
+            mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
+            mock_create_ss, mock_ret_0, mock_mkdir, mock_exists,
+            mock_handle_align, mock_handle_sylph, mock_push_bam, mock_onyx_update,
+            priority_msg=msg, rerun_msg=None,
+        )
 
         with self.assertRaises(KeyboardInterrupt):
             run(make_args())
@@ -910,6 +935,48 @@ class TestRunPipelineFlow(unittest.TestCase):
             exchange="downstream-chimera-mscape",
             queue_suffix="chimera",
         )
+
+    def test_full_success_rerun_sends_to_rerun_downstream(self):
+        rerun_msg = make_message()
+        payload = json.loads(rerun_msg.body)
+
+        patches = [
+            patch("roz_scripts.mscape.chimera_runner.init_logger"),
+            patch("roz_scripts.mscape.chimera_runner.Varys"),
+            patch("roz_scripts.mscape.chimera_runner.pipeline"),
+            patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata"),
+            patch("roz_scripts.mscape.chimera_runner.create_samplesheet"),
+            patch("roz_scripts.mscape.chimera_runner.ret_0_parser"),
+            patch("time.sleep"),
+            patch("pathlib.Path.mkdir"),
+            patch("os.path.exists", return_value=True),
+            patch("roz_scripts.mscape.chimera_runner.handle_alignment_report", return_value=True),
+            patch("roz_scripts.mscape.chimera_runner.handle_sylph_report", return_value=True),
+            patch("roz_scripts.mscape.chimera_runner.push_bam_file", return_value="s3://mscape-chimera-bams/CLIMB001.chimera.bam"),
+            patch("roz_scripts.mscape.chimera_runner.onyx_update"),
+        ]
+
+        with patches[0], patches[1] as mock_varys_cls, patches[2] as mock_pipeline_cls, \
+             patches[3] as mock_get_metadata, patches[4], patches[5] as mock_ret_0, \
+             patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], \
+             patches[12] as mock_onyx_update:
+
+            mock_varys = mock_varys_cls.return_value
+            mock_varys.receive.side_effect = [None, rerun_msg, KeyboardInterrupt()]
+            mock_get_metadata.return_value = make_metadata()
+            mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
+            mock_ret_0.return_value = (False, payload)
+            mock_onyx_update.return_value = (False, False, payload)
+
+            with self.assertRaises(KeyboardInterrupt):
+                run(make_args())
+
+            mock_varys.acknowledge_message.assert_called_once_with(rerun_msg)
+            mock_varys.send.assert_called_once_with(
+                message=payload,
+                exchange="downstream-chimera_rerun-mscape",
+                queue_suffix="chimera",
+            )
 
     @patch("roz_scripts.mscape.chimera_runner.onyx_update")
     @patch("roz_scripts.mscape.chimera_runner.push_bam_file")

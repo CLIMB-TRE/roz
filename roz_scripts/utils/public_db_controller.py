@@ -289,9 +289,7 @@ def get_sylph_globdb():
 
 
 def get_gtdb_db():
-    index = urllib.request.urlopen(
-        "https://data.ace.uq.edu.au/public/gtdb/data/releases/"
-    )
+    index = urllib.request.urlopen("https://data.gtdb.aau.ecogenomic.org/releases/")
 
     resp = index.read()
 
@@ -315,7 +313,7 @@ def get_gtdb_db():
         print(f"Would make dir: {os.path.join(base_db_path, 'gtdb', latest_version)}")
 
     # Download the latest gtdb version
-    gtdb_url = f"https://data.ace.uq.edu.au/public/gtdb/data/releases/{latest_version}/{latest_version_number}.0/auxillary_files/gtdbtk_package/full_package/gtdbtk_r{latest_version_number}_data.tar.gz"
+    gtdb_url = f"https://data.gtdb.aau.ecogenomic.org/releases/{latest_version}/{latest_version_number}.0/auxillary_files/gtdbtk_package/full_package/gtdbtk_r{latest_version_number}_data.tar.gz"
 
     if not dry_run:
         urllib.request.urlretrieve(

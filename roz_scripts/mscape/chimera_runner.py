@@ -348,11 +348,13 @@ def run(args):
 
             if priority_message:
                 message = priority_message
+                is_rerun = False
                 payload = json.loads(message.body)
                 if rerun_message:
                     varys_client.nack_message(rerun_message)
             elif rerun_message:
                 message = rerun_message
+                is_rerun = True
                 payload = json.loads(message.body)
             else:
                 log.error("This should never happen, no message received")
@@ -562,9 +564,14 @@ def run(args):
 
                 varys_client.acknowledge_message(message)
 
+                downstream_exchange = (
+                    f"downstream-chimera_rerun-{args.project}"
+                    if is_rerun
+                    else f"downstream-chimera-{args.project}"
+                )
                 varys_client.send(
                     message=payload,
-                    exchange=f"downstream-chimera-{args.project}",
+                    exchange=downstream_exchange,
                     queue_suffix="chimera",
                 )
 
