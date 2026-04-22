@@ -46,6 +46,13 @@ class worker_pool_handler:
 
         self._project = project
 
+    def _send_remote_alert(self, uuid: str, description: str) -> None:
+        self._varys_client.send(
+            message={"uuid": uuid, "description": description},
+            exchange=f"{self._project}-remote-announce",
+            queue_suffix="alert",
+        )
+
     def submit_job(self, message, args, ingest_pipe, low_priority=False):
         try:
             uuid = json.loads(message.body)["uuid"]
@@ -80,6 +87,7 @@ class worker_pool_handler:
                 exchange=f"{self._project}-restricted-announce",
                 queue_suffix="alert",
             )
+            self._send_remote_alert(payload["uuid"], "Ingest alert: manual intervention required")
 
         if success:
             self._log.info(
@@ -154,6 +162,10 @@ class worker_pool_handler:
                         message=payload,
                         exchange=f"{self._project}-restricted-announce",
                         queue_suffix="alert",
+                    )
+                    self._send_remote_alert(
+                        payload["uuid"],
+                        f"Repeated validation failure ({self._failure_log[payload['uuid']]} attempts)",
                     )
 
                 self._log.info(

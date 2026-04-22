@@ -251,6 +251,11 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
             exchange="mscape-restricted-announce",
             queue_suffix="alert",
         )
+        self.handler._varys_client.send.assert_any_call(
+            message={"uuid": payload["uuid"], "description": "Ingest alert: manual intervention required"},
+            exchange="mscape-remote-announce",
+            queue_suffix="alert",
+        )
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
@@ -406,12 +411,21 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         for _ in range(5):
             self.handler.callback((False, False, False, payload, self.message))
 
-        alert_calls = [
-            c for c in self.handler._varys_client.send.call_args_list
+        alert_calls = self.handler._varys_client.send.call_args_list
+
+        restricted_alerts = [
+            c for c in alert_calls
             if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "mscape-restricted-announce"
         ]
-        self.assertEqual(len(alert_calls), 1)
-        self.assertEqual(alert_calls[0].kwargs["exchange"], "mscape-restricted-announce")
+        remote_alerts = [
+            c for c in alert_calls
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "mscape-remote-announce"
+        ]
+        self.assertEqual(len(restricted_alerts), 1)
+        self.assertEqual(len(remote_alerts), 1)
+        self.assertEqual(remote_alerts[0].kwargs["message"]["uuid"], payload["uuid"])
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_failure_rerun_sends_alert_on_every_subsequent_failure(self, mock_put_result):
@@ -419,11 +433,14 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         for _ in range(7):
             self.handler.callback((False, False, False, payload, self.message))
 
-        alert_calls = [
+        all_alert_calls = [
             c for c in self.handler._varys_client.send.call_args_list
             if c.kwargs.get("queue_suffix") == "alert"
         ]
-        self.assertEqual(len(alert_calls), 3)
+        restricted_alerts = [c for c in all_alert_calls if c.kwargs.get("exchange") == "mscape-restricted-announce"]
+        remote_alerts = [c for c in all_alert_calls if c.kwargs.get("exchange") == "mscape-remote-announce"]
+        self.assertEqual(len(restricted_alerts), 3)
+        self.assertEqual(len(remote_alerts), 3)
 
 
 class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
