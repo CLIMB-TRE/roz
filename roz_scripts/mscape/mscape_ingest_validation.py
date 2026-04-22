@@ -42,18 +42,19 @@ class worker_pool_handler:
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
-        self._retry_log = {}
+        self._failure_log = {}
 
         self._project = project
 
     def submit_job(self, message, args, ingest_pipe, low_priority=False):
-        self._log.info(
-            f"Submitting job to the worker pool for UUID: {json.loads(message.body)['uuid']}"
-        )
+        try:
+            uuid = json.loads(message.body)["uuid"]
+        except (json.JSONDecodeError, KeyError) as e:
+            self._log.error(f"Malformed message body, nacking: {e}")
+            self._varys_client.nack_message(message, requeue=False)
+            return
 
-        self._retry_log.setdefault(json.loads(message.body)["uuid"], 0)
-
-        self._retry_log[json.loads(message.body)["uuid"]] += 1
+        self._log.info(f"Submitting job to the worker pool for UUID: {uuid}")
 
         self.worker_pool.apply_async(
             func=validate,
@@ -142,41 +143,23 @@ class worker_pool_handler:
             )
 
             if payload["rerun"]:
-                if self._retry_log[payload["uuid"]] >= 5:
-                    self._log.error(
-                        f"Message for UUID: {payload['uuid']} failed after {self._retry_log[payload['uuid']]} attempts, sending to dead letter queue"
-                    )
-                    payload.setdefault("ingest_errors", [])
-                    payload["ingest_errors"].append(
-                        f"Validation failed for UUID: {payload['uuid']} unrecoverably"
-                    )
+                self._failure_log.setdefault(payload["uuid"], 0)
+                self._failure_log[payload["uuid"]] += 1
 
+                if self._failure_log[payload["uuid"]] >= 5:
+                    self._log.error(
+                        f"UUID: {payload['uuid']} has failed {self._failure_log[payload['uuid']]} times, sending alert"
+                    )
                     self._varys_client.send(
                         message=payload,
                         exchange=f"{self._project}-restricted-announce",
-                        queue_suffix="dead_letter",
+                        queue_suffix="alert",
                     )
 
-                    self._varys_client.send(
-                        message=payload,
-                        exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                        queue_suffix="validator",
-                    )
-
-                    put_result_json(payload, self._log)
-
-                    self._varys_client.nack_message(message)
-
-                    os.remove("/tmp/healthy")
-
-                    raise ValueError(
-                        "Validation failed after 5 attempts, shutting down worker pool"
-                    )
-
-                else:
-                    self._log.info(
-                        f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
-                    )
+                self._log.info(
+                    f"Rerun flag for UUID: {payload['uuid']} is set, re-queueing message"
+                )
+                self._varys_client.nack_message(message)
 
             else:
                 self._varys_client.acknowledge_message(message)
@@ -196,7 +179,7 @@ class worker_pool_handler:
             exchange=f"{self._project}-restricted-announce",
             queue_suffix="dead_worker",
         )
-        os.remove("/tmp/healthy")
+        Path("/tmp/healthy").unlink(missing_ok=True)
 
     def close(self):
         self.worker_pool.close()
@@ -387,19 +370,35 @@ def handle_spike_ins(
         alert = True
         return (spike_in_fail, alert, payload)
 
+    except KeyError:
+        log.error(
+            f"Spike-in code '{spike_in}' not found in spike-in summary for UUID: {payload['uuid']}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Spike-in code '{spike_in}' was not found in pipeline spike-in output, please contact the {payload['project']} admin team"
+        )
+        spike_in_fail = True
+        alert = True
+        return (spike_in_fail, alert, payload)
+
     return (spike_in_fail, alert, payload)
 
 
-def dynamic_timeout(*s3_uris: str) -> int:
+def dynamic_timeout(*s3_uris: str, logger: logging.Logger | None = None) -> int:
     """Function to calculate the timeout for a given S3 URI based on the file size, calculated
     using the logarithmic function -> 3500 * log(x) - 20000 where x is the file size in bytes
 
     Args:
         *s3_uris (str): Variable number of S3 URIs to calculate the timeout for
+        logger (logging.Logger): Logger object (optional)
 
     Returns:
         int: Timeout in seconds
     """
+
+    if logger is None:
+        logger = logging.getLogger(__name__)
 
     s3_credentials = get_s3_credentials()
 
@@ -418,7 +417,7 @@ def dynamic_timeout(*s3_uris: str) -> int:
             content_length += obj["ContentLength"]
 
     except ClientError as dynamic_timeout_exception:
-        log.error(
+        logger.error(
             f"Failed to get object metadata for S3 URI: {s3_uri} due to client error: {dynamic_timeout_exception}"
         )
 
@@ -1171,7 +1170,6 @@ def ret_0_parser(
         payload["ingest_errors"].append("Could not parse Scylla pipeline trace")
         payload["rerun"] = True
         ingest_fail = True
-        time.sleep(args.retry_delay)
 
     return (ingest_fail, payload)
 
@@ -1592,8 +1590,19 @@ def validate(
 
     total_length_path = os.path.join(result_path, "qc", "total_length.json")
 
-    with open(total_length_path, "rt") as total_length_fh:
-        total_length = json.load(total_length_fh)
+    try:
+        with open(total_length_path, "rt") as total_length_fh:
+            total_length = json.load(total_length_fh)
+    except Exception as total_length_exception:
+        log.error(
+            f"Could not open total_length.json for UUID: {payload['uuid']} due to error: {total_length_exception}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append("Could not parse Scylla total_length.json")
+        payload["rerun"] = True
+        alert = True
+        time.sleep(args.retry_delay)
+        return (False, alert, hcid_alerts, payload, message)
 
     total_bases_fail, alert, payload = onyx_update(
         payload=payload,
@@ -1765,16 +1774,21 @@ def validate(
         return (False, alert, hcid_alerts, payload, message)
 
     if args.publish_delay_log:
-        with open(args.publish_delay_log, "a") as publish_delay_fh:
-            publish_delay_fh.write(
-                json.dumps(
-                    {
-                        "publish_date": time.strftime("%Y-%m-%d", time.gmtime()),
-                        "climb_id": payload["climb_id"],
-                        "publish_delay": time.time_ns() - payload["match_timestamp"],
-                    }
+        try:
+            with open(args.publish_delay_log, "a") as publish_delay_fh:
+                publish_delay_fh.write(
+                    json.dumps(
+                        {
+                            "publish_date": time.strftime("%Y-%m-%d", time.gmtime()),
+                            "climb_id": payload["climb_id"],
+                            "publish_delay": time.time_ns() - payload["match_timestamp"],
+                        }
+                    )
+                    + "\n"
                 )
-                + "\n"
+        except Exception as publish_delay_log_exception:
+            log.error(
+                f"Could not write to publish delay log for UUID: {payload['uuid']} due to error: {publish_delay_log_exception}"
             )
 
     payload["published"] = True
@@ -1850,7 +1864,7 @@ def run(args):
 
     except BaseException:
         log.exception("Shutting down worker pool due to exception:")
-        os.remove("/tmp/healthy")
+        Path("/tmp/healthy").unlink(missing_ok=True)
         worker_pool.close()
         varys_client.close()
         time.sleep(1)

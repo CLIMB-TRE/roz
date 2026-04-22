@@ -73,14 +73,13 @@ def make_args(**kwargs):
 
 class TestWorkerPoolHandlerInit(unittest.TestCase):
     @patch("multiprocessing.Pool")
-    def test_init_creates_pool_and_empty_retry_log(self, mock_pool_cls):
+    def test_init_creates_pool(self, mock_pool_cls):
         log = MagicMock()
         varys = MagicMock()
 
         handler = worker_pool_handler(workers=4, logger=log, varys_client=varys, project="mscape")
 
         mock_pool_cls.assert_called_once_with(processes=4)
-        self.assertEqual(handler._retry_log, {})
         self.assertEqual(handler._project, "mscape")
 
 
@@ -93,17 +92,6 @@ class TestWorkerPoolHandlerSubmitJob(unittest.TestCase):
         self.message = make_message()
         self.args = make_args()
         self.ingest_pipe = MagicMock()
-
-    def test_submit_job_creates_retry_log_entry(self):
-        self.handler.submit_job(self.message, self.args, self.ingest_pipe)
-
-        self.assertEqual(self.handler._retry_log["test-uuid-1234"], 1)
-
-    def test_submit_job_increments_existing_retry_log_entry(self):
-        self.handler.submit_job(self.message, self.args, self.ingest_pipe)
-        self.handler.submit_job(self.message, self.args, self.ingest_pipe)
-
-        self.assertEqual(self.handler._retry_log["test-uuid-1234"], 2)
 
     def test_submit_job_calls_apply_async_with_correct_kwargs(self):
         self.handler.submit_job(self.message, self.args, self.ingest_pipe, low_priority=True)
@@ -366,7 +354,6 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_failure_no_rerun_acknowledges_message(self, mock_put_result):
         payload = base_payload(rerun=False)
-        self.handler._retry_log[payload["uuid"]] = 1
         self.handler.callback((False, False, False, payload, self.message))
 
         self.handler._varys_client.acknowledge_message.assert_called_once_with(self.message)
@@ -374,7 +361,6 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_failure_no_rerun_sends_result(self, mock_put_result):
         payload = base_payload(rerun=False)
-        self.handler._retry_log[payload["uuid"]] = 1
         self.handler.callback((False, False, False, payload, self.message))
 
         self.handler._varys_client.send.assert_called_with(
@@ -387,87 +373,57 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_failure_no_rerun_does_not_nack(self, mock_put_result):
         payload = base_payload(rerun=False)
-        self.handler._retry_log[payload["uuid"]] = 1
         self.handler.callback((False, False, False, payload, self.message))
 
         self.handler._varys_client.nack_message.assert_not_called()
 
-    # --- Failure path: rerun, under retry limit ---
+    # --- Failure path: rerun ---
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
-    def test_callback_failure_rerun_under_limit_does_not_ack_or_nack(self, mock_put_result):
+    def test_callback_failure_rerun_nacks_without_acking(self, mock_put_result):
         payload = base_payload(rerun=True)
-        self.handler._retry_log[payload["uuid"]] = 3
         self.handler.callback((False, False, False, payload, self.message))
 
         self.handler._varys_client.acknowledge_message.assert_not_called()
-        self.handler._varys_client.nack_message.assert_not_called()
+        self.handler._varys_client.nack_message.assert_called_once_with(self.message)
         mock_put_result.assert_not_called()
 
-    # --- Failure path: rerun, at/over retry limit ---
-
-    @patch("os.remove")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
-    def test_callback_failure_rerun_at_limit_sends_dead_letter(
-        self, mock_put_result, mock_os_remove
-    ):
+    def test_callback_failure_rerun_no_alert_under_threshold(self, mock_put_result):
         payload = base_payload(rerun=True)
-        self.handler._retry_log[payload["uuid"]] = 5
-
-        with self.assertRaises(ValueError):
+        for _ in range(4):
             self.handler.callback((False, False, False, payload, self.message))
 
-        self.handler._varys_client.send.assert_any_call(
-            message=payload,
-            exchange="mscape-restricted-announce",
-            queue_suffix="dead_letter",
-        )
+        alert_calls = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+        ]
+        self.assertEqual(alert_calls, [])
 
-    @patch("os.remove")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
-    def test_callback_failure_rerun_at_limit_sends_result_and_nacks(
-        self, mock_put_result, mock_os_remove
-    ):
+    def test_callback_failure_rerun_sends_alert_at_fifth_failure(self, mock_put_result):
         payload = base_payload(rerun=True)
-        self.handler._retry_log[payload["uuid"]] = 5
-
-        with self.assertRaises(ValueError):
+        for _ in range(5):
             self.handler.callback((False, False, False, payload, self.message))
 
-        self.handler._varys_client.send.assert_any_call(
-            message=payload,
-            exchange="inbound-results-mscape-birm",
-            queue_suffix="validator",
-        )
-        mock_put_result.assert_called_once_with(payload, self.handler._log)
-        self.handler._varys_client.nack_message.assert_called_once_with(self.message)
+        alert_calls = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+        ]
+        self.assertEqual(len(alert_calls), 1)
+        self.assertEqual(alert_calls[0].kwargs["exchange"], "mscape-restricted-announce")
 
-    @patch("os.remove")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
-    def test_callback_failure_rerun_at_limit_removes_healthy_file(
-        self, mock_put_result, mock_os_remove
-    ):
+    def test_callback_failure_rerun_sends_alert_on_every_subsequent_failure(self, mock_put_result):
         payload = base_payload(rerun=True)
-        self.handler._retry_log[payload["uuid"]] = 5
-
-        with self.assertRaises(ValueError):
+        for _ in range(7):
             self.handler.callback((False, False, False, payload, self.message))
 
-        mock_os_remove.assert_called_with("/tmp/healthy")
-
-    @patch("os.remove")
-    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
-    def test_callback_failure_rerun_at_limit_appends_ingest_error(
-        self, mock_put_result, mock_os_remove
-    ):
-        payload = base_payload(rerun=True)
-        self.handler._retry_log[payload["uuid"]] = 5
-
-        with self.assertRaises(ValueError):
-            self.handler.callback((False, False, False, payload, self.message))
-
-        self.assertIn("ingest_errors", payload)
-        self.assertTrue(any("unrecoverably" in e for e in payload["ingest_errors"]))
+        alert_calls = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+        ]
+        self.assertEqual(len(alert_calls), 3)
 
 
 class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
@@ -488,10 +444,11 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
             queue_suffix="dead_worker",
         )
 
-    @patch("os.remove")
-    def test_error_callback_removes_healthy_file(self, mock_os_remove):
+    @patch("roz_scripts.mscape.mscape_ingest_validation.Path")
+    def test_error_callback_removes_healthy_file(self, mock_path):
         self.handler.error_callback(Exception("boom"))
-        mock_os_remove.assert_called_once_with("/tmp/healthy")
+        mock_path.assert_called_with("/tmp/healthy")
+        mock_path.return_value.unlink.assert_called_once_with(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
