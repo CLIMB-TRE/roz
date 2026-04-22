@@ -33,7 +33,7 @@ def remote_alert_channel(project: str, label: str | None = None) -> AlertChannel
     def formatter(body: dict) -> str:
         uuid = body.get("uuid", "unknown")
         description = body.get("description", "(no description)")
-        return f"<!channel>\n*{display} Alert*\nUUID: `{uuid}`\n{description}"
+        return f"<!channel>\n*{display} Alert*\n```UUID: {uuid}\n{description}```"
 
     return AlertChannel(
         exchange=f"{project}-remote-announce",
