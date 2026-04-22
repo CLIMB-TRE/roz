@@ -1,13 +1,13 @@
 """Slack integration for the remote alerts channel.
 
 Consumes stripped alert messages (UUID + description only, no identifying fields)
-from {project}-remote-announce exchanges and posts them to configured Slack webhooks.
+from {project}-remote-announce exchanges and posts them to a single Slack webhook.
 Messages on this channel are still restricted but safe for off-prem infrastructure.
 
-To add a project, append a call to remote_alert_channel() in CHANNELS:
-    remote_alert_channel("pathsafe"),
+Webhook URL is read from REMOTE_ALERT_WEBHOOK at runtime.
 
-The webhook URL is read from {PROJECT}_REMOTE_ALERT_WEBHOOK at runtime.
+To add a project, append a call to remote_alert_channel() in CHANNELS:
+    remote_alert_channel("pathsafe", label="PATH-SAFE"),
 """
 
 from dataclasses import dataclass
@@ -24,12 +24,10 @@ import time
 class AlertChannel:
     exchange: str
     queue_suffix: str
-    webhook_env_var: str
     format_message: Callable[[dict], str]
 
 
 def remote_alert_channel(project: str, label: str | None = None) -> AlertChannel:
-    env_var = f"{project.upper().replace('-', '_')}_REMOTE_ALERT_WEBHOOK"
     display = label or project
 
     def formatter(body: dict) -> str:
@@ -40,7 +38,6 @@ def remote_alert_channel(project: str, label: str | None = None) -> AlertChannel
     return AlertChannel(
         exchange=f"{project}-remote-announce",
         queue_suffix="slack_integration",
-        webhook_env_var=env_var,
         format_message=formatter,
     )
 
@@ -64,6 +61,12 @@ def post_to_slack(webhook_url: str, text: str) -> None:
         sys.exit(1)
 
 
+webhook_url = os.getenv("REMOTE_ALERT_WEBHOOK")
+
+if not webhook_url:
+    print("REMOTE_ALERT_WEBHOOK is not set", file=sys.stderr)
+    sys.exit(1)
+
 varys_client = Varys(
     profile="roz",
     logfile=os.devnull,
@@ -73,10 +76,6 @@ varys_client = Varys(
 
 while True:
     for channel in CHANNELS:
-        webhook_url = os.getenv(channel.webhook_env_var)
-        if not webhook_url:
-            continue
-
         message = varys_client.receive(
             channel.exchange,
             queue_suffix=channel.queue_suffix,
