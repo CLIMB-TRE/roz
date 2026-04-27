@@ -1,7 +1,12 @@
 import boto3
 from botocore.config import Config
 from botocore import UNSIGNED
+import concurrent.futures
+import glob
+import hashlib
+import json
 import os
+import time
 from ftplib import FTP
 import urllib.request
 from urllib.error import URLError
@@ -118,67 +123,137 @@ def get_ncbi_taxonomy(ftp_url, filename, date):
     os.system(f"rm {base_db_path}/{filename}")
 
 
+_BLAST_DB_METADATA = {
+    "nr": "nr-prot-metadata.json",
+    "nt": "nt-nucl-metadata.json",
+    "core_nt": "core_nt-nucl-metadata.json",
+    "nt_viruses": "nt_viruses-nucl-metadata.json",
+}
+
+_BLAST_FTP_BASE = "ftp://ftp.ncbi.nlm.nih.gov/blast/db"
+
+
+def _fetch_blast_metadata(db):
+    url = f"{_BLAST_FTP_BASE}/{_BLAST_DB_METADATA[db]}"
+    with urllib.request.urlopen(url) as resp:
+        return json.loads(resp.read())
+
+
+def _verify_md5(file_path, md5_path):
+    expected = open(md5_path).read().split()[0].strip()
+    h = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest() == expected
+
+
+def _segment_stem(segment):
+    return segment[: segment.index(".tar.gz")]
+
+
+def _segment_extracted(db_dir, segment):
+    return bool(glob.glob(os.path.join(db_dir, f"{_segment_stem(segment)}.*")))
+
+
+def _download_and_extract_segment(file_url, db_dir):
+    segment = os.path.basename(file_url)
+    dest = os.path.join(base_db_path, segment)
+    md5_dest = dest + ".md5"
+
+    if _segment_extracted(db_dir, segment):
+        print(f"{segment}: already extracted, skipping")
+        return
+
+    # Existing download on disk — verify before re-downloading
+    if os.path.exists(dest):
+        if not os.path.exists(md5_dest):
+            try:
+                urllib.request.urlretrieve(file_url + ".md5", md5_dest)
+            except Exception:
+                pass
+        if os.path.exists(md5_dest) and _verify_md5(dest, md5_dest):
+            print(f"{segment}: resuming from valid existing download")
+        else:
+            print(f"{segment}: existing download is invalid, re-downloading")
+            for path in (dest, md5_dest):
+                if os.path.exists(path):
+                    os.remove(path)
+
+    if not os.path.exists(dest):
+        downloaded = False
+        for attempt in range(10):
+            try:
+                urllib.request.urlretrieve(file_url, dest)
+                urllib.request.urlretrieve(file_url + ".md5", md5_dest)
+                downloaded = True
+                break
+            except Exception as e:
+                print(f"{segment}: download attempt {attempt + 1}/10 failed: {e}")
+                for path in (dest, md5_dest):
+                    if os.path.exists(path):
+                        os.remove(path)
+                time.sleep(min(2**attempt, 300))
+
+        if not downloaded:
+            raise URLError(f"Failed to download {segment} after 10 attempts")
+
+        if not _verify_md5(dest, md5_dest):
+            os.remove(dest)
+            os.remove(md5_dest)
+            raise ValueError(f"MD5 checksum mismatch for {segment} — file removed")
+        os.remove(md5_dest)
+
+    ret = os.system(f"tar -xf {dest} -C {db_dir}")
+    if ret != 0:
+        raise RuntimeError(f"tar extraction failed for {segment} (exit {ret})")
+
+    os.remove(dest)
+
+
 def get_ncbi_blast():
-    ftp = FTP("ftp.ncbi.nlm.nih.gov")
-    ftp.login("anonymous", "ftplib-example-1")
+    for db in _BLAST_DB_METADATA:
+        meta = _fetch_blast_metadata(db)
+        date = datetime.datetime.fromisoformat(meta["last-updated"]).strftime(
+            "%Y-%m-%d"
+        )
 
-    ftp.cwd("blast/db")
+        archive_dir = os.path.join(base_db_path, "blast", f"{db}_archive", date)
+        symlink_path = os.path.join(base_db_path, "blast", db)
 
-    resp = ftp.nlst()
-
-    segments = [x for x in resp if x.endswith(".tar.gz")]
-
-    ftp.quit()
-
-    to_dl = {}
-
-    for segment in segments:
-        db = segment.split(".")[0]
-        if db not in ("nr", "nt", "nt_viruses"):
+        if os.path.isdir(archive_dir):
+            print(f"{db}: already have version {date}, skipping")
             continue
 
-        if os.path.exists(os.path.join(base_db_path, "blast", db)):
+        if dry_run:
+            print(f"Would make dir: {archive_dir}")
+            for file_url in meta["files"]:
+                print(f"Would get: {os.path.basename(file_url)} to path: {archive_dir}")
             continue
 
-        to_dl.setdefault(db, []).append(segment)
+        os.makedirs(archive_dir, exist_ok=True)
 
-    for db, segments in to_dl.items():
-        if not os.path.exists(os.path.join(base_db_path, "blast", db)):
-            if dry_run:
-                print(f"Would make dir: {os.path.join(base_db_path, 'blast', db)}")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(
+                    _download_and_extract_segment, file_url, archive_dir
+                ): file_url
+                for file_url in meta["files"]
+            }
+            for future in concurrent.futures.as_completed(futures):
+                file_url = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Failed to process {os.path.basename(file_url)}: {e}")
+                    raise
 
-            else:
-                os.makedirs(os.path.join(base_db_path, "blast", db))
+        try:
+            os.remove(symlink_path)
+        except OSError:
+            pass
 
-        for segment in segments:
-
-            if segment.endswith(".tar.gz") and db in ("nr", "nt", "nt_viruses"):
-                if dry_run:
-                    print(
-                        f"Would get: {segment} to path: {str(os.path.join(base_db_path, 'blast', db))}"
-                    )
-                    continue
-
-                retry_count = 0
-                while retry_count < 3:
-                    if retry_count == 3:
-                        raise URLError("Failed to download file")
-
-                    try:
-                        urllib.request.urlretrieve(
-                            f"ftp://ftp.ncbi.nlm.nih.gov/blast/db/{segment}",
-                            f"{base_db_path}/{segment}",
-                        )
-                        break
-                    except Exception:
-                        retry_count += 1
-                        continue
-
-                os.system(
-                    f"tar -xvf {base_db_path}/{segment} -C {base_db_path}/blast/{db}"
-                )
-
-                os.system(f"rm {base_db_path}/{segment}")
+        os.symlink(os.path.join(f"{db}_archive", date), symlink_path)
 
 
 def get_bakta_db():
