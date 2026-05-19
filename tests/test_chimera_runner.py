@@ -28,6 +28,18 @@ from roz_scripts.mscape.chimera_runner import (
     run,
 )
 
+
+def setUpModule():
+    os.environ.update({
+        "ONYX_DOMAIN": "https://test.onyx",
+        "ONYX_TOKEN": "testtoken",
+        "VARYS_CFG": "/tmp/varys.cfg",
+        "AWS_ACCESS_KEY_ID": "test-key-id",
+        "AWS_SECRET_ACCESS_KEY": "test-secret",
+        "NXF_WORK": "/tmp/nxf_work",
+        "NXF_HOME": "/tmp/nxf_home",
+    })
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

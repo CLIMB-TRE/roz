@@ -405,8 +405,8 @@ def execute_assembly_pipeline(
     env_vars = {
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
         "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-        "NXF_HOME": f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
+        "NXF_WORK": os.getenv("NXF_WORK"),
+        "NXF_HOME": f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/",
     }
 
     stdout_path = os.path.join(log_path, "nextflow.stdout")
@@ -421,7 +421,7 @@ def execute_assembly_pipeline(
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
-        workingdir=Path(f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/"),
+        workingdir=log_path,
     )
 
 
@@ -787,6 +787,10 @@ def run(args):
     try:
         log = init_logger("pathsafe.validate", args.logfile, args.log_level)
 
+        nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+        nxf_home.mkdir(parents=True, exist_ok=True)
+        nxf_home.chmod(0o775)
+
         varys_client = Varys(
             profile="roz",
             logfile=args.logfile,
@@ -868,6 +872,21 @@ def main():
         help="Time to wait before re-queuing a failed message",
     )
     args = parser.parse_args()
+
+    for i in (
+        "ONYX_DOMAIN",
+        "ONYX_TOKEN",
+        "VARYS_CFG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "NXF_WORK",
+        "NXF_HOME",
+        "PATHOGENWATCH_API_KEY",
+        "PATHOGENWATCH_ENDPOINT_URL",
+    ):
+        if not os.getenv(i):
+            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            sys.exit(3)
 
     run(args)
 
