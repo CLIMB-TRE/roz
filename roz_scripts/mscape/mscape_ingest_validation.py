@@ -264,11 +264,15 @@ def execute_validation_pipeline(
     if not os.path.exists(log_path):
         os.makedirs(log_path)
 
+    nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+    nxf_home.mkdir(parents=True, exist_ok=True)
+    nxf_home.chmod(0o775)
+
     env_vars = {
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
         "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
         "NXF_WORK": os.getenv("NXF_WORK"),
-        "NXF_HOME": f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/",
+        "NXF_HOME": str(nxf_home),
     }
 
     stdout_path = os.path.join(log_path, "nextflow.stdout")
@@ -1818,12 +1822,6 @@ def validate(
 def run(args):
     try:
         log = init_logger(f"{args.project}.ingest", args.logfile, args.log_level)
-
-        nxf_home = Path(
-            f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/"
-        )
-        nxf_home.mkdir(parents=True, exist_ok=True)
-        nxf_home.chmod(0o775)
 
         varys_client = Varys(
             profile="roz",

@@ -313,10 +313,6 @@ def run(args):
     try:
         log = init_logger(f"{args.project}.chimera", args.logfile, args.log_level)
 
-        nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
-        nxf_home.mkdir(parents=True, exist_ok=True)
-        nxf_home.chmod(0o775)
-
         varys_client = Varys(
             profile="roz",
             logfile=args.logfile,
@@ -404,11 +400,15 @@ def run(args):
                 "outdir": record_outdir,
             }
 
+            nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+            nxf_home.mkdir(parents=True, exist_ok=True)
+            nxf_home.chmod(0o775)
+
             env_vars = {
                 "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
                 "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
                 "NXF_WORK": os.getenv("NXF_WORK"),
-                "NXF_HOME": f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/",
+                "NXF_HOME": str(nxf_home),
             }
 
             rc = chimera_pipe.execute(
