@@ -38,7 +38,6 @@ def setUpModule():
         "AWS_SECRET_ACCESS_KEY": "test-secret",
         "NXF_WORK": "/tmp/nxf_work",
         "NXF_HOME": "/tmp/nxf_home",
-        "POD_NAMESPACE": "climb-gre-test",
     })
 
 # ---------------------------------------------------------------------------
@@ -593,6 +592,14 @@ class TestPushBamFile(unittest.TestCase):
 class TestRunMessagePrioritisation(unittest.TestCase):
     """Tests for the priority-over-rerun message selection in the run() loop."""
 
+    def setUp(self):
+        patcher = patch(
+            "roz_scripts.mscape.chimera_runner.get_pod_namespace",
+            return_value="climb-gre-test",
+        )
+        self.mock_get_pod_namespace = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _make_run_mocks(
         self,
         mock_init_logger,
@@ -699,6 +706,14 @@ class TestRunMessagePrioritisation(unittest.TestCase):
 
 class TestRunPipelineFlow(unittest.TestCase):
     """Tests for the pipeline execution flow inside run()."""
+
+    def setUp(self):
+        patcher = patch(
+            "roz_scripts.mscape.chimera_runner.get_pod_namespace",
+            return_value="climb-gre-test",
+        )
+        self.mock_get_pod_namespace = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _base_mocks(self, priority_msg, rerun_msg=None):
         """Return a context-manager patch stack covering all external dependencies."""
