@@ -715,6 +715,10 @@ class TestRunPipelineFlow(unittest.TestCase):
         self.mock_get_pod_namespace = patcher.start()
         self.addCleanup(patcher.stop)
 
+        chmod_patcher = patch("pathlib.Path.chmod")
+        self.mock_chmod = chmod_patcher.start()
+        self.addCleanup(chmod_patcher.stop)
+
     def _base_mocks(self, priority_msg, rerun_msg=None):
         """Return a context-manager patch stack covering all external dependencies."""
         # We'll apply patches manually per test to keep flexibility
