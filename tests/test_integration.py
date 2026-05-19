@@ -1143,6 +1143,7 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
+                namespace="climb-gre-test",
             )
 
             pipeline = utils.pipeline(
@@ -1345,6 +1346,7 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
+                namespace="climb-gre-test",
             )
 
             pipeline = utils.pipeline(
@@ -1518,6 +1520,7 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
+                namespace="climb-gre-test",
             )
 
             pipeline = utils.pipeline(
@@ -1792,6 +1795,7 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
+                namespace="climb-gre-test",
             )
 
             pipeline = utils.pipeline(
@@ -2098,6 +2102,7 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
+                namespace="climb-gre-test",
             )
 
             pipeline = utils.pipeline(
@@ -2340,6 +2345,7 @@ class Test_mscape_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 max_human_reads=10000,
+                namespace="climb-gre-test",
             )
 
             pipeline = utils.pipeline(
@@ -2594,6 +2600,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 timeout=1440,
+                namespace="climb-gre-test",
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -2857,6 +2864,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 timeout=1440,
+                namespace="climb-gre-test",
             )
 
             pipeline = pathsafe_validation.pipeline(
@@ -3007,6 +3015,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 retry_delay=2,
                 project="mscape",
                 timeout=1440,
+                namespace="climb-gre-test",
             )
 
             pipeline = pathsafe_validation.pipeline(

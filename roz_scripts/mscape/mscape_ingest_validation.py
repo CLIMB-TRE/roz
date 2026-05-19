@@ -88,7 +88,9 @@ class worker_pool_handler:
                 exchange=f"{self._project}-restricted-announce",
                 queue_suffix="alert",
             )
-            self._send_remote_alert(payload["uuid"], "Ingest alert: manual intervention required")
+            self._send_remote_alert(
+                payload["uuid"], "Ingest alert: manual intervention required"
+            )
 
         if success:
             self._log.info(
@@ -1794,7 +1796,8 @@ def validate(
                         {
                             "publish_date": time.strftime("%Y-%m-%d", time.gmtime()),
                             "climb_id": payload["climb_id"],
-                            "publish_delay": time.time_ns() - payload["match_timestamp"],
+                            "publish_delay": time.time_ns()
+                            - payload["match_timestamp"],
                         }
                     )
                     + "\n"
@@ -1816,7 +1819,9 @@ def run(args):
     try:
         log = init_logger(f"{args.project}.ingest", args.logfile, args.log_level)
 
-        nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+        nxf_home = Path(
+            f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/"
+        )
         nxf_home.mkdir(parents=True, exist_ok=True)
         nxf_home.chmod(0o775)
 
@@ -1925,7 +1930,9 @@ def main():
         "SCYLLA_TAXONOMY_DATE",
     ):
         if not os.getenv(i):
-            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            print(
+                f"The environmental variabl1e '{i}' has not been set", file=sys.stderr
+            )
             sys.exit(3)
 
     run(args)
