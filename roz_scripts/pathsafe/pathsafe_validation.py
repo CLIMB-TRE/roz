@@ -418,7 +418,7 @@ def execute_assembly_pipeline(
         logdir=log_path,
         timeout=args.timeout,
         env_vars=env_vars,
-        namespace=namespace,
+        namespace=args.namespace,
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
@@ -799,7 +799,7 @@ def run(args):
             auto_acknowledge=False,
         )
 
-        namespace = get_pod_namespace()
+        args.namespace = get_pod_namespace()
 
         ingest_pipe = pipeline(
             pipe="CLIMB-TRE/path-safe_assembler",
