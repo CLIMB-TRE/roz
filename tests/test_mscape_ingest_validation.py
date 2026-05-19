@@ -24,6 +24,7 @@ def setUpModule():
         "AWS_SECRET_ACCESS_KEY": "test-secret",
         "NXF_WORK": "/tmp/nxf_work",
         "NXF_HOME": "/tmp/nxf_home",
+        "POD_NAMESPACE": "climb-gre-test",
         "SCYLLA_K2_DB_PATH": "/tmp/k2",
         "SCYLLA_K2_DB_DATE": "2024-01-01",
         "SCYLLA_TAXONOMY_PATH": "/tmp/taxonomy",

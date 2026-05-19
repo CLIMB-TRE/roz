@@ -25,6 +25,7 @@ from roz_scripts.utils.utils import (
     ensure_file_unseen,
     s3_to_fh,
     EtagMismatchError,
+    get_pod_namespace,
 )
 from varys import Varys
 from onyx import OnyxClient
@@ -417,7 +418,7 @@ def execute_assembly_pipeline(
         logdir=log_path,
         timeout=args.timeout,
         env_vars=env_vars,
-        namespace=f"ns-{payload['project']}",
+        namespace=namespace,
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
@@ -797,6 +798,8 @@ def run(args):
             log_level=args.log_level,
             auto_acknowledge=False,
         )
+
+        namespace = get_pod_namespace()
 
         ingest_pipe = pipeline(
             pipe="CLIMB-TRE/path-safe_assembler",

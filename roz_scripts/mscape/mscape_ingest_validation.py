@@ -30,6 +30,7 @@ from roz_scripts.utils.utils import (
     are_files_empty,
     do_uris_exist,
     EtagMismatchError,
+    get_pod_namespace,
 )
 from varys import Varys
 
@@ -276,7 +277,7 @@ def execute_validation_pipeline(
         logdir=log_path,
         timeout=timeout,
         env_vars=env_vars,
-        namespace=f"ns-{payload['project']}",
+        namespace=args.namespace,
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
@@ -1825,6 +1826,8 @@ def run(args):
             log_level=args.log_level,
             auto_acknowledge=False,
         )
+
+        args.namespace = get_pod_namespace()
 
         ingest_pipe = pipeline(
             pipe=args.ingest_pipeline,

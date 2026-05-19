@@ -38,6 +38,7 @@ def setUpModule():
         "AWS_SECRET_ACCESS_KEY": "test-secret",
         "NXF_WORK": "/tmp/nxf_work",
         "NXF_HOME": "/tmp/nxf_home",
+        "POD_NAMESPACE": "climb-gre-test",
     })
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
     onyx_update,
+    get_pod_namespace,
 )
 from varys import Varys
 
@@ -323,6 +324,8 @@ def run(args):
             auto_acknowledge=False,
         )
 
+        namespace = get_pod_namespace()
+
         chimera_pipe = pipeline(
             pipe="CLIMB-TRE/chimera",
             branch=args.chimera_release,
@@ -413,7 +416,7 @@ def run(args):
                 logdir=record_outdir,
                 timeout=3600,
                 env_vars=env_vars,
-                namespace=f"ns-{args.project}",
+                namespace=namespace,
                 job_id=payload["match_uuid"],
                 stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
                 stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
