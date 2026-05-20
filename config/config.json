@@ -22,6 +22,7 @@
         "ukhsabris.mscape": "uploader",
         "ucl.mscape": "uploader",
         "barts.mscape": "uploader",
+        "uhl.mscape": "uploader",
         "pipelines.ukhsa.mscape": "service",
         "mscape": "analysis"
       },
