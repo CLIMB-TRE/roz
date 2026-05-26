@@ -28,6 +28,19 @@ from onyx.exceptions import (
 )
 
 from kubernetes.client import Configuration
+
+
+def get_pod_namespace() -> str:
+    sa_mount = Path(os.getenv("K8S_SECRETS_MOUNT", "/run/secrets/kubernetes.io/serviceaccount"))
+    ns_file = sa_mount / "namespace"
+    if ns_file.exists():
+        return ns_file.read_text().strip()
+    ns = os.getenv("POD_NAMESPACE")
+    if ns:
+        return ns
+    raise RuntimeError(
+        "Cannot determine k8s namespace: not running in a pod and POD_NAMESPACE is not set"
+    )
 from kubernetes.client.api import BatchV1Api
 
 __s3_creds = namedtuple(
@@ -206,15 +219,13 @@ class pipeline:
 
             c = Configuration()
 
-            with open(
-                "/run/secrets/kubernetes.io/serviceaccount/token", "rt"
-            ) as token_fh:
-                token = token_fh.read()
+            sa_mount = os.getenv("K8S_SECRETS_MOUNT", "/run/secrets/kubernetes.io/serviceaccount")
+            token = Path(sa_mount, "token").read_text()
 
             c.api_key["authorization"] = token
             c.api_key_prefix["authorization"] = "Bearer"
             c.host = f"https://{os.getenv('KUBERNETES_SERVICE_HOST')}"
-            c.ssl_ca_cert = "/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+            c.ssl_ca_cert = str(Path(sa_mount, "ca.crt"))
 
             Configuration.set_default(c)
             api_instance = BatchV1Api()

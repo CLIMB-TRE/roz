@@ -25,6 +25,7 @@ from roz_scripts.utils.utils import (
     ensure_file_unseen,
     s3_to_fh,
     EtagMismatchError,
+    get_pod_namespace,
 )
 from varys import Varys
 from onyx import OnyxClient
@@ -402,11 +403,15 @@ def execute_assembly_pipeline(
     if not os.path.exists(log_path):
         os.makedirs(log_path)
 
+    nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+    nxf_home.mkdir(parents=True, exist_ok=True)
+    nxf_home.chmod(0o775)
+
     env_vars = {
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
         "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-        "NXF_HOME": f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
+        "NXF_WORK": os.getenv("NXF_WORK"),
+        "NXF_HOME": str(nxf_home),
     }
 
     stdout_path = os.path.join(log_path, "nextflow.stdout")
@@ -417,11 +422,11 @@ def execute_assembly_pipeline(
         logdir=log_path,
         timeout=args.timeout,
         env_vars=env_vars,
-        namespace=f"ns-{payload['project']}",
+        namespace=args.namespace,
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
-        workingdir=Path(f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/"),
+        workingdir=log_path,
     )
 
 
@@ -794,6 +799,8 @@ def run(args):
             auto_acknowledge=False,
         )
 
+        args.namespace = get_pod_namespace()
+
         ingest_pipe = pipeline(
             pipe="CLIMB-TRE/path-safe_assembler",
             branch="main",
@@ -868,6 +875,21 @@ def main():
         help="Time to wait before re-queuing a failed message",
     )
     args = parser.parse_args()
+
+    for i in (
+        "ONYX_DOMAIN",
+        "ONYX_TOKEN",
+        "VARYS_CFG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "NXF_WORK",
+        "NXF_HOME",
+        "PATHOGENWATCH_API_KEY",
+        "PATHOGENWATCH_ENDPOINT_URL",
+    ):
+        if not os.getenv(i):
+            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            sys.exit(3)
 
     run(args)
 

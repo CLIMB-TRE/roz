@@ -14,6 +14,23 @@ from roz_scripts.mscape.mscape_ingest_validation import (
     run,
 )
 
+
+def setUpModule():
+    os.environ.update({
+        "ONYX_DOMAIN": "https://test.onyx",
+        "ONYX_TOKEN": "testtoken",
+        "VARYS_CFG": "/tmp/varys.cfg",
+        "AWS_ACCESS_KEY_ID": "test-key-id",
+        "AWS_SECRET_ACCESS_KEY": "test-secret",
+        "NXF_WORK": "/tmp/nxf_work",
+        "NXF_HOME": "/tmp/nxf_home",
+        "SCYLLA_K2_DB_PATH": "/tmp/k2",
+        "SCYLLA_K2_DB_DATE": "2024-01-01",
+        "SCYLLA_TAXONOMY_PATH": "/tmp/taxonomy",
+        "SCYLLA_TAXONOMY_DATE": "2024-01-01",
+    })
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -479,6 +496,14 @@ class TestRunMessagePrioritisation(unittest.TestCase):
     - When only a priority message is available it is submitted normally.
     - When no messages are available the loop sleeps and continues.
     """
+
+    def setUp(self):
+        patcher = patch(
+            "roz_scripts.mscape.mscape_ingest_validation.get_pod_namespace",
+            return_value="climb-gre-test",
+        )
+        self.mock_get_pod_namespace = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _make_args(self, **kwargs):
         return make_args(**kwargs)

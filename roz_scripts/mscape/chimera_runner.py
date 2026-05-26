@@ -27,6 +27,7 @@ from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
     onyx_update,
+    get_pod_namespace,
 )
 from varys import Varys
 
@@ -319,6 +320,8 @@ def run(args):
             auto_acknowledge=False,
         )
 
+        namespace = get_pod_namespace()
+
         chimera_pipe = pipeline(
             pipe="CLIMB-TRE/chimera",
             branch=args.chimera_release,
@@ -397,11 +400,15 @@ def run(args):
                 "outdir": record_outdir,
             }
 
+            nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+            nxf_home.mkdir(parents=True, exist_ok=True)
+            nxf_home.chmod(0o775)
+
             env_vars = {
                 "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
                 "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-                "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-                "NXF_HOME": "/shared/team/nxf_work/roz_chimera/.nextflow/",
+                "NXF_WORK": os.getenv("NXF_WORK"),
+                "NXF_HOME": str(nxf_home),
             }
 
             rc = chimera_pipe.execute(
@@ -409,11 +416,11 @@ def run(args):
                 logdir=record_outdir,
                 timeout=3600,
                 env_vars=env_vars,
-                namespace=f"ns-{args.project}",
+                namespace=namespace,
                 job_id=payload["match_uuid"],
                 stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
                 stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
-                workingdir=Path("/shared/team/nxf_work/roz/.nextflow/"),
+                workingdir=record_outdir,
             )
 
             if rc != 0:
@@ -626,6 +633,20 @@ def main():
         required=True,
     )
     args = parser.parse_args()
+
+    for i in (
+        "ONYX_DOMAIN",
+        "ONYX_TOKEN",
+        "VARYS_CFG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "NXF_WORK",
+        "NXF_HOME",
+    ):
+        if not os.getenv(i):
+            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            sys.exit(3)
+
     run(args)
 
 

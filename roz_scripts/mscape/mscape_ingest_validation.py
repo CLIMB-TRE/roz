@@ -30,6 +30,7 @@ from roz_scripts.utils.utils import (
     are_files_empty,
     do_uris_exist,
     EtagMismatchError,
+    get_pod_namespace,
 )
 from varys import Varys
 
@@ -87,7 +88,9 @@ class worker_pool_handler:
                 exchange=f"{self._project}-restricted-announce",
                 queue_suffix="alert",
             )
-            self._send_remote_alert(payload["uuid"], "Ingest alert: manual intervention required")
+            self._send_remote_alert(
+                payload["uuid"], "Ingest alert: manual intervention required"
+            )
 
         if success:
             self._log.info(
@@ -261,11 +264,15 @@ def execute_validation_pipeline(
     if not os.path.exists(log_path):
         os.makedirs(log_path)
 
+    nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+    nxf_home.mkdir(parents=True, exist_ok=True)
+    nxf_home.chmod(0o775)
+
     env_vars = {
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
         "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "NXF_WORK": "/shared/team/nxf_work/roz/work/",
-        "NXF_HOME": f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
+        "NXF_WORK": os.getenv("NXF_WORK"),
+        "NXF_HOME": str(nxf_home),
     }
 
     stdout_path = os.path.join(log_path, "nextflow.stdout")
@@ -276,11 +283,11 @@ def execute_validation_pipeline(
         logdir=log_path,
         timeout=timeout,
         env_vars=env_vars,
-        namespace=f"ns-{payload['project']}",
+        namespace=args.namespace,
         job_id=payload["uuid"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
-        workingdir=f"/shared/team/nxf_work/roz/nextflow.worker.{os.getpid()}/",
+        workingdir=log_path,
     )
 
 
@@ -1793,7 +1800,8 @@ def validate(
                         {
                             "publish_date": time.strftime("%Y-%m-%d", time.gmtime()),
                             "climb_id": payload["climb_id"],
-                            "publish_delay": time.time_ns() - payload["match_timestamp"],
+                            "publish_delay": time.time_ns()
+                            - payload["match_timestamp"],
                         }
                     )
                     + "\n"
@@ -1821,6 +1829,8 @@ def run(args):
             log_level=args.log_level,
             auto_acknowledge=False,
         )
+
+        args.namespace = get_pod_namespace()
 
         ingest_pipe = pipeline(
             pipe=args.ingest_pipeline,
@@ -1910,13 +1920,17 @@ def main():
         "VARYS_CFG",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "NXF_WORK",
+        "NXF_HOME",
         "SCYLLA_K2_DB_PATH",
         "SCYLLA_K2_DB_DATE",
         "SCYLLA_TAXONOMY_PATH",
         "SCYLLA_TAXONOMY_DATE",
     ):
         if not os.getenv(i):
-            print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
+            print(
+                f"The environmental variabl1e '{i}' has not been set", file=sys.stderr
+            )
             sys.exit(3)
 
     run(args)
