@@ -27,7 +27,8 @@ from onyx.exceptions import (
     OnyxClientError,
 )
 
-from kubernetes.client import Configuration
+from kubernetes import config as k8s_config
+from kubernetes.client import ApiClient
 
 
 def get_pod_namespace() -> str:
@@ -42,6 +43,7 @@ def get_pod_namespace() -> str:
         "Cannot determine k8s namespace: not running in a pod and POD_NAMESPACE is not set"
     )
 from kubernetes.client.api import BatchV1Api
+
 
 __s3_creds = namedtuple(
     "s3_credentials",
@@ -217,18 +219,8 @@ class pipeline:
             self.cmd = cmd
             os.chdir(logdir)
 
-            c = Configuration()
-
-            sa_mount = os.getenv("K8S_SECRETS_MOUNT", "/run/secrets/kubernetes.io/serviceaccount")
-            token = Path(sa_mount, "token").read_text()
-
-            c.api_key["authorization"] = token
-            c.api_key_prefix["authorization"] = "Bearer"
-            c.host = f"https://{os.getenv('KUBERNETES_SERVICE_HOST')}"
-            c.ssl_ca_cert = str(Path(sa_mount, "ca.crt"))
-
-            Configuration.set_default(c)
-            api_instance = BatchV1Api()
+            k8s_config.load_incluster_config()
+            api_instance = BatchV1Api(ApiClient())
 
             try:
                 resp = api_instance.read_namespaced_job_status(
