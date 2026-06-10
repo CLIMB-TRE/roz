@@ -147,13 +147,6 @@
           },
           "owner": "admin"
         },
-        "zeus_databases": {
-          "name_layout": "{project}-zeus-databases",
-          "policy": {
-            "analysis": "project_read_list"
-          },
-          "owner": "admin"
-        },
         "orange_box_results": {
           "name_layout": "{project}-published-orange-box",
           "policy": {
