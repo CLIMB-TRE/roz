@@ -147,6 +147,13 @@
           },
           "owner": "admin"
         },
+        "chimera_reports": {
+          "name_layout": "{project}-chimera-reports",
+          "policy": {
+            "analysis": "project_read_list"
+          },
+          "owner": "admin"
+        },
         "orange_box_results": {
           "name_layout": "{project}-published-orange-box",
           "policy": {
@@ -359,6 +366,14 @@
         },
         "chimera_bams": {
           "name_layout": "{project}-chimera-bams",
+          "policy": {
+            "analysis": "project_read_list",
+            "service": "project_read_list"
+          },
+          "owner": "admin"
+        },
+        "chimera_reports": {
+          "name_layout": "{project}-chimera-reports",
           "policy": {
             "analysis": "project_read_list",
             "service": "project_read_list"
@@ -642,6 +657,13 @@
         },
         "chimera_bams": {
           "name_layout": "{project}-chimera-bams",
+          "policy": {
+            "analysis": "project_read_list"
+          },
+          "owner": "admin"
+        },
+        "chimera_reports": {
+          "name_layout": "{project}-chimera-reports",
           "policy": {
             "analysis": "project_read_list"
           },

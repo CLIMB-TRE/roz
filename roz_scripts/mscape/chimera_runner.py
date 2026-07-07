@@ -309,6 +309,51 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
     return s3_uri
 
 
+def push_chimera_report(
+    report_path: str,
+    report_suffix: str,
+    db_version: str | None,
+    payload: dict,
+    log: logging.Logger,
+) -> str:
+
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url="https://s3.climb.ac.uk",
+    )
+
+    s3_bucket = f"{payload['project']}-chimera-reports"
+
+    s3_key = f"{payload['climb_id']}.{report_suffix}"
+
+    s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
+    try:
+        if not db_version:
+            raise ValueError(
+                f"No DB version supplied for {report_suffix}, cannot upload db-version-tagged report"
+            )
+
+        s3_client.upload_file(
+            report_path,
+            s3_bucket,
+            s3_key,
+        )
+
+        s3_client.upload_file(
+            report_path,
+            s3_bucket,
+            f"{payload['climb_id']}.{db_version}.{report_suffix}",
+        )
+    except Exception:
+        log.exception(
+            f"Failed to upload {report_suffix} to S3 for UUID: {payload['match_uuid']}, error:"
+        )
+        raise
+
+    return s3_uri
+
+
 def run(args):
     try:
         log = init_logger(f"{args.project}.chimera", args.logfile, args.log_level)
@@ -480,6 +525,18 @@ def run(args):
                     varys_client.nack_message(message)
                     continue
 
+                try:
+                    push_chimera_report(
+                        report_path=alignment_report_path,
+                        report_suffix="alignment_report.tsv",
+                        db_version=args.alignment_db_version,
+                        payload=payload,
+                        log=log,
+                    )
+                except Exception:
+                    varys_client.nack_message(message)
+                    continue
+
                 sylph_report_path = os.path.join(
                     record_outdir,
                     record["climb_id"],
@@ -522,6 +579,18 @@ def run(args):
                         log.error(
                             f"Failed to process Sylph report for {payload['match_uuid']}"
                         )
+                        varys_client.nack_message(message)
+                        continue
+
+                    try:
+                        push_chimera_report(
+                            report_path=sylph_report_path,
+                            report_suffix="sylph_taxonomy_report.tsv",
+                            db_version=args.sylph_db_version,
+                            payload=payload,
+                            log=log,
+                        )
+                    except Exception:
                         varys_client.nack_message(message)
                         continue
 
