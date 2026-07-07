@@ -13,6 +13,8 @@ from roz_scripts.utils.utils import (
     valid_character_checks,
     put_result_json,
     s3_to_fh,
+    EtagMismatchError,
+    NonPlaintextCSVError,
 )
 
 
@@ -146,13 +148,28 @@ def main():
             payload["onyx_test_create_status"] = True
             payload["validate"] = True
 
-            with s3_to_fh(
-                payload["files"][".csv"]["uri"],
-                payload["files"][".csv"]["etag"],
-            ) as csv_fh:
-                reader = csv.DictReader(csv_fh, delimiter=",")
+            try:
+                with s3_to_fh(
+                    payload["files"][".csv"]["uri"],
+                    payload["files"][".csv"]["etag"],
+                ) as csv_fh:
+                    reader = csv.DictReader(csv_fh, delimiter=",")
 
-                metadata = next(reader)
+                    metadata = next(reader)
+            except (NonPlaintextCSVError, EtagMismatchError) as e:
+                log.info(f"Rejecting CSV for UUID: {payload['uuid']}. Error: {e}")
+                payload["validate"] = False
+                payload.setdefault("onyx_test_create_errors", {})
+                payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
+                varys_client.acknowledge_message(message)
+                varys_client.send(
+                    message=payload,
+                    exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                    queue_suffix="s3_matcher",
+                )
+                put_result_json(payload=payload, log=log)
+                continue
 
             payload["biosample_id"] = metadata["biosample_id"]
 

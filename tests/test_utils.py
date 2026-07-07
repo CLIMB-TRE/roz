@@ -327,6 +327,36 @@ class test_utils(unittest.TestCase):
             self.assertFalse(success)
             self.assertTrue(alert)
 
+    def test_csv_create_non_plaintext(self):
+        self.s3_client.put_object(
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+            Body=b"\xff\xfe\x00\x01binarydata",
+        )
+        resp = self.s3_client.head_object(
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+        )
+
+        self.example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
+
+        with patch("roz_scripts.utils.utils.OnyxClient"):
+            success, alert, payload = csv_create(
+                payload=self.example_match,
+                log=self.log,
+                test_submission=True,
+            )
+            print(payload)
+
+            self.assertFalse(success)
+            self.assertFalse(alert)
+            self.assertTrue(
+                any(
+                    "not valid UTF-8 plaintext" in msg
+                    for msg in payload["onyx_test_create_errors"]["onyx_errors"]
+                )
+            )
+
     def test_csv_field_check_success(self):
         success, alert, payload = csv_field_checks(payload=self.example_match)
 
@@ -353,6 +383,32 @@ class test_utils(unittest.TestCase):
         self.assertIn(
             "Field does not match filename.",
             payload["onyx_test_create_errors"]["run_id"],
+        )
+
+    def test_csv_field_check_non_plaintext(self):
+        self.s3_client.put_object(
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+            Body=b"\xff\xfe\x00\x01binarydata",
+        )
+        resp = self.s3_client.head_object(
+            Bucket="mscape-birm-ont-prod",
+            Key="mscape.sample-test.run-test.csv",
+        )
+
+        self.example_match["files"][".csv"]["etag"] = resp["ETag"].replace('"', "")
+
+        success, alert, payload = csv_field_checks(payload=self.example_match)
+
+        print(payload)
+
+        self.assertFalse(success)
+        self.assertFalse(alert)
+        self.assertTrue(
+            any(
+                "not valid UTF-8 plaintext" in msg
+                for msg in payload["onyx_test_create_errors"]["roz_errors"]
+            )
         )
 
     def test_published_check_true(self):

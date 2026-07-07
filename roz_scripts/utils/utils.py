@@ -55,6 +55,10 @@ class EtagMismatchError(Exception):
     pass
 
 
+class NonPlaintextCSVError(Exception):
+    pass
+
+
 class pipeline:
     def __init__(
         self,
@@ -619,6 +623,22 @@ def csv_create(
 
                 return (False, False, payload)
 
+            except NonPlaintextCSVError as e:
+                log.info(
+                    f"Non-plaintext CSV submitted for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                )
+
+                if test_submission:
+                    payload.setdefault("onyx_test_create_errors", {})
+                    payload["onyx_test_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_test_create_errors"]["onyx_errors"].append(str(e))
+                else:
+                    payload.setdefault("onyx_create_errors", {})
+                    payload["onyx_create_errors"].setdefault("onyx_errors", [])
+                    payload["onyx_create_errors"]["onyx_errors"].append(str(e))
+
+                return (False, False, payload)
+
             except Exception as e:
                 if test_submission:
                     log.error(f"Unhandled csv_create error: {e}")
@@ -696,6 +716,12 @@ def csv_field_checks(payload: dict) -> tuple[bool, bool, dict]:
         payload["onyx_test_create_errors"]["roz_errors"].append(
             f"CSV appears to have been modified after upload for artifact: {payload['artifact']}"
         )
+        return (False, False, payload)
+
+    except NonPlaintextCSVError as e:
+        payload.setdefault("onyx_test_create_errors", {})
+        payload["onyx_test_create_errors"].setdefault("roz_errors", [])
+        payload["onyx_test_create_errors"]["roz_errors"].append(str(e))
         return (False, False, payload)
 
     except Exception as e:
@@ -1387,4 +1413,18 @@ def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
             "ETag mismatch, CSV appears to have been modified between upload and parsing"
         )
 
-    return StringIO(file_obj["Body"].read().decode("utf-8-sig"))
+    raw_bytes = file_obj["Body"].read()
+
+    try:
+        text = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        raise NonPlaintextCSVError(
+            f"CSV file at {s3_uri} is not valid UTF-8 plaintext: {e}"
+        )
+
+    if "\x00" in text:
+        raise NonPlaintextCSVError(
+            f"CSV file at {s3_uri} contains NUL characters, it is likely not plaintext (e.g. UTF-16 or binary content)"
+        )
+
+    return StringIO(text)
