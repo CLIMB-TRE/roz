@@ -29,6 +29,7 @@ from onyx.exceptions import (
 
 from kubernetes import config as k8s_config
 from kubernetes.client import ApiClient
+from kubernetes.client.exceptions import ApiException
 
 
 def get_pod_namespace() -> str:
@@ -151,16 +152,19 @@ class pipeline:
 
         pod_env_vars = [{"name": k, "value": v} for k, v in env_vars.items()]
 
+        job_name = f"roz-{self.job_prefix}-{job_id}"
+        backoff_limit = 5
+
         job_manifest = {
             "apiVersion": "batch/v1",
             "kind": "Job",
-            "metadata": {"name": f"roz-{self.job_prefix}-{job_id}"},
+            "metadata": {"name": job_name},
             "spec": {
                 "ttlSecondsAfterFinished": 120,
-                "backoffLimit": 5,
+                "backoffLimit": backoff_limit,
                 "template": {
                     "spec": {
-                        "hostname": f"roz-{self.job_prefix}-{job_id}",
+                        "hostname": job_name,
                         "subdomain": namespace,
                         "securityContext": {
                             "runAsNonRoot": True,
@@ -188,7 +192,7 @@ class pipeline:
                         },
                         "containers": [
                             {
-                                "name": f"roz-{self.job_prefix}-{job_id}",
+                                "name": job_name,
                                 "image": str(self.nxf_image),
                                 "resources": {
                                     "requests": {"cpu": "2", "memory": "16G"},
@@ -228,10 +232,39 @@ class pipeline:
 
             try:
                 resp = api_instance.read_namespaced_job_status(
-                    name=f"roz-{self.job_prefix}-{job_id}", namespace=namespace
+                    name=job_name, namespace=namespace
                 )
 
-            except Exception:
+            except ApiException as e:
+                if e.status != 404:
+                    raise
+                resp = None
+                api_instance.create_namespaced_job(
+                    body=job_manifest, namespace=namespace
+                )
+
+            if resp and resp.status.failed and resp.status.failed >= backoff_limit:
+                # A job with this name already reached a terminal failure in a
+                # previous invocation (e.g. the worker process was restarted and
+                # is reprocessing the same message) - delete it and start a fresh
+                # attempt rather than immediately reporting the old failure.
+                api_instance.delete_namespaced_job(
+                    name=job_name,
+                    namespace=namespace,
+                    propagation_policy="Foreground",
+                )
+
+                while True:
+                    try:
+                        api_instance.read_namespaced_job_status(
+                            name=job_name, namespace=namespace
+                        )
+                    except ApiException as e:
+                        if e.status != 404:
+                            raise
+                        break
+                    time.sleep(random.uniform(2.0, 3.0))
+
                 api_instance.create_namespaced_job(
                     body=job_manifest, namespace=namespace
                 )
@@ -239,7 +272,7 @@ class pipeline:
             job_completed = False
             while not job_completed:
                 resp = api_instance.read_namespaced_job_status(
-                    name=f"roz-{self.job_prefix}-{job_id}", namespace=namespace
+                    name=job_name, namespace=namespace
                 )
                 if resp.status.succeeded:
                     if resp.status.succeeded >= 1:
@@ -248,9 +281,9 @@ class pipeline:
                         break
 
                 if resp.status.failed:
-                    if resp.status.failed >= 5:
+                    if resp.status.failed >= backoff_limit:
                         api_instance.delete_namespaced_job(
-                            name=f"roz-{self.job_prefix}-{job_id}",
+                            name=job_name,
                             namespace=namespace,
                             propagation_policy="Foreground",
                         )
@@ -261,7 +294,7 @@ class pipeline:
                 if resp.status.start_time:
                     if time.time() - resp.status.start_time.timestamp() > timeout:
                         api_instance.delete_namespaced_job(
-                            name=f"roz-{self.job_prefix}-{job_id}",
+                            name=job_name,
                             namespace=namespace,
                             propagation_policy="Foreground",
                         )

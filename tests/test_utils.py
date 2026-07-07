@@ -15,7 +15,10 @@ from roz_scripts.utils.utils import (
     onyx_reconcile,
     get_s3_credentials,
     valid_character_checks,
+    pipeline,
 )
+
+from kubernetes.client.exceptions import ApiException
 
 import moto
 import boto3
@@ -23,6 +26,8 @@ import unittest
 from unittest.mock import patch, Mock
 import os
 import copy
+import tempfile
+from pathlib import Path
 
 
 DIR = os.path.dirname(__file__)
@@ -659,3 +664,97 @@ class test_utils(unittest.TestCase):
             "run_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
             payload["onyx_test_create_errors"]["run_id"],
         )
+
+
+class test_pipeline_execute(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.logdir = Path(self.tempdir.name, "logs")
+        self.logdir.mkdir(parents=True, exist_ok=True)
+
+        self.pipe = pipeline(
+            pipe="some/pipeline",
+            branch="main",
+            config=None,
+            nxf_image="some_image",
+            job_prefix="test",
+        )
+
+        self.execute_kwargs = dict(
+            params={},
+            logdir=self.logdir,
+            timeout=3600,
+            env_vars={},
+            namespace="test-namespace",
+            job_id="test-job-id",
+            stdout_path=os.path.join(self.logdir, "stdout"),
+            stderr_path=os.path.join(self.logdir, "stderr"),
+            workingdir=self.logdir,
+        )
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def make_status(self, succeeded=None, failed=None, start_time=None):
+        status = Mock()
+        status.succeeded = succeeded
+        status.failed = failed
+        status.start_time = start_time
+        resp = Mock()
+        resp.status = status
+        return resp
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_job_does_not_exist_is_created(
+        self, mock_k8s_config, mock_batch_cls, mock_sleep
+    ):
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(succeeded=1),
+        ]
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 0)
+        api_instance.create_namespaced_job.assert_called_once()
+        api_instance.delete_namespaced_job.assert_not_called()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_pre_existing_failed_job_is_deleted_and_recreated(
+        self, mock_k8s_config, mock_batch_cls, mock_sleep
+    ):
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            self.make_status(failed=5),
+            ApiException(status=404),
+            self.make_status(succeeded=1),
+        ]
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 0)
+        api_instance.delete_namespaced_job.assert_called_once()
+        api_instance.create_namespaced_job.assert_called_once()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_pre_existing_active_job_is_left_alone(
+        self, mock_k8s_config, mock_batch_cls, mock_sleep
+    ):
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            self.make_status(succeeded=None, failed=None, start_time=None),
+            self.make_status(succeeded=1),
+        ]
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 0)
+        api_instance.create_namespaced_job.assert_not_called()
+        api_instance.delete_namespaced_job.assert_not_called()
