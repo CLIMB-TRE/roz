@@ -60,6 +60,34 @@ class NonPlaintextCSVError(Exception):
     pass
 
 
+def send_admin_alert(
+    varys_client, source: str, description: str, uuid: str | None = None
+) -> None:
+    """Send a stripped, off-prem-safe alert to inform admins that something needs attention.
+
+    Only `source`, `description` and an optional `uuid` are ever included -
+    never a full payload dict - since this exchange is consumed outside the
+    restricted, per-project Slack channels.
+
+    Args:
+        varys_client: The Varys client instance to send the message with
+        source (str): Name of the component raising the alert (e.g. "mscape", "s3_matcher")
+        description (str): Human-readable description of the alert
+        uuid (str | None): Opaque identifier for cross-referencing with the restricted system, if relevant
+    """
+
+    message = {"source": source, "description": description}
+
+    if uuid:
+        message["uuid"] = uuid
+
+    varys_client.send(
+        message=message,
+        exchange="remote-announce",
+        queue_suffix="alert",
+    )
+
+
 class pipeline:
     def __init__(
         self,

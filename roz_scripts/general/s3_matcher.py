@@ -1,4 +1,9 @@
-from roz_scripts.utils.utils import get_s3_credentials, init_logger, put_result_json
+from roz_scripts.utils.utils import (
+    get_s3_credentials,
+    init_logger,
+    put_result_json,
+    send_admin_alert,
+)
 from roz_scripts.general.s3_controller import create_config_map
 from varys import Varys
 
@@ -502,6 +507,14 @@ def main():
 
         except Exception as e:
             log.error(f"Unhandled exception: {str(e)}")
+            try:
+                send_admin_alert(
+                    varys_client,
+                    source="s3_matcher",
+                    description=f"failed with unhandled exception: {e}",
+                )
+            except Exception as alert_exception:
+                log.error(f"Failed to send admin alert: {alert_exception}")
             os.remove("/tmp/healthy")
             sys.exit(1)
 

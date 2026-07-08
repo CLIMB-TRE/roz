@@ -26,6 +26,7 @@ from roz_scripts.utils.utils import (
     s3_to_fh,
     EtagMismatchError,
     get_pod_namespace,
+    send_admin_alert,
 )
 from varys import Varys
 from onyx import OnyxClient
@@ -117,6 +118,16 @@ class worker_pool_handler:
                         queue_suffix="dead_letter",
                     )
 
+                    try:
+                        send_admin_alert(
+                            self._varys_client,
+                            source="pathsafe",
+                            description=f"Validation failed unrecoverably for UUID: {payload['uuid']}",
+                            uuid=payload["uuid"],
+                        )
+                    except Exception as alert_exception:
+                        self._log.error(f"Failed to send admin alert: {alert_exception}")
+
                     self._varys_client.send(
                         message=payload,
                         exchange=f"inbound-results-{payload['project']}-{payload['site']}",
@@ -157,6 +168,14 @@ class worker_pool_handler:
             exchange="pathsafe-restricted-announce",
             queue_suffix="dead_worker",
         )
+        try:
+            send_admin_alert(
+                self._varys_client,
+                source="pathsafe",
+                description=f"ingest worker failed with unhandled exception: {exception}",
+            )
+        except Exception as alert_exception:
+            self._log.error(f"Failed to send admin alert: {alert_exception}")
         os.remove("/tmp/healthy")
 
     def close(self):

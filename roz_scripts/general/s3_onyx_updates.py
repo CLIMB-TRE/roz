@@ -12,6 +12,7 @@ from roz_scripts.utils.utils import (
     onyx_update,
     s3_to_fh,
     csv_field_checks,
+    send_admin_alert,
 )
 from roz_scripts.general.s3_matcher import parse_object_key
 from varys import Varys
@@ -426,8 +427,16 @@ def run(args):
                     log.error(f"Failed to process message: {json.loads(message.body)}")
                     varys_client.nack_message(message)
 
-    except BaseException:
+    except BaseException as e:
         log.exception("Unhandled error: ")
+        try:
+            send_admin_alert(
+                varys_client,
+                source="s3_onyx_updates",
+                description=f"failed with unhandled exception: {e}",
+            )
+        except Exception as alert_exception:
+            log.error(f"Failed to send admin alert: {alert_exception}")
         os.remove("/tmp/healthy")
         varys_client.close()
         time.sleep(1)

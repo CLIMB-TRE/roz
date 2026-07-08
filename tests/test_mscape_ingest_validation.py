@@ -269,8 +269,12 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
             queue_suffix="alert",
         )
         self.handler._varys_client.send.assert_any_call(
-            message={"uuid": payload["uuid"], "description": "Ingest alert: manual intervention required"},
-            exchange="mscape-remote-announce",
+            message={
+                "source": "mscape",
+                "description": "Ingest alert: manual intervention required",
+                "uuid": payload["uuid"],
+            },
+            exchange="remote-announce",
             queue_suffix="alert",
         )
 
@@ -438,11 +442,12 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         remote_alerts = [
             c for c in alert_calls
             if c.kwargs.get("queue_suffix") == "alert"
-            and c.kwargs.get("exchange") == "mscape-remote-announce"
+            and c.kwargs.get("exchange") == "remote-announce"
         ]
         self.assertEqual(len(restricted_alerts), 1)
         self.assertEqual(len(remote_alerts), 1)
         self.assertEqual(remote_alerts[0].kwargs["message"]["uuid"], payload["uuid"])
+        self.assertEqual(remote_alerts[0].kwargs["message"]["source"], "mscape")
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_failure_rerun_sends_alert_on_every_subsequent_failure(self, mock_put_result):
@@ -455,7 +460,7 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
             if c.kwargs.get("queue_suffix") == "alert"
         ]
         restricted_alerts = [c for c in all_alert_calls if c.kwargs.get("exchange") == "mscape-restricted-announce"]
-        remote_alerts = [c for c in all_alert_calls if c.kwargs.get("exchange") == "mscape-remote-announce"]
+        remote_alerts = [c for c in all_alert_calls if c.kwargs.get("exchange") == "remote-announce"]
         self.assertEqual(len(restricted_alerts), 3)
         self.assertEqual(len(remote_alerts), 3)
 
@@ -472,10 +477,24 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
         exc = Exception("Worker exploded")
         self.handler.error_callback(exc)
 
-        self.handler._varys_client.send.assert_called_once_with(
+        self.handler._varys_client.send.assert_any_call(
             message=f"mscape ingest worker failed with unhandled exception: {exc}",
             exchange="mscape-restricted-announce",
             queue_suffix="dead_worker",
+        )
+
+    @patch("os.remove")
+    def test_error_callback_sends_admin_alert(self, mock_os_remove):
+        exc = Exception("Worker exploded")
+        self.handler.error_callback(exc)
+
+        self.handler._varys_client.send.assert_any_call(
+            message={
+                "source": "mscape",
+                "description": f"ingest worker failed with unhandled exception: {exc}",
+            },
+            exchange="remote-announce",
+            queue_suffix="alert",
         )
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.Path")

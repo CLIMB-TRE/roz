@@ -16,6 +16,7 @@ from roz_scripts.utils.utils import (
     get_s3_credentials,
     valid_character_checks,
     pipeline,
+    send_admin_alert,
 )
 
 from kubernetes.client.exceptions import ApiException
@@ -664,6 +665,41 @@ class test_utils(unittest.TestCase):
             "run_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
             payload["onyx_test_create_errors"]["run_id"],
         )
+
+
+class test_send_admin_alert(unittest.TestCase):
+    def test_sends_source_and_description(self):
+        mock_varys = Mock()
+        send_admin_alert(mock_varys, source="s3_matcher", description="boom")
+
+        mock_varys.send.assert_called_once_with(
+            message={"source": "s3_matcher", "description": "boom"},
+            exchange="remote-announce",
+            queue_suffix="alert",
+        )
+
+    def test_includes_uuid_when_given(self):
+        mock_varys = Mock()
+        send_admin_alert(
+            mock_varys, source="mscape", description="boom", uuid="some-uuid"
+        )
+
+        mock_varys.send.assert_called_once_with(
+            message={
+                "source": "mscape",
+                "description": "boom",
+                "uuid": "some-uuid",
+            },
+            exchange="remote-announce",
+            queue_suffix="alert",
+        )
+
+    def test_omits_uuid_when_none(self):
+        mock_varys = Mock()
+        send_admin_alert(mock_varys, source="mscape", description="boom", uuid=None)
+
+        sent_message = mock_varys.send.call_args.kwargs["message"]
+        self.assertNotIn("uuid", sent_message)
 
 
 class test_pipeline_execute(unittest.TestCase):

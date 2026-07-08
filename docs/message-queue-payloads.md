@@ -56,6 +56,10 @@ Emitted once all required files for an artifact have been seen.
 
 Sent as a **plain string** (not JSON) when the object key cannot be parsed or the project name in the key does not match the bucket. No payload dict is constructed; the message is a human-readable error string describing the problem.
 
+### 1.4 Output (admin alert) — `remote-announce` / `alert`
+
+Sent when the main loop crashes with an unhandled exception (see [§7 Admin Alerts](#admin-alerts)).
+
 ---
 
 ## 2. Generic Ingest (pre-project validator)
@@ -83,6 +87,10 @@ Sent when the Onyx test-create fails, `run_index`/`run_id` contain invalid chara
 ### 2.4 Output (alert) — `restricted-{project}-alert` / `ingest`
 
 Sent on any unexpected/unrecoverable error (e.g. Onyx connection failure). Contains the accumulated payload dict at the point of failure. The message is nack'd and not requeued automatically.
+
+### 2.5 Output (admin alert) — `remote-announce` / `alert`
+
+Sent when the main loop crashes with an unhandled exception (see [§7 Admin Alerts](#admin-alerts)).
 
 ---
 
@@ -165,6 +173,10 @@ Sent when a rerunnable artifact has failed 5 or more consecutive validation atte
 
 Sent as a plain string (not a JSON payload) when a worker process crashes with an unhandled exception. Format: `"mscape ingest worker failed with unhandled exception: {exception}"`.
 
+### 3.10 Output (admin alert) — `remote-announce` / `alert`
+
+Sent alongside §3.6 (manual intervention), the repeated-failure case in §3.3/§3.8, and §3.9 (dead worker). See [§7 Admin Alerts](#admin-alerts).
+
 ---
 
 ## 4. Chimera Runner
@@ -240,7 +252,9 @@ synthscape and openmgs use **the same validator code** as mscape (`roz_scripts/m
 | `mscape-restricted-announce` / `dead_letter` | `synthscape-restricted-announce` / `dead_letter` | `openmgs-restricted-announce` / `dead_letter` |
 | `mscape-restricted-announce` / `dead_worker` | `synthscape-restricted-announce` / `dead_worker` | `openmgs-restricted-announce` / `dead_worker` |
 
-All payload field definitions from §3.2 – §3.9 and §4 apply unchanged; only `project` value differs.
+`remote-announce` / `alert` (§3.10) is **not** project-scoped and is shared unchanged across mscape, synthscape and openmgs (and every other component — see [§7 Admin Alerts](#admin-alerts)); `source` in the message body is the only thing that distinguishes them.
+
+All payload field definitions from §3.2 – §3.10 and §4 apply unchanged; only `project` value differs.
 
 ---
 
@@ -293,7 +307,11 @@ Sent after 5 consecutive rerunnable failures. Full payload with an error appende
 
 Plain string message (not JSON) sent on unhandled worker exception. Format: `"Pathsafe ingest worker failed with unhandled exception: {exception}"`.
 
-### 6.6 Onyx CSV update input — `inbound-onyx-updates-pathsafe` / `pathsafe_updater`
+### 6.6 Output (admin alert) — `remote-announce` / `alert`
+
+Sent alongside §6.4 (dead letter) and §6.5 (dead worker). See [§7 Admin Alerts](#admin-alerts).
+
+### 6.7 Onyx CSV update input — `inbound-onyx-updates-pathsafe` / `pathsafe_updater`
 
 Produced by `s3_onyx_updates.py` (see §7 S3 CSV Update Payload) when a CSV update is received for a pathsafe record. The payload is a slim dict built from the S3 notification:
 
@@ -311,9 +329,9 @@ Produced by `s3_onyx_updates.py` (see §7 S3 CSV Update Payload) when a CSV upda
 | `update_status` | string | `"success"` or `"failed"` |
 | `update_errors` | array[string] | Error messages (present only on failure) |
 
-### 6.7 Pathogenwatch update output — `inbound-onyx-updates` / `onyx_updates`
+### 6.8 Pathogenwatch update output — `inbound-onyx-updates` / `onyx_updates`
 
-Produced by `pathsafe_updates.py` after a successful Pathogenwatch metadata sync. Same shape as §6.6 but with `climb_id` removed before the S3 result write, and `update_status: "success"` guaranteed.
+Produced by `pathsafe_updates.py` after a successful Pathogenwatch metadata sync. Same shape as §6.7 but with `climb_id` removed before the S3 result write, and `update_status: "success"` guaranteed.
 
 ---
 
@@ -339,7 +357,7 @@ Each entry in the `files` map uses this structure:
 }
 ```
 
-The `submitter` and `parsed_fname` fields are only present on entries within the matched artifact payload (§1.2). The slim CSV-update payload (§6.6) omits them.
+The `submitter` and `parsed_fname` fields are only present on entries within the matched artifact payload (§1.2). The slim CSV-update payload (§6.7) omits them.
 
 ### S3 Notification Format
 
@@ -393,6 +411,22 @@ Produced by `s3_onyx_updates.py` for any project with `csv_updates` enabled in `
 | `artifact` | string | `{project}.{run_index}.{run_id}` |
 | `update_status` | string | `"success"` or `"failed"` |
 
+### Admin Alerts
+
+`s3_matcher.py`, `ingest.py`, `s3_onyx_updates.py`, and the mscape/synthscape/openmgs/pathsafe validators all send a stripped, off-prem-safe notification to a single **project-agnostic** exchange whenever something needs an admin's attention — an unhandled crash of the main loop or worker pool, a manual-intervention alert, or an artifact that has permanently failed (dead letter). This is separate from (and in addition to) the full-detail `{project}-restricted-announce` messages, which stay per-project and carry the complete payload for the owning team's own Slack channel.
+
+Produced via the shared `roz_scripts.utils.utils.send_admin_alert()` helper, which enforces the field allow-list below — callers cannot accidentally include a full payload dict or any other identifying field.
+
+**Output — `remote-announce` / `alert`**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source` | string | Name of the component raising the alert, e.g. `"mscape"`, `"s3_matcher"`, `"ingest"` |
+| `description` | string | Human-readable description of the alert |
+| `uuid` | string | Optional opaque identifier for cross-referencing with the restricted system (omitted when not relevant, e.g. a top-level crash with no artifact in scope) |
+
+Consumed by `slack_integrations/remote_alerts.py`, which independently re-applies the same allow-list before formatting the Slack message, so a producer bug can't leak extra fields through.
+
 ### Queue Suffix Summary
 
 | Queue suffix | Consumer | Receives from | Purpose |
@@ -404,6 +438,7 @@ Produced by `s3_onyx_updates.py` for any project with `csv_updates` enabled in `
 | `onyx_updater` | `s3_onyx_updates.py` | `inbound-s3` | Handle CSV metadata update notifications |
 | `onyx_updates` | Onyx update handler | `inbound-onyx-updates-{project}` / `inbound-onyx-updates` | Apply metadata updates to Onyx |
 | `pathsafe_updater` | `pathsafe_updates.py` | `inbound-onyx-updates-pathsafe` | Sync updated metadata to Pathogenwatch |
+| `alert` (on `remote-announce`) | `slack_integrations/remote_alerts.py` | `remote-announce` | Deliver stripped admin alerts for any component (see [Admin Alerts](#admin-alerts)) |
 | `alert` | Alert handler | `{project}-restricted-announce`, `{project}-restricted-hcid`, `restricted-{project}-alert` | Deliver alerts for manual review |
 | `dead_letter` | Dead letter handler | `{project}-restricted-announce` | Receive permanently failed messages |
 | `dead_worker` | Dead worker handler | `{project}-restricted-announce` | Receive crashed worker notifications |

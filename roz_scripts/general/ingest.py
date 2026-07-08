@@ -15,6 +15,7 @@ from roz_scripts.utils.utils import (
     s3_to_fh,
     EtagMismatchError,
     NonPlaintextCSVError,
+    send_admin_alert,
 )
 
 
@@ -45,6 +46,7 @@ def main():
     )
 
     while True:
+        message = None
         try:
             message = varys_client.receive(
                 exchange="inbound-matched", queue_suffix="ingest", timeout=60
@@ -182,7 +184,16 @@ def main():
             )
         except Exception as e:
             log.error(f"An unhandled exception occurred: {str(e)}")
-            varys_client.nack_message(message)
+            try:
+                send_admin_alert(
+                    varys_client,
+                    source="onyx-checks",
+                    description=f"failed with unhandled exception: {e}",
+                )
+            except Exception as alert_exception:
+                log.error(f"Failed to send admin alert: {alert_exception}")
+            if message:
+                varys_client.nack_message(message)
             os.remove("/tmp/healthy")
             sys.exit(1)
 

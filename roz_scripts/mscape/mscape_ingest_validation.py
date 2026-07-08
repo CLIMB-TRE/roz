@@ -31,6 +31,7 @@ from roz_scripts.utils.utils import (
     do_uris_exist,
     EtagMismatchError,
     get_pod_namespace,
+    send_admin_alert,
 )
 from varys import Varys
 
@@ -48,10 +49,11 @@ class worker_pool_handler:
         self._project = project
 
     def _send_remote_alert(self, uuid: str, description: str) -> None:
-        self._varys_client.send(
-            message={"uuid": uuid, "description": description},
-            exchange=f"{self._project}-remote-announce",
-            queue_suffix="alert",
+        send_admin_alert(
+            self._varys_client,
+            source=self._project,
+            description=description,
+            uuid=uuid,
         )
 
     def submit_job(self, message, args, ingest_pipe, low_priority=False):
@@ -194,6 +196,14 @@ class worker_pool_handler:
             exchange=f"{self._project}-restricted-announce",
             queue_suffix="dead_worker",
         )
+        try:
+            send_admin_alert(
+                self._varys_client,
+                source=self._project,
+                description=f"ingest worker failed with unhandled exception: {exception}",
+            )
+        except Exception as alert_exception:
+            self._log.error(f"Failed to send admin alert: {alert_exception}")
         Path("/tmp/healthy").unlink(missing_ok=True)
 
     def close(self):

@@ -1,17 +1,16 @@
-"""Slack integration for the remote alerts channel.
+"""Slack integration for the admin alerts channel.
 
-Consumes stripped alert messages (UUID + description only, no identifying fields)
-from {project}-remote-announce exchanges and posts them to a single Slack webhook.
-Messages on this channel are still restricted but safe for off-prem infrastructure.
+Consumes stripped alert messages ({"source", "description", "uuid"?}) from
+the single `remote-announce` exchange and posts them to a Slack webhook.
+Messages on this channel are restricted but safe for off-prem infrastructure -
+producers must only ever put `source`/`description`/`uuid` in the body (see
+roz_scripts.utils.utils.send_admin_alert), and this consumer additionally
+allow-lists those same fields before formatting, so a producer bug can't leak
+anything else through to Slack.
 
 Webhook URL is read from REMOTE_ALERT_WEBHOOK at runtime.
-
-To add a project, append a call to remote_alert_channel() in CHANNELS:
-    remote_alert_channel("pathsafe", label="PATH-SAFE"),
 """
 
-from dataclasses import dataclass
-from typing import Callable
 from varys import Varys
 import os
 import requests
@@ -20,31 +19,19 @@ import sys
 import time
 
 
-@dataclass
-class AlertChannel:
-    exchange: str
-    queue_suffix: str
-    format_message: Callable[[dict], str]
+def format_alert(body: dict) -> str:
+    source = body.get("source", "unknown")
+    description = body.get("description", "(no description)")
+    uuid = body.get("uuid")
 
+    lines = ["<!channel>", f"*ROZ Alert — {source}*", "```", f"description: {description}"]
 
-def remote_alert_channel(project: str, label: str | None = None) -> AlertChannel:
-    display = label or project
+    if uuid:
+        lines.append(f"uuid: {uuid}")
 
-    def formatter(body: dict) -> str:
-        uuid = body.get("uuid", "unknown")
-        description = body.get("description", "(no description)")
-        return f"<!channel>\n*{display} Alert*\n```UUID: {uuid}\n{description}```"
+    lines.append("```")
 
-    return AlertChannel(
-        exchange=f"{project}-remote-announce",
-        queue_suffix="slack_integration",
-        format_message=formatter,
-    )
-
-
-CHANNELS: list[AlertChannel] = [
-    remote_alert_channel("mscape", label="mSCAPE"),
-]
+    return "\n".join(lines)
 
 
 def post_to_slack(webhook_url: str, text: str) -> None:
@@ -61,24 +48,24 @@ def post_to_slack(webhook_url: str, text: str) -> None:
         sys.exit(1)
 
 
-webhook_url = os.getenv("REMOTE_ALERT_WEBHOOK")
+def main():
+    webhook_url = os.getenv("REMOTE_ALERT_WEBHOOK")
 
-if not webhook_url:
-    print("REMOTE_ALERT_WEBHOOK is not set", file=sys.stderr)
-    sys.exit(1)
+    if not webhook_url:
+        print("REMOTE_ALERT_WEBHOOK is not set", file=sys.stderr)
+        sys.exit(1)
 
-varys_client = Varys(
-    profile="roz",
-    logfile=os.devnull,
-    log_level="CRITICAL",
-    auto_acknowledge=False,
-)
+    varys_client = Varys(
+        profile="roz",
+        logfile=os.devnull,
+        log_level="CRITICAL",
+        auto_acknowledge=False,
+    )
 
-while True:
-    for channel in CHANNELS:
+    while True:
         message = varys_client.receive(
-            channel.exchange,
-            queue_suffix=channel.queue_suffix,
+            "remote-announce",
+            queue_suffix="slack_integration",
             timeout=1,
         )
 
@@ -86,6 +73,10 @@ while True:
             continue
 
         body = json.loads(message.body)
-        text = channel.format_message(body)
+        text = format_alert(body)
         post_to_slack(webhook_url, text)
         varys_client.acknowledge_message(message)
+
+
+if __name__ == "__main__":
+    main()
