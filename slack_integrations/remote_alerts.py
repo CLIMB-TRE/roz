@@ -18,6 +18,8 @@ import json
 import sys
 import time
 
+MIN_SECONDS_BETWEEN_ALERTS = 600
+
 
 def format_alert(body: dict) -> str:
     source = body.get("source", "unknown")
@@ -62,6 +64,8 @@ def main():
         auto_acknowledge=False,
     )
 
+    last_sent_at_by_source = {}
+
     while True:
         message = varys_client.receive(
             "remote-announce",
@@ -73,8 +77,18 @@ def main():
             continue
 
         body = json.loads(message.body)
+        source = body.get("source", "unknown")
+
+        now = time.monotonic()
+        last_sent_at = last_sent_at_by_source.get(source)
+        if last_sent_at is not None and now - last_sent_at < MIN_SECONDS_BETWEEN_ALERTS:
+            print(f"Rate limited, dropping alert from {source}", file=sys.stderr)
+            varys_client.acknowledge_message(message)
+            continue
+
         text = format_alert(body)
         post_to_slack(webhook_url, text)
+        last_sent_at_by_source[source] = time.monotonic()
         varys_client.acknowledge_message(message)
 
 
