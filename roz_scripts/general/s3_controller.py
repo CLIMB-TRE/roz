@@ -8,6 +8,10 @@ import re
 import copy
 import requests
 
+S3_ENDPOINT_URL = "https://s3.climb.ac.uk"
+
+REQUESTS_TIMEOUT = 30
+
 policy_template = {
     "Version": "2012-10-17",
     "Statement": [],
@@ -88,6 +92,66 @@ perm_map = {
     "delete": "s3:DeleteObject",
     "list": "s3:ListBucket",
 }
+
+
+def resolve_credentials(aws_credentials_dict: dict, project: str, site: str) -> dict:
+    """Resolve the credentials to use for a given project/site pair.
+
+    The "admin" identity is a top-level key in aws_credentials_dict rather than
+    being nested under a project, so it needs special casing wherever either
+    project or site is "admin" (different callers use either convention).
+
+    Args:
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}, "admin": {...}}
+        project (str): The project the credentials belong to, or "admin"
+        site (str): The site the credentials belong to, or "admin"
+
+    Returns:
+        dict: The credentials dict for the resolved identity
+    """
+    if site == "admin" or project == "admin":
+        return aws_credentials_dict["admin"]
+
+    return aws_credentials_dict[project][site]
+
+
+def get_s3_client(credentials: dict, config: Config = None):
+    """Construct a boto3 S3 client for the given credentials
+
+    Args:
+        credentials (dict): A dict of the form {aws_access_key_id: "", aws_secret_access_key: "", username: ""}
+        config (Config, optional): botocore Config to pass through, e.g. for signature_version overrides
+
+    Returns:
+        boto3.client: An S3 client
+    """
+    kwargs = {
+        "aws_access_key_id": credentials["aws_access_key_id"],
+        "aws_secret_access_key": credentials["aws_secret_access_key"],
+        "endpoint_url": S3_ENDPOINT_URL,
+    }
+
+    if config is not None:
+        kwargs["config"] = config
+
+    return boto3.client("s3", **kwargs)
+
+
+def get_s3_resource(credentials: dict):
+    """Construct a boto3 S3 resource for the given credentials
+
+    Args:
+        credentials (dict): A dict of the form {aws_access_key_id: "", aws_secret_access_key: "", username: ""}
+
+    Returns:
+        boto3.resource: An S3 resource
+    """
+    return boto3.resource(
+        "s3",
+        aws_access_key_id=credentials["aws_access_key_id"],
+        aws_secret_access_key=credentials["aws_secret_access_key"],
+        endpoint_url=S3_ENDPOINT_URL,
+    )
 
 
 def create_config_map(config_dict: dict) -> dict:
@@ -176,17 +240,9 @@ def check_project_bucket_exists(
     Returns:
         bool: True if the bucket exists, False otherwise
     """
-    if site == "admin":
-        credentials = aws_credentials_dict["admin"]
-    else:
-        credentials = aws_credentials_dict[project][site]
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
 
-    s3 = boto3.resource(
-        "s3",
-        aws_access_key_id=credentials["aws_access_key_id"],
-        aws_secret_access_key=credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+    s3 = get_s3_resource(credentials)
 
     bucket = s3.Bucket(bucket_name)
 
@@ -194,13 +250,6 @@ def check_project_bucket_exists(
         return True
     else:
         return False
-
-    # try:
-    #     s3_client.head_bucket(Bucket=bucket_name)
-    #     return True
-
-    # except ClientError:
-    #     return False
 
 
 def can_site_list_objects(
@@ -220,17 +269,9 @@ def can_site_list_objects(
     Returns:
         bool: True if the site can list objects in the bucket, False otherwise
     """
-    if site == "admin":
-        site_credentials = aws_credentials_dict["admin"]
-    else:
-        site_credentials = aws_credentials_dict[project][site]
+    site_credentials = resolve_credentials(aws_credentials_dict, project, site)
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+    s3 = get_s3_client(site_credentials)
 
     try:
         s3.list_objects_v2(Bucket=bucket_name)
@@ -256,17 +297,9 @@ def can_site_get_object(
     Returns:
         bool: True if the site can get an object from the bucket, False otherwise
     """
-    if site == "admin":
-        site_credentials = aws_credentials_dict["admin"]
-    else:
-        site_credentials = aws_credentials_dict[project][site]
+    site_credentials = resolve_credentials(aws_credentials_dict, project, site)
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+    s3 = get_s3_client(site_credentials)
 
     try:
         s3.get_object(Bucket=bucket_name, Key="test")
@@ -298,17 +331,9 @@ def can_site_put_object(
         bool: True if the site can put an object in the bucket, False otherwise
     """
 
-    if site == "admin":
-        site_credentials = aws_credentials_dict["admin"]
-    else:
-        site_credentials = aws_credentials_dict[project][site]
+    site_credentials = resolve_credentials(aws_credentials_dict, project, site)
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+    s3 = get_s3_client(site_credentials)
 
     try:
         s3.put_object(Bucket=bucket_name, Key="test", Body=b"test")
@@ -337,17 +362,9 @@ def can_site_delete_object(
     Returns:
         bool: True if the site can delete an object from the bucket, False otherwise
     """
-    if site == "admin":
-        site_credentials = aws_credentials_dict["admin"]
-    else:
-        site_credentials = aws_credentials_dict[project][site]
+    site_credentials = resolve_credentials(aws_credentials_dict, project, site)
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+    s3 = get_s3_client(site_credentials)
 
     try:
         s3.delete_object(Bucket=bucket_name, Key="test")
@@ -359,183 +376,6 @@ def can_site_delete_object(
             return True
         else:
             return False
-
-
-# def can_site_modify_policy(
-#     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
-# ) -> bool:
-#     """Check if a site can modify a bucket policy, i.e. get the current policy and put it back
-
-#     Args:
-#         bucket_name (str): name of bucket to check
-#         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
-#         project (str): name of project in question
-#         site (str): name of site in question
-
-#     Returns:
-#         bool: True if the site can modify a bucket policy, False otherwise
-#     """
-#     site_credentials = aws_credentials_dict[project][site]
-
-#     s3 = boto3.client(
-#         "s3",
-#         aws_access_key_id=site_credentials["aws_access_key_id"],
-#         aws_secret_access_key=site_credentials["aws_secret_access_key"],
-#         endpoint_url="https://s3.climb.ac.uk",
-#     )
-
-#     admin_s3 = boto3.client(
-#         "s3",
-#         aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-#         aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-#         endpoint_url="https://s3.climb.ac.uk",
-#     )
-
-#     try:
-#         policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
-
-#     except ClientError as e:
-#         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
-#             policy = copy.deepcopy(policy_template)
-
-#             # Add the admin object permissions statement
-#             admin_obj_statement = copy.deepcopy(statement_template)
-
-#             admin_obj_statement["Principal"]["AWS"] = [
-#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-#             ]
-
-#             admin_obj_statement["Action"] = admin_obj_actions_template
-
-#             admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
-
-#             policy["Statement"].append(admin_obj_statement)
-
-#             # Add the admin bucket permissions statement
-
-#             admin_bucket_statement = copy.deepcopy(statement_template)
-
-#             admin_bucket_statement["Principal"]["AWS"] = [
-#                 f"arn:aws:iam:::user/{admin_slug}"
-#             ]
-
-#             admin_bucket_statement["Action"] = admin_bucket_actions_template
-
-#             admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
-
-#             policy["Statement"].append(admin_bucket_statement)
-
-#         elif e.response["Error"]["Code"] == "AccessDenied":
-#             return False
-
-#     if isinstance(policy, str):
-#         policy = json.loads(policy)
-
-#     try:
-#         s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
-#         return True
-#     except ClientError as e:
-#         return False
-
-
-# def can_site_delete_policy(
-#     bucket_name: str, aws_credentials_dict: dict, project: str, site: str
-# ) -> bool:
-#     """Check if a site can delete a bucket policy, i.e. get the current policy, delete it and put it back
-
-#     Args:
-#         bucket_name (str): name of bucket to check
-#         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}}
-#         project (str): name of project in question
-#         site (str): name of site in question
-
-#     Returns:
-#         bool: True if the site can delete a bucket policy, False otherwise
-#     """
-#     site_credentials = aws_credentials_dict[project][site]
-
-#     s3 = boto3.client(
-#         "s3",
-#         aws_access_key_id=site_credentials["aws_access_key_id"],
-#         aws_secret_access_key=site_credentials["aws_secret_access_key"],
-#         endpoint_url="https://s3.climb.ac.uk",
-#     )
-
-#     admin_s3 = boto3.client(
-#         "s3",
-#         aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-#         aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
-#         endpoint_url="https://s3.climb.ac.uk",
-#     )
-
-#     try:
-#         policy = admin_s3.get_bucket_policy(Bucket=bucket_name)["Policy"]
-
-#     except ClientError as e:
-#         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
-#             policy = copy.deepcopy(policy_template)
-
-#             # Add the admin object permissions statement
-#             admin_obj_statement = copy.deepcopy(statement_template)
-
-#             admin_obj_statement["Principal"]["AWS"] = [
-#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-#             ]
-
-#             admin_obj_statement["Action"] = admin_obj_actions_template
-
-#             admin_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}/*"]
-
-#             policy["Statement"].append(admin_obj_statement)
-
-#             # Add the admin bucket permissions statement
-
-#             admin_bucket_statement = copy.deepcopy(statement_template)
-
-#             admin_bucket_statement["Principal"]["AWS"] = [
-#                 f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
-#             ]
-
-#             admin_bucket_statement["Action"] = admin_bucket_actions_template
-
-#             admin_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_name}"]
-
-#             policy["Statement"].append(admin_bucket_statement)
-
-#         elif e.response["Error"]["Code"] == "AccessDenied":
-#             return False
-
-#     if isinstance(policy, str):
-#         policy = json.loads(policy)
-
-#     try:
-#         s3.delete_bucket_policy(Bucket=bucket_name)
-#         admin_s3.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
-#         return True
-#     except ClientError as e:
-#         return False
-
-
-def can_site_get_policy(
-    bucket_name: str, aws_credentials_dict: dict, project: str, site: str
-) -> bool:
-    site_credentials = aws_credentials_dict[project][site]
-
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=site_credentials["aws_access_key_id"],
-        aws_secret_access_key=site_credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
-
-    try:
-        s3.get_bucket_policy(Bucket=bucket_name)
-        return True
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
-            return True
-
-        return False
 
 
 def put_project_policy(
@@ -551,18 +391,9 @@ def put_project_policy(
     Returns:
         bool: True if the policy was put on the bucket, False otherwise
     """
-    if project == "admin":
-        credentials = aws_credentials_dict["admin"]
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
 
-    else:
-        credentials = aws_credentials_dict[project][site]
-
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=credentials["aws_access_key_id"],
-        aws_secret_access_key=credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+    s3 = get_s3_client(credentials)
 
     if isinstance(policy, dict):
         policy = json.dumps(policy)
@@ -822,17 +653,9 @@ def create_project_bucket(
     Returns:
         bool: True if the bucket was created, False otherwise
     """
-    if not site == "admin":
-        credentials = aws_credentials_dict[project][site]
-    else:
-        credentials = aws_credentials_dict["admin"]
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=credentials["aws_access_key_id"],
-        aws_secret_access_key=credentials["aws_secret_access_key"],
-        endpoint_url="https://s3.climb.ac.uk",
-    )
+    s3 = get_s3_client(credentials)
 
     try:
         s3.create_bucket(Bucket=bucket_name, ACL="private")
@@ -872,7 +695,7 @@ def create_site_bucket(
 
     data = {"name": bucket_arn, "policy": json.dumps(policy)}
 
-    r = requests.post(endpoint_url, headers=headers, json=data)
+    r = requests.post(endpoint_url, headers=headers, json=data, timeout=REQUESTS_TIMEOUT)
 
     if r.status_code == 201:
         return True
@@ -908,7 +731,10 @@ def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
     response = requests.patch(
-        endpoint_url, headers=headers, json={"policy": json.dumps(policy)}
+        endpoint_url,
+        headers=headers,
+        json={"policy": json.dumps(policy)},
+        timeout=REQUESTS_TIMEOUT,
     )
 
     if response.status_code == 200:
@@ -942,7 +768,7 @@ def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
-    response = requests.get(endpoint_url, headers=headers)
+    response = requests.get(endpoint_url, headers=headers, timeout=REQUESTS_TIMEOUT)
 
     if response.status_code == 200:
         return True
@@ -1414,6 +1240,7 @@ def setup_sns_topic(
     amqp_pass: str,
     amqp_exchange: str,
     amqps: bool = False,
+    amqp_ca_location: str | None = None,
 ) -> str:
     """Setup an SNS topic
 
@@ -1425,16 +1252,23 @@ def setup_sns_topic(
         amqp_pass (str): Password to connect to rmq server
         amqp_exchange (str): Exchange to publish messages to
         amqps (bool, optional): Use AMQPS to connect to rmq server. Defaults to False.
+        amqp_ca_location (str, optional): Path, on the RGW host(s), to a CA certificate
+            RGW should trust when validating the rmq server's certificate (needed when
+            that certificate is self-signed). Only meaningful when amqps=True. When not
+            provided, certificate verification is disabled rather than left to fail
+            against an untrusted self-signed cert.
 
     Returns:
         str: ARN of created topic
     """
 
+    admin_credentials = aws_credentials_dict["admin"]
+
     sns_client = boto3.client(
         "sns",
-        endpoint_url="https://s3.climb.ac.uk",
-        aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict["admin"]["aws_secret_access_key"],
+        endpoint_url=S3_ENDPOINT_URL,
+        aws_access_key_id=admin_credentials["aws_access_key_id"],
+        aws_secret_access_key=admin_credentials["aws_secret_access_key"],
         config=Config(signature_version="s3"),
     )
 
@@ -1470,12 +1304,19 @@ def setup_sns_topic(
         "amqp-exchange": amqp_exchange,
         "push-endpoint": push_endpoint,
         "amqp-ack-level": "broker",
-        "verify-ssl": "false",
+        # Without a CA to check the rmq server's certificate against (e.g. when
+        # it's self-signed) there's nothing for verify-ssl=true to validate
+        # against, so certificate verification is only enabled once a CA
+        # location is actually configured.
+        "verify-ssl": "true" if amqp_ca_location else "false",
         "max_retries": "10080",
         "retry_sleep_duration": "60",
-        "persistent": "false",
+        "persistent": "true",
         "Policy": topic_policy,
     }
+
+    if amqp_ca_location:
+        attributes["ca-location"] = amqp_ca_location
 
     resp = sns_client.create_topic(Name=topic_name, Attributes=attributes)
 
@@ -1504,14 +1345,9 @@ def setup_messaging(
         bool: True if messaging was setup successfully, False otherwise
     """
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url="https://s3.climb.ac.uk",
-        aws_access_key_id=aws_credentials_dict[project][site]["aws_access_key_id"],
-        aws_secret_access_key=aws_credentials_dict[project][site][
-            "aws_secret_access_key"
-        ],
-    )
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
+
+    s3_client = get_s3_client(credentials)
 
     topic_conf_list = [
         {
@@ -1552,24 +1388,9 @@ def test_bucket_messaging(
         bool: True if the bucket has the correct messaging setup, False otherwise
     """
 
-    if site == "admin":
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url="https://s3.climb.ac.uk",
-            aws_access_key_id=aws_credentials_dict["admin"]["aws_access_key_id"],
-            aws_secret_access_key=aws_credentials_dict["admin"][
-                "aws_secret_access_key"
-            ],
-        )
-    else:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url="https://s3.climb.ac.uk",
-            aws_access_key_id=aws_credentials_dict[project][site]["aws_access_key_id"],
-            aws_secret_access_key=aws_credentials_dict[project][site][
-                "aws_secret_access_key"
-            ],
-        )
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
+
+    s3_client = get_s3_client(credentials)
 
     resp = s3_client.get_bucket_notification_configuration(Bucket=bucket_name)
 
@@ -1721,18 +1542,19 @@ def run(args):
                 amqp_host = os.getenv("AMQP_HOST")
                 amqp_user = os.getenv("AMQP_USER")
                 amqp_pass = os.getenv("AMQP_PASS")
+                amqp_ca_location = os.getenv("AMQP_CA_LOCATION")
+                notification_bucket_config = config_dict["configs"][project][
+                    "notification_bucket_configs"
+                ][bucket]
                 topic_arn = setup_sns_topic(
                     aws_credentials_dict=aws_credentials_dict,
-                    topic_name=config_dict["configs"][project][
-                        "notification_bucket_configs"
-                    ][bucket]["rmq_exchange"],
+                    topic_name=notification_bucket_config["rmq_exchange"],
                     amqp_host=amqp_host,
                     amqp_user=amqp_user,
                     amqp_pass=amqp_pass,
-                    amqp_exchange=config_dict["configs"][project][
-                        "notification_bucket_configs"
-                    ][bucket]["rmq_exchange"],
-                    amqps=True,
+                    amqp_exchange=notification_bucket_config["rmq_exchange"],
+                    amqps=notification_bucket_config.get("amqps", False),
+                    amqp_ca_location=amqp_ca_location,
                 )
 
                 success = setup_messaging(
@@ -1741,9 +1563,7 @@ def run(args):
                     project=project,
                     site=site,
                     topic_arn=topic_arn,
-                    amqp_topic=config_dict["configs"][project][
-                        "notification_bucket_configs"
-                    ][bucket]["rmq_exchange"],
+                    amqp_topic=notification_bucket_config["rmq_exchange"],
                 )
                 if success:
                     print(f"Setup messaging for bucket {bucket_arn}", file=sys.stdout)
@@ -1760,8 +1580,12 @@ def run(args):
             )
 
             if retest_messaging:
+                failed_buckets = ", ".join(
+                    f"{bucket_arn} ({project}/{site})"
+                    for _, bucket_arn, project, site in retest_messaging
+                )
                 print(
-                    f"Failed to setup messaging for {len(retest_messaging)} buckets in project: {project}",
+                    f"Failed to setup messaging for {len(retest_messaging)} buckets: {failed_buckets}",
                     file=sys.stdout,
                 )
 

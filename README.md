@@ -9,7 +9,7 @@ CLIMB-TRE S3 ingest solution and officious bureaucrat.
 # Stuff I need to remember
 
 * push-endpoint not push_endpoint
-* verify-ssl should be false on ceph side
+* verify-ssl defaults to false because the rmq server cert is self-signed and RGW has no CA to check it against - set AMQP_CA_LOCATION (path to the rmq server's cert on the RGW host) to enable verify-ssl=true properly instead of leaving it off
 
 * For testing these opts should be off but in prod they will need to be because local certs
 * #ssl_options.verify     = verify_peer
