@@ -2495,10 +2495,10 @@ class Test_pathsafe_validator(unittest.TestCase):
 
     def test_successful_test(self):
         with (
-            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.pathsafe.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+            patch("roz_scripts.pathsafe.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = 0
 
@@ -2636,10 +2636,10 @@ class Test_pathsafe_validator(unittest.TestCase):
 
     def test_onyx_fail(self):
         with (
-            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.pathsafe.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+            patch("roz_scripts.pathsafe.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = 0
 
@@ -2903,10 +2903,10 @@ class Test_pathsafe_validator(unittest.TestCase):
 
     def test_validator_successful(self):
         with (
-            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.pathsafe.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+            patch("roz_scripts.pathsafe.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = 0
 
