@@ -19,6 +19,7 @@ from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
     get_s3_credentials,
+    get_s3_client,
     put_result_json,
     put_linkage_json,
     get_onyx_credentials,
@@ -95,7 +96,7 @@ class worker_pool_handler:
 
                 put_linkage_json(payload, self._log)
 
-                self._varys_client.acknowledge_message(message)
+            self._varys_client.acknowledge_message(message)
 
         else:
             self._log.info(
@@ -579,12 +580,7 @@ def validate(
 ):
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     log = logging.getLogger("pathsafe.validate")
 

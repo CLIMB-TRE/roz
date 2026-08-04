@@ -1,6 +1,6 @@
 from varys import Varys
 
-from roz_scripts.utils.utils import init_logger, get_onyx_credentials
+from roz_scripts.utils.utils import init_logger, get_onyx_credentials, S3_CLIENT_CONFIG
 
 from onyx import (
     OnyxClient,
@@ -138,7 +138,9 @@ def run(args):
             auto_acknowledge=False,
         )
 
-        s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk")
+        s3_client = boto3.client(
+            "s3", endpoint_url="https://s3.climb.ac.uk", config=S3_CLIENT_CONFIG
+        )
 
         while True:
 

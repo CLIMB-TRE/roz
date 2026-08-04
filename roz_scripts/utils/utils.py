@@ -1,4 +1,5 @@
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from collections import namedtuple
 import configparser
@@ -251,6 +252,14 @@ class pipeline:
             },
         }
 
+        # (connect_timeout, read_timeout) for every k8s API call below, so a
+        # dropped connection to the API server can't block this method forever.
+        k8s_request_timeout = (10, 30)
+        # Upper bound on how long to wait for a job deletion to be confirmed
+        # before giving up - deletion is expected to be fast, so this is not
+        # tied to the caller-supplied pipeline `timeout`.
+        delete_confirm_timeout = 300
+
         try:
             self.cmd = cmd
             os.chdir(logdir)
@@ -260,7 +269,9 @@ class pipeline:
 
             try:
                 resp = api_instance.read_namespaced_job_status(
-                    name=job_name, namespace=namespace
+                    name=job_name,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
 
             except ApiException as e:
@@ -268,7 +279,9 @@ class pipeline:
                     raise
                 resp = None
                 api_instance.create_namespaced_job(
-                    body=job_manifest, namespace=namespace
+                    body=job_manifest,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
 
             if resp and resp.status.failed and resp.status.failed >= backoff_limit:
@@ -280,27 +293,40 @@ class pipeline:
                     name=job_name,
                     namespace=namespace,
                     propagation_policy="Foreground",
+                    _request_timeout=k8s_request_timeout,
                 )
 
+                delete_confirm_start = time.time()
                 while True:
                     try:
                         api_instance.read_namespaced_job_status(
-                            name=job_name, namespace=namespace
+                            name=job_name,
+                            namespace=namespace,
+                            _request_timeout=k8s_request_timeout,
                         )
                     except ApiException as e:
                         if e.status != 404:
                             raise
                         break
+                    if time.time() - delete_confirm_start > delete_confirm_timeout:
+                        raise TimeoutError(
+                            f"Timed out waiting for job {job_name} to be deleted"
+                        )
                     time.sleep(random.uniform(2.0, 3.0))
 
                 api_instance.create_namespaced_job(
-                    body=job_manifest, namespace=namespace
+                    body=job_manifest,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
 
+            job_loop_start = time.time()
             job_completed = False
             while not job_completed:
                 resp = api_instance.read_namespaced_job_status(
-                    name=job_name, namespace=namespace
+                    name=job_name,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
                 if resp.status.succeeded:
                     if resp.status.succeeded >= 1:
@@ -314,25 +340,35 @@ class pipeline:
                             name=job_name,
                             namespace=namespace,
                             propagation_policy="Foreground",
+                            _request_timeout=k8s_request_timeout,
                         )
                         returncode = 1
                         job_completed = True
                         break
 
+                # Use the job's reported start_time where available, but fall
+                # back to wall-clock time since we started polling - if the pod
+                # never gets scheduled, start_time stays None forever and the
+                # loop would otherwise never hit the timeout.
                 if resp.status.start_time:
-                    if time.time() - resp.status.start_time.timestamp() > timeout:
-                        api_instance.delete_namespaced_job(
-                            name=job_name,
-                            namespace=namespace,
-                            propagation_policy="Foreground",
-                        )
-                        returncode = 124
-                        job_completed = True
-                        break
+                    job_age = time.time() - resp.status.start_time.timestamp()
+                else:
+                    job_age = time.time() - job_loop_start
+
+                if job_age > timeout:
+                    api_instance.delete_namespaced_job(
+                        name=job_name,
+                        namespace=namespace,
+                        propagation_policy="Foreground",
+                        _request_timeout=k8s_request_timeout,
+                    )
+                    returncode = 124
+                    job_completed = True
+                    break
 
                 time.sleep(random.uniform(2.0, 3.0))
 
-        except BaseException as e:
+        except Exception as e:
             # proc = SimpleNamespace(returncode=1, stdout=str(k8s_exception), stderr="")
             # print(f"Failed to execute pipeline due to exception: {e}")
             with open(stderr_path, "w") as stderr_fh:
@@ -365,13 +401,7 @@ def put_result_json(payload: dict, log: logging.getLogger):
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        region_name=s3_credentials.region,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     try:
         s3_client.put_object(
@@ -399,13 +429,7 @@ def put_linkage_json(payload: dict, log: logging.getLogger):
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        region_name=s3_credentials.region,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     linkage_dict = {
         "publish_timestamp": time.time_ns(),
@@ -447,12 +471,7 @@ def are_files_empty(*s3_uris: str) -> bool:
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     try:
         for s3_uri in s3_uris:
@@ -477,12 +496,7 @@ def do_uris_exist(*s3_uris: str) -> bool:
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     try:
         for s3_uri in s3_uris:
@@ -1440,6 +1454,35 @@ def get_s3_credentials(
     return s3_credentials
 
 
+S3_CLIENT_CONFIG = Config(
+    connect_timeout=10,
+    read_timeout=60,
+    retries={"max_attempts": 3, "mode": "standard"},
+)
+
+
+def get_s3_client(s3_credentials: __s3_creds) -> boto3.client:
+    """
+    Build an S3 client with bounded connect/read timeouts and retries, so a
+    stalled connection to the S3 endpoint cannot block a caller indefinitely.
+
+    Args:
+        s3_credentials (__s3_creds): Credentials as returned by get_s3_credentials()
+
+    Returns:
+        boto3.client: Configured S3 client
+    """
+
+    return boto3.client(
+        "s3",
+        endpoint_url=s3_credentials.endpoint,
+        aws_access_key_id=s3_credentials.access_key,
+        region_name=s3_credentials.region,
+        aws_secret_access_key=s3_credentials.secret_key,
+        config=S3_CLIENT_CONFIG,
+    )
+
+
 def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
     """
     Take file from S3 URI and return a file handle-like object using StringIO
@@ -1459,13 +1502,7 @@ def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
 
     key = s3_uri.replace("s3://", "").split("/", 1)[1]
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        region_name=s3_credentials.region,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     file_obj = s3_client.get_object(Bucket=bucket, Key=key)
 

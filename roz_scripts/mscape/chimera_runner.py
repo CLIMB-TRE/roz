@@ -28,6 +28,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     onyx_update,
     get_pod_namespace,
+    S3_CLIENT_CONFIG,
 )
 from varys import Varys
 
@@ -285,6 +286,7 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
     s3_client = boto3.client(
         "s3",
         endpoint_url="https://s3.climb.ac.uk",
+        config=S3_CLIENT_CONFIG,
     )
 
     s3_bucket = f"{payload['project']}-chimera-bams"

@@ -9,6 +9,7 @@ import boto3
 from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
+    get_s3_client,
     onyx_update,
     s3_to_fh,
     csv_field_checks,
@@ -303,12 +304,7 @@ def csv_update(parsed_message, config_dict, log):
 
         s3_credentials = get_s3_credentials()
 
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=s3_credentials.endpoint,
-            aws_access_key_id=s3_credentials.access_key,
-            aws_secret_access_key=s3_credentials.secret_key,
-        )
+        s3_client = get_s3_client(s3_credentials)
 
         payload["update_status"] = "failed"
 
@@ -352,12 +348,7 @@ def csv_update(parsed_message, config_dict, log):
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     payload["update_status"] = "failed" if update_failure else "success"
 

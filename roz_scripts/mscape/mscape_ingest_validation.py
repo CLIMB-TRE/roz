@@ -20,6 +20,7 @@ from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
     get_s3_credentials,
+    get_s3_client,
     csv_create,
     onyx_update,
     ensure_file_unseen,
@@ -431,12 +432,7 @@ def dynamic_timeout(*s3_uris: str, logger: logging.Logger | None = None) -> int:
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     try:
         content_length = 0
@@ -1298,12 +1294,7 @@ def validate(
     """
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     log = logging.getLogger(f"{args.project}.ingest")
 
