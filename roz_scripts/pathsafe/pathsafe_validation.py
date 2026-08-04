@@ -29,15 +29,17 @@ from roz_scripts.utils.utils import (
     get_pod_namespace,
     send_admin_alert,
 )
+from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from varys import Varys
 from onyx import OnyxClient
 
 
 class worker_pool_handler:
-    def __init__(self, workers, logger, varys_client):
+    def __init__(self, workers, logger, varys_client, health: HealthState):
         self._log = logger
         self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
+        self._health = health
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
@@ -61,6 +63,8 @@ class worker_pool_handler:
 
     def callback(self, validate_result):
         success, payload, message = validate_result
+
+        self._health.clear_job(payload["uuid"])
 
         if success:
             self._log.info(
@@ -139,7 +143,11 @@ class worker_pool_handler:
 
                     self._varys_client.nack_message(message)
 
-                    os.remove("/tmp/healthy")
+                    # Admin alert for this specific failure was already sent
+                    # above - mark_fatal here just triggers the restart.
+                    self._health.mark_fatal(
+                        f"Validation failed after 5 attempts for UUID: {payload['uuid']}, shutting down worker pool"
+                    )
 
                     raise ValueError(
                         "Validation failed after 5 attempts, shutting down worker pool"
@@ -169,15 +177,13 @@ class worker_pool_handler:
             exchange="pathsafe-restricted-announce",
             queue_suffix="dead_worker",
         )
-        try:
-            send_admin_alert(
-                self._varys_client,
-                source="pathsafe",
-                description=f"ingest worker failed with unhandled exception: {exception}",
-            )
-        except Exception as alert_exception:
-            self._log.error(f"Failed to send admin alert: {alert_exception}")
-        os.remove("/tmp/healthy")
+        reason = f"ingest worker failed with unhandled exception: {exception}"
+        self._health.mark_fatal(
+            reason,
+            alert_fn=lambda r: send_admin_alert(
+                self._varys_client, source="pathsafe", description=r
+            ),
+        )
 
     def close(self):
         self.worker_pool.close()
@@ -383,6 +389,7 @@ def execute_assembly_pipeline(
     log: logging.getLogger,
     ingest_pipe: pipeline,
     artifact_metadata: dict,
+    job_heartbeat: JobHeartbeat | None = None,
 ) -> tuple[int, bool, str, str]:
     """Execute the validation pipeline for a given artifact
 
@@ -391,6 +398,9 @@ def execute_assembly_pipeline(
         args (argparse.Namespace): The command line arguments object
         log (logging.getLogger): The logger object
         ingest_pipe (pipeline): The instance of the ingest pipeline (see pipeline class)
+        job_heartbeat (JobHeartbeat | None): Heartbeat handle for this job, so a
+            liveness probe can tell this stage is still progressing rather than
+            stuck, and so the deadline check tracks the pipeline's own timeout
 
     Returns:
         tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
@@ -437,6 +447,11 @@ def execute_assembly_pipeline(
     stdout_path = os.path.join(log_path, "nextflow.stdout")
     stderr_path = os.path.join(log_path, "nextflow.stderr")
 
+    progress_cb = None
+    if job_heartbeat is not None:
+        job_heartbeat.beat(stage="running_pipeline", budget_s=args.timeout)
+        progress_cb = lambda stage: job_heartbeat.beat(stage=stage)
+
     return ingest_pipe.execute(
         params=parameters,
         logdir=log_path,
@@ -447,6 +462,7 @@ def execute_assembly_pipeline(
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         workingdir=log_path,
+        progress_cb=progress_cb,
     )
 
 
@@ -590,6 +606,11 @@ def validate(
 
     payload["rerun"] = False
 
+    job_heartbeat = JobHeartbeat(
+        get_health_dir(), uuid=payload["uuid"], budget_s=600
+    )
+    job_heartbeat.beat(stage="pre_pipeline_checks")
+
     # This client is purely for pathsafe, ignore all other messages
     if to_validate["project"] != "pathsafe":
         log.info(
@@ -695,6 +716,11 @@ def validate(
         log=log,
         ingest_pipe=ingest_pipe,
         artifact_metadata=artifact_metadata,
+        job_heartbeat=job_heartbeat,
+    )
+
+    job_heartbeat.beat(
+        stage="post_pipeline_processing", budget_s=args.retry_delay + 1600
     )
 
     if ingest_pipe.cmd:
@@ -825,8 +851,10 @@ def run(args):
             job_prefix="ingest",
         )
 
+        health = HealthState(get_health_dir())
+
         worker_pool = worker_pool_handler(
-            workers=args.n_workers, logger=log, varys_client=varys_client
+            workers=args.n_workers, logger=log, varys_client=varys_client, health=health
         )
 
         while True:
@@ -838,10 +866,7 @@ def run(args):
                 timeout=60,
             )
 
-            # Add timestamp to file to indicate health
-            if os.path.exists("/tmp/healthy"):
-                with open("/tmp/healthy", "w") as fh:
-                    fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if message:
                 worker_pool.submit_job(
@@ -850,7 +875,12 @@ def run(args):
 
     except BaseException:
         log.exception("Shutting down worker pool due to exception:")
-        os.remove("/tmp/healthy")
+        health.mark_fatal(
+            "main loop crashed",
+            alert_fn=lambda r: send_admin_alert(
+                varys_client, source="pathsafe", description=r
+            ),
+        )
         worker_pool.close()
         varys_client.close()
 

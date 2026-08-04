@@ -16,6 +16,7 @@ from roz_scripts.utils.utils import (
     send_admin_alert,
 )
 from roz_scripts.general.s3_matcher import parse_object_key
+from roz_scripts.utils.health import HealthState, get_health_dir
 from varys import Varys
 
 from onyx import (
@@ -376,6 +377,8 @@ def run(args):
         with open(os.getenv("ROZ_CONFIG_JSON"), "r") as f:
             config_dict = json.load(f)
 
+        health = HealthState(get_health_dir())
+
         while True:
 
             message = varys_client.receive(
@@ -384,8 +387,7 @@ def run(args):
                 timeout=60,
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if message:
 
@@ -420,15 +422,13 @@ def run(args):
 
     except BaseException as e:
         log.exception("Unhandled error: ")
-        try:
-            send_admin_alert(
-                varys_client,
-                source="s3_onyx_updates",
-                description=f"failed with unhandled exception: {e}",
-            )
-        except Exception as alert_exception:
-            log.error(f"Failed to send admin alert: {alert_exception}")
-        os.remove("/tmp/healthy")
+        reason = f"failed with unhandled exception: {e}"
+        health.mark_fatal(
+            reason,
+            alert_fn=lambda r: send_admin_alert(
+                varys_client, source="s3_onyx_updates", description=r
+            ),
+        )
         varys_client.close()
         time.sleep(1)
         sys.exit(1)

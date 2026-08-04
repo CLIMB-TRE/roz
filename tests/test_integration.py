@@ -1,13 +1,10 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from roz_scripts import (
-    s3_matcher,
-    ingest,
-    mscape_ingest_validation,
-    utils,
-    pathsafe_validation,
-)
+from roz_scripts.general import s3_matcher, ingest
+from roz_scripts.mscape import mscape_ingest_validation
+from roz_scripts.pathsafe import pathsafe_validation
+from roz_scripts.utils import utils
 
 from onyx.exceptions import OnyxRequestError
 

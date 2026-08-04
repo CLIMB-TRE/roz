@@ -1,6 +1,6 @@
 import moto
 from moto.core import set_initial_no_auth_action_count
-from roz_scripts import s3_controller
+from roz_scripts.general import s3_controller
 import os
 import boto3
 from botocore.exceptions import ClientError

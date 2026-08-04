@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import unittest
 from collections import namedtuple
 from unittest.mock import MagicMock, call, patch
@@ -13,6 +14,7 @@ from roz_scripts.mscape.mscape_ingest_validation import (
     worker_pool_handler,
     run,
 )
+from roz_scripts.utils.health import HealthState
 
 
 def setUpModule():
@@ -94,7 +96,9 @@ class TestWorkerPoolHandlerInit(unittest.TestCase):
         log = MagicMock()
         varys = MagicMock()
 
-        handler = worker_pool_handler(workers=4, logger=log, varys_client=varys, project="mscape")
+        handler = worker_pool_handler(
+            workers=4, logger=log, varys_client=varys, project="mscape", health=MagicMock()
+        )
 
         mock_pool_cls.assert_called_once_with(processes=4)
         self.assertEqual(handler._project, "mscape")
@@ -104,7 +108,11 @@ class TestWorkerPoolHandlerSubmitJob(unittest.TestCase):
     def setUp(self):
         with patch("multiprocessing.Pool"):
             self.handler = worker_pool_handler(
-                workers=2, logger=MagicMock(), varys_client=MagicMock(), project="mscape"
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=MagicMock(),
             )
         self.message = make_message()
         self.args = make_args()
@@ -136,7 +144,11 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
     def setUp(self):
         with patch("multiprocessing.Pool"):
             self.handler = worker_pool_handler(
-                workers=2, logger=MagicMock(), varys_client=MagicMock(), project="mscape"
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=MagicMock(),
             )
         self.message = make_message()
 
@@ -467,13 +479,20 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
 
 class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
     def setUp(self):
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp_dir.cleanup)
+        self.health = HealthState(self._tmp_dir.name)
+
         with patch("multiprocessing.Pool"):
             self.handler = worker_pool_handler(
-                workers=2, logger=MagicMock(), varys_client=MagicMock(), project="mscape"
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=self.health,
             )
 
-    @patch("os.remove")
-    def test_error_callback_sends_dead_worker_message(self, mock_os_remove):
+    def test_error_callback_sends_dead_worker_message(self):
         exc = Exception("Worker exploded")
         self.handler.error_callback(exc)
 
@@ -483,8 +502,7 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
             queue_suffix="dead_worker",
         )
 
-    @patch("os.remove")
-    def test_error_callback_sends_admin_alert(self, mock_os_remove):
+    def test_error_callback_sends_admin_alert(self):
         exc = Exception("Worker exploded")
         self.handler.error_callback(exc)
 
@@ -497,11 +515,14 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
             queue_suffix="alert",
         )
 
-    @patch("roz_scripts.mscape.mscape_ingest_validation.Path")
-    def test_error_callback_removes_healthy_file(self, mock_path):
+    def test_error_callback_marks_health_fatal(self):
         self.handler.error_callback(Exception("boom"))
-        mock_path.assert_called_with("/tmp/healthy")
-        mock_path.return_value.unlink.assert_called_once_with(missing_ok=True)
+
+        from pathlib import Path
+
+        fatal_path = Path(self._tmp_dir.name) / "fatal"
+        self.assertTrue(fatal_path.exists())
+        self.assertIn("boom", fatal_path.read_text())
 
 
 # ---------------------------------------------------------------------------
@@ -566,8 +587,9 @@ class TestRunMessagePrioritisation(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.pipeline")
     @patch("roz_scripts.mscape.mscape_ingest_validation.Varys")
     @patch("roz_scripts.mscape.mscape_ingest_validation.init_logger")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.HealthState")
     def test_priority_message_is_submitted_when_both_present(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
+        self, mock_health_cls, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
         mock_sleep, mock_exists, mock_remove, mock_exit
     ):
         priority_msg = make_message("priority-uuid")
@@ -594,8 +616,9 @@ class TestRunMessagePrioritisation(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.pipeline")
     @patch("roz_scripts.mscape.mscape_ingest_validation.Varys")
     @patch("roz_scripts.mscape.mscape_ingest_validation.init_logger")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.HealthState")
     def test_rerun_message_is_nacked_when_priority_present(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
+        self, mock_health_cls, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
         mock_sleep, mock_exists, mock_remove, mock_exit
     ):
         priority_msg = make_message("priority-uuid")
@@ -618,8 +641,9 @@ class TestRunMessagePrioritisation(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.pipeline")
     @patch("roz_scripts.mscape.mscape_ingest_validation.Varys")
     @patch("roz_scripts.mscape.mscape_ingest_validation.init_logger")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.HealthState")
     def test_only_priority_message_submitted_with_no_nack(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
+        self, mock_health_cls, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
         mock_sleep, mock_exists, mock_remove, mock_exit
     ):
         priority_msg = make_message("priority-uuid")
@@ -646,8 +670,9 @@ class TestRunMessagePrioritisation(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.pipeline")
     @patch("roz_scripts.mscape.mscape_ingest_validation.Varys")
     @patch("roz_scripts.mscape.mscape_ingest_validation.init_logger")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.HealthState")
     def test_rerun_message_submitted_when_no_priority(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
+        self, mock_health_cls, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
         mock_sleep, mock_exists, mock_remove, mock_exit
     ):
         rerun_msg = make_message("rerun-uuid")
@@ -674,8 +699,9 @@ class TestRunMessagePrioritisation(unittest.TestCase):
     @patch("roz_scripts.mscape.mscape_ingest_validation.pipeline")
     @patch("roz_scripts.mscape.mscape_ingest_validation.Varys")
     @patch("roz_scripts.mscape.mscape_ingest_validation.init_logger")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.HealthState")
     def test_no_messages_sleeps_and_does_not_submit(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
+        self, mock_health_cls, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_pool_cls,
         mock_sleep, mock_exists, mock_remove, mock_exit
     ):
         """When both queues are empty the loop should sleep without submitting a job."""

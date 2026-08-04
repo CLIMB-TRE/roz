@@ -131,6 +131,7 @@ class pipeline:
         stderr_path: str,
         workingdir: Path,
         resume: bool = False,
+        progress_cb=None,
     ) -> int:
         """
         Execute the pipeline as a k8s job
@@ -146,6 +147,9 @@ class pipeline:
             stderr_path (str): Path to the stderr file
             resume (bool): Whether to resume the pipeline
             workingdir (Path): Path to the nextflow work directory
+            progress_cb (Callable[[str], None] | None): Called on every poll
+                iteration with a short stage description, so a caller can
+                prove liveness while this method blocks for a long time
 
         Returns:
             int: The (fake) return code of the job
@@ -312,6 +316,8 @@ class pipeline:
                         raise TimeoutError(
                             f"Timed out waiting for job {job_name} to be deleted"
                         )
+                    if progress_cb:
+                        progress_cb("awaiting_job_deletion")
                     time.sleep(random.uniform(2.0, 3.0))
 
                 api_instance.create_namespaced_job(
@@ -366,6 +372,8 @@ class pipeline:
                     job_completed = True
                     break
 
+                if progress_cb:
+                    progress_cb("awaiting_job_completion")
                 time.sleep(random.uniform(2.0, 3.0))
 
         except Exception as e:
