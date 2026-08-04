@@ -4,7 +4,7 @@ import unittest
 import json
 import os
 
-from roz_scripts import s3_matcher
+from roz_scripts.general import s3_matcher
 
 DIR = os.path.dirname(__file__)
 

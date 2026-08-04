@@ -17,6 +17,7 @@ from roz_scripts.utils.utils import (
     NonPlaintextCSVError,
     send_admin_alert,
 )
+from roz_scripts.utils.health import HealthState, get_health_dir
 
 
 def main():
@@ -45,6 +46,8 @@ def main():
         auto_acknowledge=False,
     )
 
+    health = HealthState(get_health_dir())
+
     while True:
         message = None
         try:
@@ -52,8 +55,7 @@ def main():
                 exchange="inbound-matched", queue_suffix="ingest", timeout=60
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if not message:
                 continue
@@ -184,17 +186,15 @@ def main():
             )
         except Exception as e:
             log.error(f"An unhandled exception occurred: {str(e)}")
-            try:
-                send_admin_alert(
-                    varys_client,
-                    source="onyx-checks",
-                    description=f"failed with unhandled exception: {e}",
-                )
-            except Exception as alert_exception:
-                log.error(f"Failed to send admin alert: {alert_exception}")
+            reason = f"failed with unhandled exception: {e}"
+            health.mark_fatal(
+                reason,
+                alert_fn=lambda r: send_admin_alert(
+                    varys_client, source="onyx-checks", description=r
+                ),
+            )
             if message:
                 varys_client.nack_message(message)
-            os.remove("/tmp/healthy")
             sys.exit(1)
 
 

@@ -962,7 +962,7 @@ class TestRunPipelineFlow(unittest.TestCase):
             run(make_args())
 
         mock_varys.acknowledge_message.assert_called_once_with(msg)
-        mock_varys.send.assert_called_once_with(
+        mock_varys.send.assert_any_call(
             message=payload,
             exchange="downstream-chimera-mscape",
             queue_suffix="chimera",
@@ -1004,7 +1004,7 @@ class TestRunPipelineFlow(unittest.TestCase):
                 run(make_args())
 
             mock_varys.acknowledge_message.assert_called_once_with(rerun_msg)
-            mock_varys.send.assert_called_once_with(
+            mock_varys.send.assert_any_call(
                 message=payload,
                 exchange="downstream-chimera_rerun-mscape",
                 queue_suffix="chimera",

@@ -1,9 +1,11 @@
 from roz_scripts.utils.utils import (
     get_s3_credentials,
+    get_s3_client,
     init_logger,
     put_result_json,
     send_admin_alert,
 )
+from roz_scripts.utils.health import HealthState, get_health_dir
 from roz_scripts.general.s3_controller import create_config_map
 from varys import Varys
 
@@ -408,12 +410,7 @@ def main():
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     varys_client = Varys(
         profile="roz",
@@ -444,6 +441,8 @@ def main():
         existing_objects=objects, config_dict=config_dict
     )
 
+    health = HealthState(get_health_dir())
+
     while True:
         try:
             message = varys_client.receive(
@@ -452,8 +451,7 @@ def main():
                 timeout=60,
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if not message:
                 continue
@@ -507,15 +505,13 @@ def main():
 
         except Exception as e:
             log.error(f"Unhandled exception: {str(e)}")
-            try:
-                send_admin_alert(
-                    varys_client,
-                    source="s3_matcher",
-                    description=f"failed with unhandled exception: {e}",
-                )
-            except Exception as alert_exception:
-                log.error(f"Failed to send admin alert: {alert_exception}")
-            os.remove("/tmp/healthy")
+            reason = f"failed with unhandled exception: {e}"
+            health.mark_fatal(
+                reason,
+                alert_fn=lambda r: send_admin_alert(
+                    varys_client, source="s3_matcher", description=r
+                ),
+            )
             sys.exit(1)
 
 

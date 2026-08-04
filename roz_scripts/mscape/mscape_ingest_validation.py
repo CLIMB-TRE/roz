@@ -20,6 +20,7 @@ from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
     get_s3_credentials,
+    get_s3_client,
     csv_create,
     onyx_update,
     ensure_file_unseen,
@@ -33,14 +34,16 @@ from roz_scripts.utils.utils import (
     get_pod_namespace,
     send_admin_alert,
 )
+from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from varys import Varys
 
 
 class worker_pool_handler:
-    def __init__(self, workers, logger, varys_client, project):
+    def __init__(self, workers, logger, varys_client, project, health: HealthState):
         self._log = logger
         self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
+        self._health = health
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
@@ -80,6 +83,8 @@ class worker_pool_handler:
 
     def callback(self, validate_result):
         success, alert, hcid_alerts, payload, message = validate_result
+
+        self._health.clear_job(payload["uuid"])
 
         if alert:
             self._log.error(
@@ -196,15 +201,13 @@ class worker_pool_handler:
             exchange=f"{self._project}-restricted-announce",
             queue_suffix="dead_worker",
         )
-        try:
-            send_admin_alert(
-                self._varys_client,
-                source=self._project,
-                description=f"ingest worker failed with unhandled exception: {exception}",
-            )
-        except Exception as alert_exception:
-            self._log.error(f"Failed to send admin alert: {alert_exception}")
-        Path("/tmp/healthy").unlink(missing_ok=True)
+        reason = f"ingest worker failed with unhandled exception: {exception}"
+        self._health.mark_fatal(
+            reason,
+            alert_fn=lambda r: send_admin_alert(
+                self._varys_client, source=self._project, description=r
+            ),
+        )
 
     def close(self):
         self.worker_pool.close()
@@ -216,6 +219,7 @@ def execute_validation_pipeline(
     args: argparse.Namespace,
     ingest_pipe: pipeline,
     spike_in: str,
+    job_heartbeat: JobHeartbeat | None = None,
 ) -> tuple[int, str, str]:
     """Execute the validation pipeline for a given artifact
 
@@ -224,6 +228,9 @@ def execute_validation_pipeline(
         args (argparse.Namespace): The command line arguments object
         log (logging.getLogger): The logger object
         ingest_pipe (pipeline): The instance of the ingest pipeline (see pipeline class)
+        job_heartbeat (JobHeartbeat | None): Heartbeat handle for this job, so a
+            liveness probe can tell this stage is still progressing rather than
+            stuck, and so the deadline check tracks the pipeline's own timeout
 
     Returns:
         tuple[int, str, str]: Tuple containing the return code, stdout and stderr of the pipeline
@@ -288,6 +295,11 @@ def execute_validation_pipeline(
     stdout_path = os.path.join(log_path, "nextflow.stdout")
     stderr_path = os.path.join(log_path, "nextflow.stderr")
 
+    progress_cb = None
+    if job_heartbeat is not None:
+        job_heartbeat.beat(stage="running_pipeline", budget_s=timeout)
+        progress_cb = lambda stage: job_heartbeat.beat(stage=stage)
+
     return ingest_pipe.execute(
         params=parameters,
         logdir=log_path,
@@ -298,6 +310,7 @@ def execute_validation_pipeline(
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         workingdir=log_path,
+        progress_cb=progress_cb,
     )
 
 
@@ -431,12 +444,7 @@ def dynamic_timeout(*s3_uris: str, logger: logging.Logger | None = None) -> int:
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     try:
         content_length = 0
@@ -1298,12 +1306,7 @@ def validate(
     """
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     log = logging.getLogger(f"{args.project}.ingest")
 
@@ -1314,6 +1317,16 @@ def validate(
     payload["low_priority"] = low_priority
 
     payload.setdefault("rerun", False)
+
+    # Budget covers pre-pipeline checks (S3 head/get calls); reset to the
+    # dynamically-computed pipeline timeout once the pipeline itself starts,
+    # and again to a post-pipeline budget once it finishes - so a liveness
+    # probe watching the deadline tracks the current stage, not the job's
+    # original (possibly 24h+) overall budget.
+    job_heartbeat = JobHeartbeat(
+        get_health_dir(), uuid=payload["uuid"], budget_s=600
+    )
+    job_heartbeat.beat(stage="pre_pipeline_checks")
 
     alert = False
     hcid_alerts = False
@@ -1524,6 +1537,11 @@ def validate(
         args=args,
         ingest_pipe=ingest_pipe,
         spike_in=artifact_metadata.get("spike_in"),
+        job_heartbeat=job_heartbeat,
+    )
+
+    job_heartbeat.beat(
+        stage="post_pipeline_processing", budget_s=args.retry_delay + 1600
     )
 
     log.info(
@@ -1718,6 +1736,8 @@ def validate(
 
     fraction_fail_outer = False
 
+    job_heartbeat.beat(stage="uploading_read_fractions")
+
     for fraction in (
         "human_filtered",
         "unclassified",
@@ -1851,11 +1871,14 @@ def run(args):
             job_prefix="ingest",
         )
 
+        health = HealthState(get_health_dir())
+
         worker_pool = worker_pool_handler(
             workers=args.n_workers,
             logger=log,
             varys_client=varys_client,
             project=args.project,
+            health=health,
         )
 
         while True:
@@ -1873,10 +1896,7 @@ def run(args):
                 timeout=10,
             )
 
-            # Add timestamp to file to indicate health
-            if os.path.exists("/tmp/healthy"):
-                with open("/tmp/healthy", "w") as fh:
-                    fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if not priority_message and not rerun_message:
                 time.sleep(60)
@@ -1896,7 +1916,12 @@ def run(args):
 
     except BaseException:
         log.exception("Shutting down worker pool due to exception:")
-        Path("/tmp/healthy").unlink(missing_ok=True)
+        health.mark_fatal(
+            "main loop crashed",
+            alert_fn=lambda r: send_admin_alert(
+                varys_client, source=args.project, description=r
+            ),
+        )
         worker_pool.close()
         varys_client.close()
         time.sleep(1)

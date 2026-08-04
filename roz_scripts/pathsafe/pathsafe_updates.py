@@ -1,6 +1,12 @@
 from varys import Varys
 
-from roz_scripts.utils.utils import init_logger, get_onyx_credentials
+from roz_scripts.utils.utils import (
+    init_logger,
+    get_onyx_credentials,
+    S3_CLIENT_CONFIG,
+    send_admin_alert,
+)
+from roz_scripts.utils.health import HealthState, get_health_dir
 
 from onyx import (
     OnyxClient,
@@ -138,7 +144,11 @@ def run(args):
             auto_acknowledge=False,
         )
 
-        s3_client = boto3.client("s3", endpoint_url="https://s3.climb.ac.uk")
+        s3_client = boto3.client(
+            "s3", endpoint_url="https://s3.climb.ac.uk", config=S3_CLIENT_CONFIG
+        )
+
+        health = HealthState(get_health_dir())
 
         while True:
 
@@ -148,8 +158,7 @@ def run(args):
                 timeout=60,
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if message:
 
@@ -188,7 +197,12 @@ def run(args):
 
     except BaseException:
         log.exception("Exception in main loop:")
-        os.remove("/tmp/healthy")
+        health.mark_fatal(
+            "main loop crashed",
+            alert_fn=lambda r: send_admin_alert(
+                varys_client, source="pathsafe_updates", description=r
+            ),
+        )
         varys_client.close()
         time.sleep(1)
         sys.exit(1)

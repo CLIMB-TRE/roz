@@ -28,7 +28,10 @@ from roz_scripts.utils.utils import (
     init_logger,
     onyx_update,
     get_pod_namespace,
+    S3_CLIENT_CONFIG,
+    send_admin_alert,
 )
+from roz_scripts.utils.health import HealthState, get_health_dir
 from varys import Varys
 
 
@@ -285,6 +288,7 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
     s3_client = boto3.client(
         "s3",
         endpoint_url="https://s3.climb.ac.uk",
+        config=S3_CLIENT_CONFIG,
     )
 
     s3_bucket = f"{payload['project']}-chimera-bams"
@@ -330,6 +334,8 @@ def run(args):
             job_prefix="chimera",
         )
 
+        health = HealthState(get_health_dir())
+
         while True:
             priority_message = varys_client.receive(
                 exchange=f"inbound-new_artifact-{args.project}",
@@ -344,6 +350,8 @@ def run(args):
                 prefetch_count=1,
                 timeout=10,
             )
+
+            health.heartbeat()
 
             if not priority_message and not rerun_message:
                 time.sleep(60)
@@ -421,6 +429,7 @@ def run(args):
                 stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
                 stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
                 workingdir=record_outdir,
+                progress_cb=lambda stage: health.heartbeat(),
             )
 
             if rc != 0:
@@ -582,7 +591,13 @@ def run(args):
                     queue_suffix="chimera",
                 )
 
-    except BaseException:
+    except BaseException as e:
+        health.mark_fatal(
+            f"chimera runner crashed: {e}",
+            alert_fn=lambda r: send_admin_alert(
+                varys_client, source="chimera_runner", description=r
+            ),
+        )
         varys_client.close()
         time.sleep(300)
         log.exception("Shutting down chimera runner due to exception:")

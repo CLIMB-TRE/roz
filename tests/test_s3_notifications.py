@@ -1,5 +1,5 @@
 import unittest
-from roz_scripts import s3_notifications
+from roz_scripts.general import s3_notifications
 
 from varys import Varys
 import boto3

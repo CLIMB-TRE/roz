@@ -9,12 +9,14 @@ import boto3
 from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
+    get_s3_client,
     onyx_update,
     s3_to_fh,
     csv_field_checks,
     send_admin_alert,
 )
 from roz_scripts.general.s3_matcher import parse_object_key
+from roz_scripts.utils.health import HealthState, get_health_dir
 from varys import Varys
 
 from onyx import (
@@ -303,12 +305,7 @@ def csv_update(parsed_message, config_dict, log):
 
         s3_credentials = get_s3_credentials()
 
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=s3_credentials.endpoint,
-            aws_access_key_id=s3_credentials.access_key,
-            aws_secret_access_key=s3_credentials.secret_key,
-        )
+        s3_client = get_s3_client(s3_credentials)
 
         payload["update_status"] = "failed"
 
@@ -352,12 +349,7 @@ def csv_update(parsed_message, config_dict, log):
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     payload["update_status"] = "failed" if update_failure else "success"
 
@@ -385,6 +377,8 @@ def run(args):
         with open(os.getenv("ROZ_CONFIG_JSON"), "r") as f:
             config_dict = json.load(f)
 
+        health = HealthState(get_health_dir())
+
         while True:
 
             message = varys_client.receive(
@@ -393,8 +387,7 @@ def run(args):
                 timeout=60,
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if message:
 
@@ -429,15 +422,13 @@ def run(args):
 
     except BaseException as e:
         log.exception("Unhandled error: ")
-        try:
-            send_admin_alert(
-                varys_client,
-                source="s3_onyx_updates",
-                description=f"failed with unhandled exception: {e}",
-            )
-        except Exception as alert_exception:
-            log.error(f"Failed to send admin alert: {alert_exception}")
-        os.remove("/tmp/healthy")
+        reason = f"failed with unhandled exception: {e}"
+        health.mark_fatal(
+            reason,
+            alert_fn=lambda r: send_admin_alert(
+                varys_client, source="s3_onyx_updates", description=r
+            ),
+        )
         varys_client.close()
         time.sleep(1)
         sys.exit(1)
