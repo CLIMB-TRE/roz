@@ -659,7 +659,14 @@ def push_taxon_reports(
 
     taxon_report_path = os.path.join(result_path, "classifications")
 
+    db_version = os.getenv("SCYLLA_K2_DB_DATE")
+
     try:
+        if not db_version:
+            raise RuntimeError(
+                "SCYLLA_K2_DB_DATE environment variable is not set, cannot upload db-version-tagged taxon reports"
+            )
+
         reports = os.listdir(taxon_report_path)
 
         s3_bucket = f"{payload['project']}-published-taxon-reports"
@@ -671,12 +678,21 @@ def push_taxon_reports(
             ) or report.startswith("."):
                 continue
 
+            report_local_path = os.path.join(taxon_report_path, report)
+
             s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{report}"
-            # Add handling for Db in name etc
             s3_client.upload_file(
-                os.path.join(taxon_report_path, report),
+                report_local_path,
                 s3_bucket,
                 s3_key,
+            )
+
+            stem, suffix = os.path.splitext(report)
+            s3_key_versioned = f"{payload['climb_id']}/{payload['climb_id']}_{stem}.{db_version}{suffix}"
+            s3_client.upload_file(
+                report_local_path,
+                s3_bucket,
+                s3_key_versioned,
             )
 
     except Exception as push_taxon_report_exception:

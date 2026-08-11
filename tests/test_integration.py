@@ -1195,9 +1195,16 @@ class Test_mscape_validator(unittest.TestCase):
             published_taxon_reports_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-taxon-reports"
             )
+            published_taxon_reports_keys = [
+                x["Key"] for x in published_taxon_reports_contents["Contents"]
+            ]
             self.assertIn(
                 "test_climb_id/test_climb_id_PlusPF.kraken_report.txt",
-                [x["Key"] for x in published_taxon_reports_contents["Contents"]],
+                published_taxon_reports_keys,
+            )
+            self.assertIn(
+                "test_climb_id/test_climb_id_PlusPF.kraken_report.2024-01-01.txt",
+                published_taxon_reports_keys,
             )
 
             published_binned_reads_contents = self.s3_client.list_objects(
@@ -2154,9 +2161,16 @@ class Test_mscape_validator(unittest.TestCase):
             published_taxon_reports_contents = self.s3_client.list_objects(
                 Bucket="mscape-published-taxon-reports"
             )
+            published_taxon_reports_keys = [
+                x["Key"] for x in published_taxon_reports_contents["Contents"]
+            ]
             self.assertIn(
                 "test_climb_id/test_climb_id_PlusPF.kraken_report.txt",
-                [x["Key"] for x in published_taxon_reports_contents["Contents"]],
+                published_taxon_reports_keys,
+            )
+            self.assertIn(
+                "test_climb_id/test_climb_id_PlusPF.kraken_report.2024-01-01.txt",
+                published_taxon_reports_keys,
             )
 
             published_binned_reads_contents = self.s3_client.list_objects(

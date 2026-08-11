@@ -24,6 +24,7 @@ from roz_scripts.mscape.chimera_runner import (
     handle_sylph_report,
     onyx_get_metadata,
     push_bam_file,
+    push_chimera_report,
     ret_0_parser,
     run,
 )
@@ -586,6 +587,75 @@ class TestPushBamFile(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# push_chimera_report
+# ---------------------------------------------------------------------------
+
+class TestPushChimeraReport(unittest.TestCase):
+    def setUp(self):
+        self.log = MagicMock()
+        self.payload = make_payload()
+
+    @patch("roz_scripts.mscape.chimera_runner.boto3.client")
+    def test_success_uploads_canonical_and_versioned_copies(self, mock_boto_client):
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        uri = push_chimera_report(
+            "/tmp/CLIMB001.alignment_report.tsv",
+            "alignment_report.tsv",
+            "v1.0",
+            self.payload,
+            self.log,
+        )
+
+        self.assertEqual(
+            uri, "s3://mscape-chimera-reports/CLIMB001.alignment_report.tsv"
+        )
+        mock_s3.upload_file.assert_any_call(
+            "/tmp/CLIMB001.alignment_report.tsv",
+            "mscape-chimera-reports",
+            "CLIMB001.alignment_report.tsv",
+        )
+        mock_s3.upload_file.assert_any_call(
+            "/tmp/CLIMB001.alignment_report.tsv",
+            "mscape-chimera-reports",
+            "CLIMB001.v1.0.alignment_report.tsv",
+        )
+        self.assertEqual(mock_s3.upload_file.call_count, 2)
+
+    @patch("roz_scripts.mscape.chimera_runner.boto3.client")
+    def test_no_db_version_raises_and_uploads_nothing(self, mock_boto_client):
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        with self.assertRaises(ValueError):
+            push_chimera_report(
+                "/tmp/CLIMB001.sylph_taxonomy_report.tsv",
+                "sylph_taxonomy_report.tsv",
+                None,
+                self.payload,
+                self.log,
+            )
+
+        mock_s3.upload_file.assert_not_called()
+
+    @patch("roz_scripts.mscape.chimera_runner.boto3.client")
+    def test_upload_failure_raises(self, mock_boto_client):
+        mock_s3 = MagicMock()
+        mock_s3.upload_file.side_effect = Exception("S3 upload failed")
+        mock_boto_client.return_value = mock_s3
+
+        with self.assertRaises(Exception, msg="S3 upload failed"):
+            push_chimera_report(
+                "/tmp/CLIMB001.alignment_report.tsv",
+                "alignment_report.tsv",
+                "v1.0",
+                self.payload,
+                self.log,
+            )
+
+
+# ---------------------------------------------------------------------------
 # run() — message prioritisation and pipeline flow
 # ---------------------------------------------------------------------------
 
@@ -829,6 +899,7 @@ class TestRunPipelineFlow(unittest.TestCase):
         mock_varys.nack_message.assert_called_with(msg)
         mock_varys.acknowledge_message.assert_not_called()
 
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
     @patch("os.path.exists")
     @patch("pathlib.Path.mkdir")
     @patch("time.sleep")
@@ -841,7 +912,8 @@ class TestRunPipelineFlow(unittest.TestCase):
     @patch("roz_scripts.mscape.chimera_runner.init_logger")
     def test_sylph_report_missing_without_chimera_info_nacks(
         self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_handle_align, mock_ret_0, mock_sleep, mock_mkdir, mock_exists
+        mock_create_ss, mock_handle_align, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
+        mock_push_report
     ):
         payload = make_payload()
         msg = make_message(payload)
@@ -861,6 +933,7 @@ class TestRunPipelineFlow(unittest.TestCase):
 
     @patch("roz_scripts.mscape.chimera_runner.onyx_update")
     @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
     @patch("os.path.exists")
     @patch("pathlib.Path.mkdir")
     @patch("time.sleep")
@@ -874,7 +947,7 @@ class TestRunPipelineFlow(unittest.TestCase):
     def test_sylph_report_missing_with_no_hits_does_not_nack(
         self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
         mock_create_ss, mock_handle_align, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
-        mock_push_bam, mock_onyx_update
+        mock_push_report, mock_push_bam, mock_onyx_update
     ):
         """When SYLPH_TAXONOMY has no_hits status the missing sylph report is expected — no nack."""
         payload = make_payload()
@@ -905,7 +978,7 @@ class TestRunPipelineFlow(unittest.TestCase):
     def _full_success_mocks(
         self, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
         mock_create_ss, mock_ret_0, mock_mkdir, mock_exists,
-        mock_handle_align, mock_handle_sylph, mock_push_bam, mock_onyx_update,
+        mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update,
         priority_msg, rerun_msg=None,
     ):
         payload = json.loads(priority_msg.body if priority_msg else rerun_msg.body)
@@ -934,6 +1007,7 @@ class TestRunPipelineFlow(unittest.TestCase):
 
     @patch("roz_scripts.mscape.chimera_runner.onyx_update")
     @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
     @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
     @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
     @patch("os.path.exists")
@@ -948,13 +1022,13 @@ class TestRunPipelineFlow(unittest.TestCase):
     def test_full_success_priority_sends_to_standard_downstream(
         self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
         mock_create_ss, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
-        mock_handle_align, mock_handle_sylph, mock_push_bam, mock_onyx_update
+        mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update
     ):
         msg = make_message()
         mock_varys, payload = self._full_success_mocks(
             mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
             mock_create_ss, mock_ret_0, mock_mkdir, mock_exists,
-            mock_handle_align, mock_handle_sylph, mock_push_bam, mock_onyx_update,
+            mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update,
             priority_msg=msg, rerun_msg=None,
         )
 
@@ -984,6 +1058,7 @@ class TestRunPipelineFlow(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("roz_scripts.mscape.chimera_runner.handle_alignment_report", return_value=True),
             patch("roz_scripts.mscape.chimera_runner.handle_sylph_report", return_value=True),
+            patch("roz_scripts.mscape.chimera_runner.push_chimera_report"),
             patch("roz_scripts.mscape.chimera_runner.push_bam_file", return_value="s3://mscape-chimera-bams/CLIMB001.chimera.bam"),
             patch("roz_scripts.mscape.chimera_runner.onyx_update"),
         ]
@@ -991,7 +1066,7 @@ class TestRunPipelineFlow(unittest.TestCase):
         with patches[0], patches[1] as mock_varys_cls, patches[2] as mock_pipeline_cls, \
              patches[3] as mock_get_metadata, patches[4], patches[5] as mock_ret_0, \
              patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], \
-             patches[12] as mock_onyx_update:
+             patches[12], patches[13] as mock_onyx_update:
 
             mock_varys = mock_varys_cls.return_value
             mock_varys.receive.side_effect = [None, rerun_msg, KeyboardInterrupt()]
@@ -1012,6 +1087,7 @@ class TestRunPipelineFlow(unittest.TestCase):
 
     @patch("roz_scripts.mscape.chimera_runner.onyx_update")
     @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
     @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
     @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
     @patch("os.path.exists")
@@ -1026,7 +1102,7 @@ class TestRunPipelineFlow(unittest.TestCase):
     def test_onyx_update_failure_after_bam_upload_nacks(
         self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
         mock_create_ss, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
-        mock_handle_align, mock_handle_sylph, mock_push_bam, mock_onyx_update
+        mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update
     ):
         payload = make_payload()
         msg = make_message(payload)
