@@ -756,13 +756,11 @@ def run():
                     os.path.join(base_db_path, "taxonomy", "latest"),
                 )
 
-    get_ncbi_blast()
-
-    get_bakta_db()
-
-    get_sylph_dbs()
-
-    get_gtdb_db()
+    for fetcher in (get_ncbi_blast, get_bakta_db, get_sylph_dbs, get_gtdb_db):
+        try:
+            fetcher()
+        except Exception as e:
+            print(f"{fetcher.__name__}: failed, skipping for this run: {e}")
 
 
 def main():
