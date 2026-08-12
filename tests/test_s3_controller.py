@@ -751,3 +751,41 @@ class TestS3Controller(unittest.TestCase):
         # notification config and must be left alone.
         self.assertEqual(flagged_buckets, {"ingest"})
         self.assertTrue(all(project in ("project1", "project2") for _, _, project, _ in to_fix))
+
+    def test_generate_project_policy_merges_sites_with_shared_permission_set(self):
+        # project1's "fake_files" bucket maps both the "analysis" and "uploader"
+        # roles to the same "project_read" permission set, and all three of
+        # project1's sites resolve to one of those two roles. They should all
+        # collapse into a single object-level and single bucket-level
+        # statement rather than getting one of each per site.
+        policy = s3_controller.generate_project_policy(
+            bucket_name="fake_files",
+            bucket_arn="project1-fake-files",
+            project="project1",
+            config_dict=fake_roz_cfg_dict,
+            aws_credentials_dict=fake_aws_cred_dict,
+        )
+
+        admin_arn = f"arn:aws:iam:::user/{fake_aws_cred_dict['admin']['username']}"
+
+        site_statements = [
+            statement
+            for statement in policy["Statement"]
+            if isinstance(statement.get("Principal"), dict)
+            and statement["Principal"].get("AWS") != [admin_arn]
+        ]
+
+        self.assertEqual(len(site_statements), 2)
+
+        expected_principals = {
+            "arn:aws:iam:::user/bryn-"
+            + fake_aws_cred_dict["project1"][site]["username"][0:16].replace(".", "-")
+            for site in (
+                "site1.project1",
+                "subsite1.site2.project1",
+                "subsite2.site2.project1",
+            )
+        }
+
+        for statement in site_statements:
+            self.assertEqual(set(statement["Principal"]["AWS"]), expected_principals)

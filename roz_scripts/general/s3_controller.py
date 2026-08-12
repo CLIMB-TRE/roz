@@ -396,7 +396,7 @@ def put_project_policy(
     s3 = get_s3_client(credentials)
 
     if isinstance(policy, dict):
-        policy = json.dumps(policy)
+        policy = json.dumps(policy, separators=(",", ":"))
 
     try:
         # Retrieve waiter instance that will wait till a specified bucket exists
@@ -578,57 +578,57 @@ def generate_project_policy(
 
     policy["Statement"].append(admin_bucket_statement)
 
+    # Sites that resolve to the same permission set (usually because they share
+    # a role) are granted identical actions, so they're grouped into a single
+    # pair of statements with multiple principals instead of one pair each -
+    # this is what keeps the policy from growing linearly with site count.
+    bucket_policy_map = config_dict["configs"][project]["project_buckets"][
+        bucket_name
+    ]["policy"]
+
+    site_arns_by_permission_set = {}
+
     for site, role in config_dict["configs"][project]["sites"].items():
-        if (
-            role
-            not in config_dict["configs"][project]["project_buckets"][bucket_name][
-                "policy"
-            ]
-        ):
+        if role not in bucket_policy_map:
             continue
 
-        # Add the site statement
-        site_obj_statement = copy.deepcopy(statement_template)
+        permission_set = bucket_policy_map[role]
+
+        correct_perms = config_dict["configs"][project]["bucket_policies"].get(
+            permission_set, []
+        )
+
+        if not correct_perms:
+            continue
 
         site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(
             ".", "-"
         )
 
-        site_obj_statement["Principal"]["AWS"] = [
+        site_arns_by_permission_set.setdefault(permission_set, []).append(
             f"arn:aws:iam:::user/bryn-{site_slug}"
+        )
+
+    for permission_set, site_arns in site_arns_by_permission_set.items():
+        correct_perms = config_dict["configs"][project]["bucket_policies"][
+            permission_set
         ]
 
-        site_bucket_statement = copy.deepcopy(statement_template)
-
-        site_bucket_statement["Principal"]["AWS"] = [
-            f"arn:aws:iam:::user/bryn-{site_slug}"
-        ]
-
-        try:
-            permission_set = config_dict["configs"][project]["project_buckets"][
-                bucket_name
-            ]["policy"][role]
-
-            correct_perms = config_dict["configs"][project]["bucket_policies"][
-                permission_set
-            ]
-        except KeyError:
-            correct_perms = []
-
-        if not correct_perms:
-            continue
-
+        site_obj_statement = copy.deepcopy(statement_template)
+        site_obj_statement["Principal"]["AWS"] = site_arns
         site_obj_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}/*"]
 
+        site_bucket_statement = copy.deepcopy(statement_template)
+        site_bucket_statement["Principal"]["AWS"] = site_arns
         site_bucket_statement["Resource"] = [f"arn:aws:s3:::{bucket_arn}"]
 
         for perm in correct_perms:
             aws_perm = perm_map[perm]
             if aws_perm in admin_obj_actions_template:
-                site_obj_statement["Action"].append(perm_map[perm])
+                site_obj_statement["Action"].append(aws_perm)
 
             elif aws_perm in admin_bucket_actions_template:
-                site_bucket_statement["Action"].append(perm_map[perm])
+                site_bucket_statement["Action"].append(aws_perm)
 
         if site_obj_statement["Action"]:
             policy["Statement"].append(site_obj_statement)
@@ -693,7 +693,7 @@ def create_site_bucket(
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
 
-    data = {"name": bucket_arn, "policy": json.dumps(policy)}
+    data = {"name": bucket_arn, "policy": json.dumps(policy, separators=(",", ":"))}
 
     r = requests.post(endpoint_url, headers=headers, json=data, timeout=REQUESTS_TIMEOUT)
 
@@ -733,7 +733,7 @@ def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
     response = requests.patch(
         endpoint_url,
         headers=headers,
-        json={"policy": json.dumps(policy)},
+        json={"policy": json.dumps(policy, separators=(",", ":"))},
         timeout=REQUESTS_TIMEOUT,
     )
 
