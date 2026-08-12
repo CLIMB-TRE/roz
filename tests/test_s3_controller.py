@@ -43,6 +43,13 @@ fake_roz_cfg_dict = {
                     },
                 }
             },
+            "notification_bucket_configs": {
+                "ingest": {
+                    "rmq_exchange": "inbound-s3",
+                    "rmq_queue_env": "s3_matcher",
+                    "amqps": False,
+                }
+            },
             "project_buckets": {
                 "fake_files": {
                     "name_layout": "{project}-fake-files",
@@ -105,6 +112,13 @@ fake_roz_cfg_dict = {
                         "analysis": "site_ingest",
                         "uploader": "site_ingest",
                     },
+                }
+            },
+            "notification_bucket_configs": {
+                "ingest": {
+                    "rmq_exchange": "inbound-s3",
+                    "rmq_queue_env": "s3_matcher",
+                    "amqps": False,
                 }
             },
             "project_buckets": {
@@ -542,3 +556,236 @@ class TestS3Controller(unittest.TestCase):
                             (bucket, bucket_arn, project, site),
                             policy_results["site_buckets"],
                         )
+
+    def test_resolve_credentials(self):
+        self.assertEqual(
+            s3_controller.resolve_credentials(fake_aws_cred_dict, "project1", "admin"),
+            fake_aws_cred_dict["admin"],
+        )
+        self.assertEqual(
+            s3_controller.resolve_credentials(fake_aws_cred_dict, "admin", "site1"),
+            fake_aws_cred_dict["admin"],
+        )
+        self.assertEqual(
+            s3_controller.resolve_credentials(
+                fake_aws_cred_dict, "project1", "site1.project1"
+            ),
+            fake_aws_cred_dict["project1"]["site1.project1"],
+        )
+
+    def test_setup_sns_topic_amqp_protocol(self):
+        # setup_sns_topic must honour the `amqps` flag when building the AMQP(S)
+        # push-endpoint URL, rather than assuming one protocol.
+        with patch("roz_scripts.general.s3_controller.boto3.client") as mock_boto_client:
+            mock_sns = Mock()
+            mock_sns.create_topic.return_value = {"TopicArn": "arn:aws:sns:s3::plain"}
+            mock_boto_client.return_value = mock_sns
+
+            topic_arn = s3_controller.setup_sns_topic(
+                aws_credentials_dict=fake_aws_cred_dict,
+                topic_name="plain",
+                amqp_host="rabbitmq.internal",
+                amqp_user="guest",
+                amqp_pass="guest",
+                amqp_exchange="test-exchange",
+                amqps=False,
+            )
+
+            self.assertEqual(topic_arn, "arn:aws:sns:s3::plain")
+            _, kwargs = mock_sns.create_topic.call_args
+            self.assertEqual(
+                kwargs["Attributes"]["push-endpoint"],
+                "amqp://guest:guest@rabbitmq.internal:5672",
+            )
+
+        with patch("roz_scripts.general.s3_controller.boto3.client") as mock_boto_client:
+            mock_sns = Mock()
+            mock_sns.create_topic.return_value = {"TopicArn": "arn:aws:sns:s3::tls"}
+            mock_boto_client.return_value = mock_sns
+
+            s3_controller.setup_sns_topic(
+                aws_credentials_dict=fake_aws_cred_dict,
+                topic_name="tls",
+                amqp_host="rabbitmq.internal",
+                amqp_user="guest",
+                amqp_pass="guest",
+                amqp_exchange="test-exchange",
+                amqps=True,
+            )
+
+            _, kwargs = mock_sns.create_topic.call_args
+            self.assertEqual(
+                kwargs["Attributes"]["push-endpoint"],
+                "amqps://guest:guest@rabbitmq.internal:5671",
+            )
+
+    def test_setup_sns_topic_secure_and_durable_defaults(self):
+        # persistent=true decouples the S3 op from AMQP delivery/ack (only the
+        # write to RGW's local persistent queue is synchronous). verify-ssl
+        # can only safely be "true" once a CA location is configured for RGW
+        # to validate the rmq server's certificate against (the rmq server
+        # uses a self-signed cert, which RGW has no other way to trust) -
+        # without one, "true" would just break delivery outright.
+        with patch("roz_scripts.general.s3_controller.boto3.client") as mock_boto_client:
+            mock_sns = Mock()
+            mock_sns.create_topic.return_value = {"TopicArn": "arn:aws:sns:s3::topic"}
+            mock_boto_client.return_value = mock_sns
+
+            s3_controller.setup_sns_topic(
+                aws_credentials_dict=fake_aws_cred_dict,
+                topic_name="topic",
+                amqp_host="rabbitmq.internal",
+                amqp_user="guest",
+                amqp_pass="guest",
+                amqp_exchange="test-exchange",
+                amqps=True,
+            )
+
+            _, kwargs = mock_sns.create_topic.call_args
+            self.assertEqual(kwargs["Attributes"]["persistent"], "true")
+            self.assertEqual(kwargs["Attributes"]["verify-ssl"], "false")
+            self.assertNotIn("ca-location", kwargs["Attributes"])
+
+        with patch("roz_scripts.general.s3_controller.boto3.client") as mock_boto_client:
+            mock_sns = Mock()
+            mock_sns.create_topic.return_value = {"TopicArn": "arn:aws:sns:s3::topic-ca"}
+            mock_boto_client.return_value = mock_sns
+
+            s3_controller.setup_sns_topic(
+                aws_credentials_dict=fake_aws_cred_dict,
+                topic_name="topic-ca",
+                amqp_host="rabbitmq.internal",
+                amqp_user="guest",
+                amqp_pass="guest",
+                amqp_exchange="test-exchange",
+                amqps=True,
+                amqp_ca_location="/etc/ceph/rmq-ca.pem",
+            )
+
+            _, kwargs = mock_sns.create_topic.call_args
+            self.assertEqual(kwargs["Attributes"]["verify-ssl"], "true")
+            self.assertEqual(
+                kwargs["Attributes"]["ca-location"], "/etc/ceph/rmq-ca.pem"
+            )
+
+    def test_setup_messaging_resolves_admin_credentials(self):
+        # Regression test: setup_messaging used to look up
+        # aws_credentials_dict[project][site] unconditionally, which raised a
+        # KeyError for site="admin" since admin credentials are a top-level key,
+        # not nested under each project. This is why messaging setup for
+        # project/admin-owned buckets always crashed.
+        with patch("roz_scripts.general.s3_controller.boto3.client") as mock_boto_client:
+            mock_s3 = Mock()
+            mock_s3.put_bucket_notification_configuration.return_value = {
+                "ResponseMetadata": {"HTTPStatusCode": 200}
+            }
+            mock_boto_client.return_value = mock_s3
+
+            success = s3_controller.setup_messaging(
+                aws_credentials_dict=fake_aws_cred_dict,
+                bucket_name="fake-bucket",
+                site="admin",
+                project="project1",
+                topic_arn="arn:aws:sns:s3::test-topic",
+                amqp_topic="test-topic",
+            )
+
+            self.assertTrue(success)
+
+            _, kwargs = mock_boto_client.call_args
+            self.assertEqual(
+                kwargs["aws_access_key_id"],
+                fake_aws_cred_dict["admin"]["aws_access_key_id"],
+            )
+
+    def test_test_bucket_messaging(self):
+        with patch("roz_scripts.general.s3_controller.boto3.client") as mock_boto_client:
+            mock_s3 = Mock()
+            mock_s3.get_bucket_notification_configuration.return_value = {
+                "ResponseMetadata": {"HTTPStatusCode": 200},
+                "TopicConfigurations": [{"Id": "test-topic"}],
+            }
+            mock_boto_client.return_value = mock_s3
+
+            self.assertTrue(
+                s3_controller.test_bucket_messaging(
+                    aws_credentials_dict=fake_aws_cred_dict,
+                    bucket_name="fake-bucket",
+                    correct_topic="test-topic",
+                    project="project1",
+                    site="admin",
+                )
+            )
+
+            self.assertFalse(
+                s3_controller.test_bucket_messaging(
+                    aws_credentials_dict=fake_aws_cred_dict,
+                    bucket_name="fake-bucket",
+                    correct_topic="wrong-topic",
+                    project="project1",
+                    site="admin",
+                )
+            )
+
+    def test_audit_bucket_messaging_only_flags_notification_buckets(self):
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+
+        with patch("roz_scripts.general.s3_controller.boto3.client") as mock_boto_client:
+            mock_s3 = Mock()
+            # No bucket has any notification configuration set up yet.
+            mock_s3.get_bucket_notification_configuration.return_value = {
+                "ResponseMetadata": {"HTTPStatusCode": 200}
+            }
+            mock_boto_client.return_value = mock_s3
+
+            to_fix = s3_controller.audit_bucket_messaging(
+                aws_credentials_dict=fake_aws_cred_dict,
+                config_map=config_map,
+                config_dict=fake_roz_cfg_dict,
+            )
+
+        flagged_buckets = {bucket for bucket, _, _, _ in to_fix}
+
+        # Only buckets with a "notification_bucket_configs" entry ("ingest")
+        # should ever be flagged - project buckets like "fake_files" have no
+        # notification config and must be left alone.
+        self.assertEqual(flagged_buckets, {"ingest"})
+        self.assertTrue(all(project in ("project1", "project2") for _, _, project, _ in to_fix))
+
+    def test_generate_project_policy_merges_sites_with_shared_permission_set(self):
+        # project1's "fake_files" bucket maps both the "analysis" and "uploader"
+        # roles to the same "project_read" permission set, and all three of
+        # project1's sites resolve to one of those two roles. They should all
+        # collapse into a single object-level and single bucket-level
+        # statement rather than getting one of each per site.
+        policy = s3_controller.generate_project_policy(
+            bucket_name="fake_files",
+            bucket_arn="project1-fake-files",
+            project="project1",
+            config_dict=fake_roz_cfg_dict,
+            aws_credentials_dict=fake_aws_cred_dict,
+        )
+
+        admin_arn = f"arn:aws:iam:::user/{fake_aws_cred_dict['admin']['username']}"
+
+        site_statements = [
+            statement
+            for statement in policy["Statement"]
+            if isinstance(statement.get("Principal"), dict)
+            and statement["Principal"].get("AWS") != [admin_arn]
+        ]
+
+        self.assertEqual(len(site_statements), 2)
+
+        expected_principals = {
+            "arn:aws:iam:::user/bryn-"
+            + fake_aws_cred_dict["project1"][site]["username"][0:16].replace(".", "-")
+            for site in (
+                "site1.project1",
+                "subsite1.site2.project1",
+                "subsite2.site2.project1",
+            )
+        }
+
+        for statement in site_statements:
+            self.assertEqual(set(statement["Principal"]["AWS"]), expected_principals)
