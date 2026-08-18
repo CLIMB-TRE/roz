@@ -642,12 +642,12 @@ def process_record(
             "NXF_HOME": str(nxf_home),
         }
 
-        job_heartbeat.beat(stage="running_pipeline", budget_s=3600)
+        job_heartbeat.beat(stage="running_pipeline", budget_s=args.chimera_timeout)
 
         rc = chimera_pipe.execute(
             params=pipeline_params,
             logdir=record_outdir,
-            timeout=3600,
+            timeout=args.chimera_timeout,
             env_vars=env_vars,
             namespace=namespace,
             job_id=match_uuid,
@@ -949,6 +949,12 @@ def main():
     )
     parser.add_argument("--sylph_db_version", type=str, help="Sylph DB version")
     parser.add_argument("--n_workers", type=int, default=3)
+    parser.add_argument(
+        "--chimera_timeout",
+        type=int,
+        default=3600,
+        help="Timeout in seconds for a single chimera pipeline run",
+    )
     parser.add_argument("--nxf_image", default="quay.io/climb-tre/nextflow:25.04.8")
     parser.add_argument("--logfile", type=Path, default=Path("chimera_runner.log"))
     parser.add_argument("--log_level", type=str, default="DEBUG")

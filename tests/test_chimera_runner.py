@@ -95,6 +95,7 @@ def make_args(**kwargs):
         logfile=None,
         log_level="DEBUG",
         n_workers=3,
+        chimera_timeout=3600,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -713,6 +714,28 @@ class TestProcessRecord(unittest.TestCase):
 
         self.assertFalse(success)
         self.assertFalse(timed_out)
+
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_chimera_timeout_arg_is_passed_to_pipeline_execute(
+        self, mock_get_metadata, mock_create_ss, mock_heartbeat_cls
+    ):
+        mock_get_metadata.return_value = make_metadata()
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+
+        process_record(
+            message=msg,
+            args=make_args(chimera_timeout=1800),
+            chimera_pipe=pipe,
+            namespace="ns",
+        )
+
+        _, kwargs = pipe.execute.call_args
+        self.assertEqual(kwargs["timeout"], 1800)
 
     @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
     @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
