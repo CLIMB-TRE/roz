@@ -606,6 +606,7 @@ class TestRunMessagePrioritisation(unittest.TestCase):
             message=priority_msg,
             args=unittest.mock.ANY,
             ingest_pipe=mock_pipeline_cls.return_value,
+            low_priority=False,
         )
 
     @patch("sys.exit")
@@ -659,6 +660,7 @@ class TestRunMessagePrioritisation(unittest.TestCase):
             message=priority_msg,
             args=unittest.mock.ANY,
             ingest_pipe=mock_pipeline_cls.return_value,
+            low_priority=False,
         )
         mock_varys.nack_message.assert_not_called()
 
@@ -684,10 +686,16 @@ class TestRunMessagePrioritisation(unittest.TestCase):
 
         run(self._make_args())
 
+        # Regression test for a routing bug: submit_job() must be told this
+        # came from the rerun exchange, otherwise validate() defaults
+        # low_priority to False and a successful rerun gets routed to the
+        # normal new_artifact exchange (and gets a spurious put_linkage_json
+        # call) instead of the rerun one.
         mock_pool.submit_job.assert_called_once_with(
             message=rerun_msg,
             args=unittest.mock.ANY,
             ingest_pipe=mock_pipeline_cls.return_value,
+            low_priority=True,
         )
         mock_varys.nack_message.assert_not_called()
 

@@ -1920,14 +1920,19 @@ def run(args):
 
             if priority_message:
                 message = priority_message
+                low_priority = False
                 if rerun_message:
                     varys_client.nack_message(rerun_message)
             elif rerun_message:
                 message = rerun_message
+                low_priority = True
 
             if message:
                 worker_pool.submit_job(
-                    message=message, args=args, ingest_pipe=ingest_pipe
+                    message=message,
+                    args=args,
+                    ingest_pipe=ingest_pipe,
+                    low_priority=low_priority,
                 )
 
     except BaseException:

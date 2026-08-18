@@ -13,6 +13,7 @@ from roz_scripts.utils.utils import (
     check_artifact_published,
     onyx_identify,
     onyx_reconcile,
+    onyx_update,
     get_s3_credentials,
     valid_character_checks,
     pipeline,
@@ -794,3 +795,58 @@ class test_pipeline_execute(unittest.TestCase):
         self.assertEqual(returncode, 0)
         api_instance.create_namespaced_job.assert_not_called()
         api_instance.delete_namespaced_job.assert_not_called()
+
+
+class test_onyx_update_payload_key_errors(unittest.TestCase):
+    """Regression tests: onyx_update must not raise KeyError from inside its
+    own exception handlers when the payload doesn't carry 'artifact'/'uuid'
+    keys (e.g. chimera payloads, which use 'match_uuid' and no 'artifact')."""
+
+    def setUp(self):
+        os.environ["ONYX_DOMAIN"] = "testing"
+        os.environ["ONYX_TOKEN"] = "testing"
+        self.log = Mock()
+        self.chimera_payload = {"project": "mscape", "climb_id": "CLIMB001", "match_uuid": "match-1234"}
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_client_error_does_not_raise_keyerror_on_chimera_payload(self, mock_client_cls):
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+        mock_client.update.side_effect = OnyxClientError("bad request")
+
+        fail, alert, payload = onyx_update(
+            payload=self.chimera_payload, fields={"foo": "bar"}, log=self.log
+        )
+
+        self.assertTrue(fail)
+        self.assertFalse(alert)
+        self.assertIn("onyx_errors", payload["onyx_update_errors"])
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_request_error_does_not_raise_keyerror_on_chimera_payload(self, mock_client_cls):
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+        mock_response = MockResponse(400, json_data={"messages": {"foo": ["bad value"]}})
+        mock_client.update.side_effect = OnyxRequestError("bad request", mock_response)
+
+        fail, alert, payload = onyx_update(
+            payload=self.chimera_payload, fields={"foo": "bar"}, log=self.log
+        )
+
+        self.assertTrue(fail)
+        self.assertFalse(alert)
+        self.assertEqual(payload["onyx_update_errors"]["foo"], ["bad value"])
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_unhandled_exception_does_not_raise_keyerror(self, mock_client_cls):
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+        mock_client.update.side_effect = ValueError("something unexpected")
+
+        fail, alert, payload = onyx_update(
+            payload=self.chimera_payload, fields={"foo": "bar"}, log=self.log
+        )
+
+        self.assertTrue(fail)
+        self.assertTrue(alert)
+        self.assertIn("onyx_errors", payload["onyx_update_errors"])
+        self.assertIn(
+            "Unhandled onyx_update error", payload["onyx_update_errors"]["onyx_errors"][0]
+        )

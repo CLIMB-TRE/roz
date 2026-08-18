@@ -7,7 +7,6 @@ import os
 import sys
 from io import StringIO
 import logging
-import logging.handlers
 from pathlib import Path
 import time
 import csv
@@ -31,10 +30,13 @@ from onyx.exceptions import (
 from kubernetes import config as k8s_config
 from kubernetes.client import ApiClient
 from kubernetes.client.exceptions import ApiException
+from kubernetes.client.api import BatchV1Api
 
 
 def get_pod_namespace() -> str:
-    sa_mount = Path(os.getenv("K8S_SECRETS_MOUNT", "/run/secrets/kubernetes.io/serviceaccount"))
+    sa_mount = Path(
+        os.getenv("K8S_SECRETS_MOUNT", "/run/secrets/kubernetes.io/serviceaccount")
+    )
     ns_file = sa_mount / "namespace"
     if ns_file.exists():
         return ns_file.read_text().strip()
@@ -44,7 +46,6 @@ def get_pod_namespace() -> str:
     raise RuntimeError(
         "Cannot determine k8s namespace: not running in a pod and POD_NAMESPACE is not set"
     )
-from kubernetes.client.api import BatchV1Api
 
 
 __s3_creds = namedtuple(
@@ -1346,7 +1347,7 @@ def onyx_update(
 
             except OnyxClientError as e:
                 log.error(
-                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                    f"Onyx update failed for artifact: {payload.get('artifact', 'NA')}, UUID: {payload.get('uuid') or payload.get('match_uuid', 'NA')}. Error: {e}"
                 )
                 payload.setdefault("onyx_update_errors", {})
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
@@ -1356,7 +1357,7 @@ def onyx_update(
 
             except OnyxRequestError as e:
                 log.error(
-                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                    f"Onyx update failed for artifact: {payload.get('artifact', 'NA')}, UUID: {payload.get('uuid') or payload.get('match_uuid', 'NA')}. Error: {e}"
                 )
 
                 payload.setdefault("onyx_update_errors", {})
@@ -1368,6 +1369,7 @@ def onyx_update(
 
             except Exception as e:
                 log.error(f"Unhandled onyx_update error: {e}")
+                payload.setdefault("onyx_update_errors", {})
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
                 payload["onyx_update_errors"]["onyx_errors"].append(
                     f"Unhandled onyx_update error: {e}"

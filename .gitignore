@@ -6,3 +6,4 @@ dist*
 *.log
 *roz_config.json
 *varys_cfg.json
+settings.json

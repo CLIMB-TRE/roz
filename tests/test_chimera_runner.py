@@ -19,10 +19,12 @@ from onyx.exceptions import (
 )
 
 from roz_scripts.mscape.chimera_runner import (
+    chimera_worker_pool_handler,
     create_samplesheet,
     handle_alignment_report,
     handle_sylph_report,
     onyx_get_metadata,
+    process_record,
     push_bam_file,
     push_chimera_report,
     ret_0_parser,
@@ -92,6 +94,7 @@ def make_args(**kwargs):
         sylph_db_version="v2.0",
         logfile=None,
         log_level="DEBUG",
+        n_workers=3,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -656,11 +659,545 @@ class TestPushChimeraReport(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# run() — message prioritisation and pipeline flow
+# process_record — pool worker (replaces the old inline pipeline block)
+# ---------------------------------------------------------------------------
+
+class TestProcessRecord(unittest.TestCase):
+    """process_record() is the pool worker that runs in a separate process.
+    It must never touch varys directly (ack/nack/publish) - it only ever
+    returns a result tuple for the handler's callback to act on, since a
+    worker process can be killed independently of the main process."""
+
+    def setUp(self):
+        chmod_patcher = patch("pathlib.Path.chmod")
+        self.mock_chmod = chmod_patcher.start()
+        self.addCleanup(chmod_patcher.stop)
+
+        mkdir_patcher = patch("pathlib.Path.mkdir")
+        self.mock_mkdir = mkdir_patcher.start()
+        self.addCleanup(mkdir_patcher.stop)
+
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_metadata_failure_returns_failure_result(self, mock_get_metadata, mock_heartbeat_cls):
+        mock_get_metadata.return_value = False
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+
+        success, timed_out, result_payload, match_uuid, is_rerun, out_msg = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+        self.assertFalse(timed_out)
+        self.assertEqual(match_uuid, payload["match_uuid"])
+        self.assertIs(out_msg, msg)
+        pipe.execute.assert_not_called()
+
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_pipeline_nonzero_rc_returns_failure(
+        self, mock_get_metadata, mock_create_ss, mock_heartbeat_cls
+    ):
+        mock_get_metadata.return_value = make_metadata()
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 1
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+        self.assertFalse(timed_out)
+
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_pipeline_timeout_rc_124_marks_timed_out(
+        self, mock_get_metadata, mock_create_ss, mock_heartbeat_cls
+    ):
+        """rc 124 is pipeline.execute()'s signal for a hard k8s-job timeout -
+        this must be distinguished from other failures so the handler can
+        alert specifically on repeated timeouts."""
+        mock_get_metadata.return_value = make_metadata()
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 124
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+        self.assertTrue(timed_out)
+
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_ret_0_parser_ingest_fail_returns_failure(
+        self, mock_get_metadata, mock_create_ss, mock_ret_0, mock_heartbeat_cls
+    ):
+        mock_get_metadata.return_value = make_metadata()
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+        mock_ret_0.return_value = (True, payload)
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+        self.assertFalse(timed_out)
+
+    @patch("os.path.exists")
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_alignment_report_missing_returns_failure(
+        self, mock_get_metadata, mock_create_ss, mock_ret_0, mock_heartbeat_cls, mock_exists
+    ):
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+        mock_get_metadata.return_value = make_metadata()
+        mock_ret_0.return_value = (False, payload)
+        mock_exists.return_value = False
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
+    @patch("os.path.exists")
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
+    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_sylph_report_missing_without_chimera_info_returns_failure(
+        self, mock_get_metadata, mock_create_ss, mock_ret_0, mock_handle_align,
+        mock_heartbeat_cls, mock_exists, mock_push_report
+    ):
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+        mock_get_metadata.return_value = make_metadata()
+        mock_ret_0.return_value = (False, payload)
+        mock_handle_align.return_value = True
+        mock_exists.side_effect = lambda p: "alignment_report" in str(p)
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+
+    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
+    @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
+    @patch("os.path.exists")
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
+    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_sylph_report_missing_with_no_hits_does_not_fail(
+        self, mock_get_metadata, mock_create_ss, mock_ret_0, mock_handle_align,
+        mock_heartbeat_cls, mock_exists, mock_push_report, mock_push_bam, mock_onyx_update
+    ):
+        """When SYLPH_TAXONOMY has no_hits status the missing sylph report is expected."""
+        payload = make_payload()
+        payload_with_no_hits = {
+            **payload,
+            "chimera_info": {"SYLPH_TAXONOMY": {"status": "no_hits"}},
+        }
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+        mock_get_metadata.return_value = make_metadata()
+        mock_ret_0.return_value = (False, payload_with_no_hits)
+        mock_handle_align.return_value = True
+        mock_exists.side_effect = lambda p: "sylph_taxonomy" not in str(p)
+        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
+        mock_onyx_update.return_value = (False, False, payload_with_no_hits)
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertTrue(success)
+
+    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
+    @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
+    @patch("os.path.exists")
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
+    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
+    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_full_success_returns_success_result(
+        self, mock_get_metadata, mock_create_ss, mock_ret_0, mock_handle_align, mock_handle_sylph,
+        mock_heartbeat_cls, mock_exists, mock_push_report, mock_push_bam, mock_onyx_update
+    ):
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+        mock_get_metadata.return_value = make_metadata()
+        mock_ret_0.return_value = (False, payload)
+        mock_exists.return_value = True
+        mock_handle_align.return_value = True
+        mock_handle_sylph.return_value = True
+        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
+        mock_onyx_update.return_value = (False, False, payload)
+
+        success, timed_out, result_payload, match_uuid, is_rerun, out_msg = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns", is_rerun=True
+        )
+
+        self.assertTrue(success)
+        self.assertFalse(timed_out)
+        self.assertEqual(match_uuid, payload["match_uuid"])
+        self.assertTrue(is_rerun)
+        self.assertIs(out_msg, msg)
+
+    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
+    @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
+    @patch("os.path.exists")
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
+    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
+    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_onyx_update_failure_after_bam_upload_returns_failure(
+        self, mock_get_metadata, mock_create_ss, mock_ret_0, mock_handle_align, mock_handle_sylph,
+        mock_heartbeat_cls, mock_exists, mock_push_report, mock_push_bam, mock_onyx_update
+    ):
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+        mock_get_metadata.return_value = make_metadata()
+        mock_ret_0.return_value = (False, payload)
+        mock_exists.return_value = True
+        mock_handle_align.return_value = True
+        mock_handle_sylph.return_value = True
+        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
+        mock_onyx_update.return_value = (True, False, payload)  # update fails
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_unhandled_exception_returns_failure_not_raised(
+        self, mock_get_metadata, mock_heartbeat_cls
+    ):
+        """A worker process must never propagate an exception out of
+        process_record() - apply_async's error_callback path throws away
+        the message reference in mp.Pool, so an escaped exception here would
+        leave a message neither acked nor nacked."""
+        mock_get_metadata.side_effect = RuntimeError("boom")
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+
+        success, timed_out, *_ = process_record(
+            message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns"
+        )
+
+        self.assertFalse(success)
+        self.assertFalse(timed_out)
+
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_job_heartbeat_cleared_on_every_path(self, mock_get_metadata, mock_heartbeat_cls):
+        mock_get_metadata.return_value = False
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+
+        process_record(message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns")
+
+        mock_heartbeat_cls.return_value.clear.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# chimera_worker_pool_handler
+# ---------------------------------------------------------------------------
+
+class TestChimeraWorkerPoolHandlerInit(unittest.TestCase):
+    @patch("roz_scripts.mscape.chimera_runner.mp.get_context")
+    def test_init_creates_pool_with_correct_worker_count(self, mock_get_context):
+        mock_pool_cls = mock_get_context.return_value.Pool
+        log = MagicMock()
+        varys = MagicMock()
+
+        handler = chimera_worker_pool_handler(
+            workers=4, logger=log, varys_client=varys, project="mscape", health=MagicMock()
+        )
+
+        mock_get_context.assert_called_once_with("fork")
+        mock_pool_cls.assert_called_once_with(processes=4)
+        self.assertEqual(handler._project, "mscape")
+        self.assertEqual(handler.in_flight(), 0)
+
+
+class TestChimeraWorkerPoolHandlerSubmitJob(unittest.TestCase):
+    def setUp(self):
+        with patch("roz_scripts.mscape.chimera_runner.mp.get_context"):
+            self.handler = chimera_worker_pool_handler(
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=MagicMock(),
+            )
+        self.message = make_message()
+        self.args = make_args()
+        self.chimera_pipe = MagicMock()
+
+    def test_submit_job_calls_apply_async_with_correct_kwargs(self):
+        self.handler.submit_job(
+            self.message, self.args, self.chimera_pipe, namespace="ns", is_rerun=True
+        )
+
+        self.handler.worker_pool.apply_async.assert_called_once()
+        _, kwargs = self.handler.worker_pool.apply_async.call_args
+        self.assertIs(kwargs["func"], process_record)
+        self.assertEqual(kwargs["kwds"]["message"], self.message)
+        self.assertEqual(kwargs["kwds"]["args"], self.args)
+        self.assertEqual(kwargs["kwds"]["chimera_pipe"], self.chimera_pipe)
+        self.assertEqual(kwargs["kwds"]["namespace"], "ns")
+        self.assertTrue(kwargs["kwds"]["is_rerun"])
+        self.assertEqual(kwargs["callback"], self.handler.callback)
+
+    def test_submit_job_is_rerun_defaults_to_false(self):
+        self.handler.submit_job(self.message, self.args, self.chimera_pipe, namespace="ns")
+
+        _, kwargs = self.handler.worker_pool.apply_async.call_args
+        self.assertFalse(kwargs["kwds"]["is_rerun"])
+
+    def test_submit_job_increments_in_flight(self):
+        self.handler.submit_job(self.message, self.args, self.chimera_pipe, namespace="ns")
+
+        self.assertEqual(self.handler.in_flight(), 1)
+
+    def test_malformed_message_nacks_with_requeue_and_does_not_submit(self):
+        """Never dead-letter: even a malformed body must be requeued (not
+        dropped), since manual intervention is required, not silent loss."""
+        bad_msg = MagicMock()
+        bad_msg.body = "not json"
+
+        self.handler.submit_job(bad_msg, self.args, self.chimera_pipe, namespace="ns")
+
+        self.handler.worker_pool.apply_async.assert_not_called()
+        self.handler._varys_client.nack_message.assert_called_once_with(bad_msg)
+        self.assertEqual(self.handler.in_flight(), 0)
+
+
+class TestChimeraWorkerPoolHandlerCallback(unittest.TestCase):
+    def setUp(self):
+        with patch("roz_scripts.mscape.chimera_runner.mp.get_context"):
+            self.handler = chimera_worker_pool_handler(
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=MagicMock(),
+            )
+        self.message = make_message()
+        self.payload = make_payload()
+        self.handler._in_flight = 1
+
+    def test_callback_success_acknowledges_and_sends_downstream(self):
+        self.handler.callback((True, False, self.payload, "match-uuid-5678", False, self.message))
+
+        self.handler._varys_client.acknowledge_message.assert_called_once_with(self.message)
+        self.handler._varys_client.send.assert_called_once_with(
+            message=self.payload,
+            exchange="downstream-chimera-mscape",
+            queue_suffix="chimera",
+        )
+
+    def test_callback_success_rerun_sends_to_rerun_exchange(self):
+        self.handler.callback((True, False, self.payload, "match-uuid-5678", True, self.message))
+
+        self.handler._varys_client.send.assert_called_once_with(
+            message=self.payload,
+            exchange="downstream-chimera_rerun-mscape",
+            queue_suffix="chimera",
+        )
+
+    def test_callback_success_clears_job_and_decrements_in_flight(self):
+        self.handler.callback((True, False, self.payload, "match-uuid-5678", False, self.message))
+
+        self.handler._health.clear_job.assert_called_once_with("match-uuid-5678")
+        self.assertEqual(self.handler.in_flight(), 0)
+
+    def test_callback_failure_nacks_without_dropping(self):
+        self.handler.callback((False, False, self.payload, "match-uuid-5678", False, self.message))
+
+        self.handler._varys_client.nack_message.assert_called_once_with(self.message)
+        self.handler._varys_client.acknowledge_message.assert_not_called()
+
+    def test_callback_failure_never_dead_letters_even_after_many_failures(self):
+        """Regression test for the explicit product decision: unlike mscape's
+        capped rerun-retry behaviour, chimera must never pass requeue=False -
+        every message here is vital and requires manual intervention rather
+        than being dropped."""
+        for _ in range(20):
+            self.handler._in_flight = 1
+            self.handler.callback(
+                (False, False, self.payload, "match-uuid-5678", False, self.message)
+            )
+
+        for call_args in self.handler._varys_client.nack_message.call_args_list:
+            self.assertNotIn("requeue", call_args.kwargs)
+            self.assertEqual(call_args.args, (self.message,))
+
+    def test_callback_failure_sends_alert_at_fifth_failure(self):
+        for _ in range(5):
+            self.handler._in_flight = 1
+            self.handler.callback(
+                (False, False, self.payload, "match-uuid-5678", False, self.message)
+            )
+
+        alert_calls = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+        ]
+        self.assertEqual(len(alert_calls), 1)
+
+    def test_callback_timeout_sends_alert_only_from_second_timeout(self):
+        self.handler._in_flight = 1
+        self.handler.callback((False, True, self.payload, "match-uuid-5678", False, self.message))
+        alerts_after_first = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+        ]
+        self.assertEqual(len(alerts_after_first), 0)
+
+        self.handler._in_flight = 1
+        self.handler.callback((False, True, self.payload, "match-uuid-5678", False, self.message))
+        alerts_after_second = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+        ]
+        self.assertEqual(len(alerts_after_second), 1)
+
+    def test_callback_success_resets_failure_and_timeout_counters(self):
+        self.handler._in_flight = 1
+        self.handler.callback((False, True, self.payload, "match-uuid-5678", False, self.message))
+        self.assertIn("match-uuid-5678", self.handler._timeout_log)
+        self.assertIn("match-uuid-5678", self.handler._failure_log)
+
+        self.handler._in_flight = 1
+        self.handler.callback((True, False, self.payload, "match-uuid-5678", False, self.message))
+        self.assertNotIn("match-uuid-5678", self.handler._timeout_log)
+        self.assertNotIn("match-uuid-5678", self.handler._failure_log)
+
+
+class TestChimeraWorkerPoolHandlerErrorCallback(unittest.TestCase):
+    def setUp(self):
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp_dir.cleanup)
+
+        from roz_scripts.utils.health import HealthState
+        self.health = HealthState(self._tmp_dir.name)
+
+        with patch("roz_scripts.mscape.chimera_runner.mp.get_context"):
+            self.handler = chimera_worker_pool_handler(
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=self.health,
+            )
+        self.message = make_message()
+        self.handler._in_flight = 1
+
+    def test_error_callback_nacks_the_specific_message(self):
+        self.handler.error_callback(self.message, Exception("worker exploded"))
+
+        self.handler._varys_client.nack_message.assert_called_once_with(self.message)
+
+    def test_error_callback_sends_dead_worker_message(self):
+        exc = Exception("worker exploded")
+        self.handler.error_callback(self.message, exc)
+
+        self.handler._varys_client.send.assert_any_call(
+            message=f"mscape chimera worker failed with unhandled exception: {exc}",
+            exchange="mscape-restricted-announce",
+            queue_suffix="dead_worker",
+        )
+
+    def test_error_callback_decrements_in_flight(self):
+        self.handler.error_callback(self.message, Exception("boom"))
+
+        self.assertEqual(self.handler.in_flight(), 0)
+
+    def test_single_error_does_not_mark_health_fatal(self):
+        """A single crashed job must not restart the whole pod - other
+        in-flight jobs would be killed with it."""
+        self.handler.error_callback(self.message, Exception("boom"))
+
+        fatal_path = Path(self._tmp_dir.name) / "fatal"
+        self.assertFalse(fatal_path.exists())
+
+    def test_three_consecutive_errors_marks_health_fatal(self):
+        for _ in range(3):
+            self.handler._in_flight = 1
+            self.handler.error_callback(self.message, Exception("boom"))
+
+        fatal_path = Path(self._tmp_dir.name) / "fatal"
+        self.assertTrue(fatal_path.exists())
+
+    def test_success_between_errors_resets_consecutive_count(self):
+        self.handler.error_callback(self.message, Exception("boom"))
+
+        self.handler._in_flight = 1
+        self.handler.callback(
+            (True, False, make_payload(), "match-uuid-5678", False, self.message)
+        )
+
+        self.handler._in_flight = 1
+        self.handler.error_callback(self.message, Exception("boom again"))
+        self.handler._in_flight = 1
+        self.handler.error_callback(self.message, Exception("boom thrice"))
+
+        # Only 2 consecutive since the intervening success reset the counter
+        fatal_path = Path(self._tmp_dir.name) / "fatal"
+        self.assertFalse(fatal_path.exists())
+
+
+# ---------------------------------------------------------------------------
+# run() — thin receive loop: message prioritisation + submission
 # ---------------------------------------------------------------------------
 
 class TestRunMessagePrioritisation(unittest.TestCase):
-    """Tests for the priority-over-rerun message selection in the run() loop."""
+    """The loop's only job now is to pick a message and hand it to the
+    worker pool handler - pipeline execution lives in process_record()."""
 
     def setUp(self):
         patcher = patch(
@@ -670,30 +1207,20 @@ class TestRunMessagePrioritisation(unittest.TestCase):
         self.mock_get_pod_namespace = patcher.start()
         self.addCleanup(patcher.stop)
 
-    def _make_run_mocks(
-        self,
-        mock_init_logger,
-        mock_varys_cls,
-        mock_pipeline_cls,
-        priority_msg,
-        rerun_msg,
-        extra_side_effects=None,
-    ):
-        mock_varys = mock_varys_cls.return_value
-        mock_pipe = mock_pipeline_cls.return_value
-        mock_init_logger.return_value = MagicMock()
-
-        # Build receive side_effect: [iter1-priority, iter1-rerun, iter2-priority (raise)]
-        third = KeyboardInterrupt() if extra_side_effects is None else extra_side_effects[0]
-        mock_varys.receive.side_effect = [priority_msg, rerun_msg, third]
-
-        return mock_varys, mock_pipe
+    def _make_handler_mock(self, mock_handler_cls):
+        mock_handler = mock_handler_cls.return_value
+        mock_handler.in_flight.return_value = 0
+        return mock_handler
 
     @patch("time.sleep")
+    @patch("roz_scripts.mscape.chimera_runner.chimera_worker_pool_handler")
     @patch("roz_scripts.mscape.chimera_runner.pipeline")
     @patch("roz_scripts.mscape.chimera_runner.Varys")
     @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_no_messages_sleeps(self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_sleep):
+    def test_no_messages_sleeps(
+        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_handler_cls, mock_sleep
+    ):
+        mock_handler = self._make_handler_mock(mock_handler_cls)
         mock_varys = mock_varys_cls.return_value
         call_count = [0]
 
@@ -709,416 +1236,117 @@ class TestRunMessagePrioritisation(unittest.TestCase):
             run(make_args())
 
         mock_sleep.assert_any_call(60)
+        mock_handler.submit_job.assert_not_called()
 
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
     @patch("time.sleep")
+    @patch("roz_scripts.mscape.chimera_runner.chimera_worker_pool_handler")
     @patch("roz_scripts.mscape.chimera_runner.pipeline")
     @patch("roz_scripts.mscape.chimera_runner.Varys")
     @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_priority_nacks_rerun(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_sleep, mock_get_metadata
+    def test_priority_nacks_rerun_and_submits_priority(
+        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_handler_cls, mock_sleep
     ):
+        mock_handler = self._make_handler_mock(mock_handler_cls)
         payload = make_payload()
         priority_msg = make_message(payload)
-        rerun_msg = make_message(make_payload(uuid="rerun-uuid", climb_id="CLIMB002", match_uuid="rerun-match"))
+        rerun_msg = make_message(
+            make_payload(uuid="rerun-uuid", climb_id="CLIMB002", match_uuid="rerun-match")
+        )
         mock_varys = mock_varys_cls.return_value
-
         mock_varys.receive.side_effect = [priority_msg, rerun_msg, KeyboardInterrupt()]
-        # Stop further processing after metadata fetch
-        mock_get_metadata.side_effect = KeyboardInterrupt()
 
         with self.assertRaises(KeyboardInterrupt):
             run(make_args())
 
         mock_varys.nack_message.assert_called_once_with(rerun_msg)
+        mock_handler.submit_job.assert_called_once()
+        _, kwargs = mock_handler.submit_job.call_args
+        self.assertEqual(kwargs["message"], priority_msg)
+        self.assertFalse(kwargs["is_rerun"])
 
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
     @patch("time.sleep")
+    @patch("roz_scripts.mscape.chimera_runner.chimera_worker_pool_handler")
     @patch("roz_scripts.mscape.chimera_runner.pipeline")
     @patch("roz_scripts.mscape.chimera_runner.Varys")
     @patch("roz_scripts.mscape.chimera_runner.init_logger")
     def test_only_priority_no_nack(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_sleep, mock_get_metadata
+        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_handler_cls, mock_sleep
     ):
+        mock_handler = self._make_handler_mock(mock_handler_cls)
         payload = make_payload()
         priority_msg = make_message(payload)
         mock_varys = mock_varys_cls.return_value
-
         mock_varys.receive.side_effect = [priority_msg, None, KeyboardInterrupt()]
-        mock_get_metadata.side_effect = KeyboardInterrupt()
 
         with self.assertRaises(KeyboardInterrupt):
             run(make_args())
 
         mock_varys.nack_message.assert_not_called()
+        mock_handler.submit_job.assert_called_once()
 
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
     @patch("time.sleep")
+    @patch("roz_scripts.mscape.chimera_runner.chimera_worker_pool_handler")
     @patch("roz_scripts.mscape.chimera_runner.pipeline")
     @patch("roz_scripts.mscape.chimera_runner.Varys")
     @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_only_rerun_submitted(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_sleep, mock_get_metadata
+    def test_only_rerun_submitted_with_is_rerun_true(
+        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_handler_cls, mock_sleep
     ):
+        mock_handler = self._make_handler_mock(mock_handler_cls)
         payload = make_payload()
         rerun_msg = make_message(payload)
         mock_varys = mock_varys_cls.return_value
-
         mock_varys.receive.side_effect = [None, rerun_msg, KeyboardInterrupt()]
-        mock_get_metadata.side_effect = KeyboardInterrupt()
 
         with self.assertRaises(KeyboardInterrupt):
             run(make_args())
 
-        # No nack for the rerun message itself
         mock_varys.nack_message.assert_not_called()
+        mock_handler.submit_job.assert_called_once()
+        _, kwargs = mock_handler.submit_job.call_args
+        self.assertEqual(kwargs["message"], rerun_msg)
+        self.assertTrue(kwargs["is_rerun"])
 
-
-class TestRunPipelineFlow(unittest.TestCase):
-    """Tests for the pipeline execution flow inside run()."""
-
-    def setUp(self):
-        patcher = patch(
-            "roz_scripts.mscape.chimera_runner.get_pod_namespace",
-            return_value="climb-gre-test",
-        )
-        self.mock_get_pod_namespace = patcher.start()
-        self.addCleanup(patcher.stop)
-
-        chmod_patcher = patch("pathlib.Path.chmod")
-        self.mock_chmod = chmod_patcher.start()
-        self.addCleanup(chmod_patcher.stop)
-
-    def _base_mocks(self, priority_msg, rerun_msg=None):
-        """Return a context-manager patch stack covering all external dependencies."""
-        # We'll apply patches manually per test to keep flexibility
-        pass
-
-    def _receive_side_effects(self, priority_msg, rerun_msg=None):
-        return [priority_msg, rerun_msg, KeyboardInterrupt()]
-
-    @patch("sys.exit")
     @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    @patch("roz_scripts.mscape.chimera_runner.chimera_worker_pool_handler")
     @patch("roz_scripts.mscape.chimera_runner.pipeline")
     @patch("roz_scripts.mscape.chimera_runner.Varys")
     @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_get_metadata_false_calls_sys_exit(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata, mock_sleep, mock_exit
+    def test_receive_paused_while_pool_saturated(
+        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_handler_cls, mock_sleep
     ):
-        payload = make_payload()
-        msg = make_message(payload)
+        """When the pool is at capacity the loop must not call receive() at
+        all - this is the backpressure mechanism, avoiding mscape's flaw of
+        doubling the effective in-flight budget across two consumers."""
+        mock_handler = mock_handler_cls.return_value
+        mock_handler.in_flight.side_effect = [3, 3, 0]
         mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        # onyx_get_metadata returns falsy to trigger sys.exit
-        mock_get_metadata.return_value = False
-        mock_exit.side_effect = SystemExit(1)
-
-        with self.assertRaises(SystemExit):
-            run(make_args())
-
-        mock_exit.assert_called_once_with(1)
-
-    @patch("pathlib.Path.mkdir")
-    @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
-    @patch("roz_scripts.mscape.chimera_runner.pipeline")
-    @patch("roz_scripts.mscape.chimera_runner.Varys")
-    @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_pipeline_failure_nacks_message(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_sleep, mock_mkdir
-    ):
-        payload = make_payload()
-        msg = make_message(payload)
-        mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [
-            1,                  # pipeline fails with rc=1
-            KeyboardInterrupt(),# second iteration breaks loop
-        ]
+        mock_varys.receive.side_effect = KeyboardInterrupt()
 
         with self.assertRaises(KeyboardInterrupt):
-            run(make_args())
+            run(make_args(n_workers=3))
 
-        mock_varys.nack_message.assert_called_once_with(msg)
-        mock_varys.acknowledge_message.assert_not_called()
+        mock_varys.receive.assert_called_once()
+        self.assertEqual(mock_sleep.call_args_list[0], call(5))
+        self.assertEqual(mock_sleep.call_args_list[1], call(5))
 
-    @patch("pathlib.Path.mkdir")
+
+class TestRunCrashHandling(unittest.TestCase):
+    """Regression test: the top-level except block must not reference
+    health/varys_client before they're guaranteed to be bound, or a crash
+    during setup gets masked by an UnboundLocalError."""
+
     @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
-    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    @patch("roz_scripts.mscape.chimera_runner.chimera_worker_pool_handler")
     @patch("roz_scripts.mscape.chimera_runner.pipeline")
     @patch("roz_scripts.mscape.chimera_runner.Varys")
-    @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_ret_0_parser_fail_nacks_message(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_ret_0, mock_sleep, mock_mkdir
+    @patch("roz_scripts.mscape.chimera_runner.get_pod_namespace", return_value="ns")
+    def test_init_logger_failure_propagates_cleanly(
+        self, mock_get_pod_namespace, mock_varys_cls, mock_pipeline_cls, mock_handler_cls, mock_sleep
     ):
-        payload = make_payload()
-        msg = make_message(payload)
-        mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-        mock_ret_0.return_value = (True, payload)  # ingest_fail=True
-
-        with self.assertRaises(KeyboardInterrupt):
-            run(make_args())
-
-        mock_varys.nack_message.assert_called_once_with(msg)
-
-    @patch("os.path.exists")
-    @patch("pathlib.Path.mkdir")
-    @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
-    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
-    @patch("roz_scripts.mscape.chimera_runner.pipeline")
-    @patch("roz_scripts.mscape.chimera_runner.Varys")
-    @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_alignment_report_missing_nacks(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_ret_0, mock_sleep, mock_mkdir, mock_exists
-    ):
-        payload = make_payload()
-        msg = make_message(payload)
-        mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-        mock_ret_0.return_value = (False, payload)
-        mock_exists.return_value = False  # alignment report not found
-
-        with self.assertRaises(KeyboardInterrupt):
-            run(make_args())
-
-        mock_varys.nack_message.assert_called_with(msg)
-        mock_varys.acknowledge_message.assert_not_called()
-
-    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
-    @patch("os.path.exists")
-    @patch("pathlib.Path.mkdir")
-    @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
-    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
-    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
-    @patch("roz_scripts.mscape.chimera_runner.pipeline")
-    @patch("roz_scripts.mscape.chimera_runner.Varys")
-    @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_sylph_report_missing_without_chimera_info_nacks(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_handle_align, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
-        mock_push_report
-    ):
-        payload = make_payload()
-        msg = make_message(payload)
-        mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-        mock_ret_0.return_value = (False, payload)
-        mock_handle_align.return_value = True
-        # alignment report exists, sylph report does not
-        mock_exists.side_effect = lambda p: "alignment_report" in str(p)
-
-        with self.assertRaises(KeyboardInterrupt):
-            run(make_args())
-
-        mock_varys.nack_message.assert_called_with(msg)
-
-    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
-    @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
-    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
-    @patch("os.path.exists")
-    @patch("pathlib.Path.mkdir")
-    @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
-    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
-    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
-    @patch("roz_scripts.mscape.chimera_runner.pipeline")
-    @patch("roz_scripts.mscape.chimera_runner.Varys")
-    @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_sylph_report_missing_with_no_hits_does_not_nack(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_handle_align, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
-        mock_push_report, mock_push_bam, mock_onyx_update
-    ):
-        """When SYLPH_TAXONOMY has no_hits status the missing sylph report is expected — no nack."""
-        payload = make_payload()
-        # ret_0_parser sets chimera_info to indicate no hits
-        payload_with_no_hits = {
-            **payload,
-            "chimera_info": {"SYLPH_TAXONOMY": {"status": "no_hits"}},
-        }
-        msg = make_message(payload)
-        mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-        mock_ret_0.return_value = (False, payload_with_no_hits)
-        mock_handle_align.return_value = True
-        # alignment report and BAM exist; sylph report does not
-        mock_exists.side_effect = lambda p: "sylph_taxonomy" not in str(p)
-        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
-        mock_onyx_update.return_value = (False, False, payload_with_no_hits)
-
-        with self.assertRaises(KeyboardInterrupt):
-            run(make_args())
-
-        # nack_message should NOT be called because the missing sylph report was expected
-        nack_calls = [c for c in mock_varys.nack_message.call_args_list if c == call(msg)]
-        self.assertEqual(len(nack_calls), 0)
-
-    def _full_success_mocks(
-        self, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_ret_0, mock_mkdir, mock_exists,
-        mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update,
-        priority_msg, rerun_msg=None,
-    ):
-        payload = json.loads(priority_msg.body if priority_msg else rerun_msg.body)
-        mock_varys = mock_varys_cls.return_value
-
-        _call_count = [0]
-
-        def _receive_side_effect(**kwargs):
-            _call_count[0] += 1
-            if _call_count[0] == 1:
-                return priority_msg
-            if _call_count[0] == 2:
-                return rerun_msg
-            raise KeyboardInterrupt()
-
-        mock_varys.receive.side_effect = _receive_side_effect
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-        mock_ret_0.return_value = (False, payload)
-        mock_exists.return_value = True
-        mock_handle_align.return_value = True
-        mock_handle_sylph.return_value = True
-        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
-        mock_onyx_update.return_value = (False, False, payload)
-        return mock_varys, payload
-
-    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
-    @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
-    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
-    @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
-    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
-    @patch("os.path.exists")
-    @patch("pathlib.Path.mkdir")
-    @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
-    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
-    @patch("roz_scripts.mscape.chimera_runner.pipeline")
-    @patch("roz_scripts.mscape.chimera_runner.Varys")
-    @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_full_success_priority_sends_to_standard_downstream(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
-        mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update
-    ):
-        msg = make_message()
-        mock_varys, payload = self._full_success_mocks(
-            mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-            mock_create_ss, mock_ret_0, mock_mkdir, mock_exists,
-            mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update,
-            priority_msg=msg, rerun_msg=None,
-        )
-
-        with self.assertRaises(KeyboardInterrupt):
-            run(make_args())
-
-        mock_varys.acknowledge_message.assert_called_once_with(msg)
-        mock_varys.send.assert_any_call(
-            message=payload,
-            exchange="downstream-chimera-mscape",
-            queue_suffix="chimera",
-        )
-
-    def test_full_success_rerun_sends_to_rerun_downstream(self):
-        rerun_msg = make_message()
-        payload = json.loads(rerun_msg.body)
-
-        patches = [
-            patch("roz_scripts.mscape.chimera_runner.init_logger"),
-            patch("roz_scripts.mscape.chimera_runner.Varys"),
-            patch("roz_scripts.mscape.chimera_runner.pipeline"),
-            patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata"),
-            patch("roz_scripts.mscape.chimera_runner.create_samplesheet"),
-            patch("roz_scripts.mscape.chimera_runner.ret_0_parser"),
-            patch("time.sleep"),
-            patch("pathlib.Path.mkdir"),
-            patch("os.path.exists", return_value=True),
-            patch("roz_scripts.mscape.chimera_runner.handle_alignment_report", return_value=True),
-            patch("roz_scripts.mscape.chimera_runner.handle_sylph_report", return_value=True),
-            patch("roz_scripts.mscape.chimera_runner.push_chimera_report"),
-            patch("roz_scripts.mscape.chimera_runner.push_bam_file", return_value="s3://mscape-chimera-bams/CLIMB001.chimera.bam"),
-            patch("roz_scripts.mscape.chimera_runner.onyx_update"),
-        ]
-
-        with patches[0], patches[1] as mock_varys_cls, patches[2] as mock_pipeline_cls, \
-             patches[3] as mock_get_metadata, patches[4], patches[5] as mock_ret_0, \
-             patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], \
-             patches[12], patches[13] as mock_onyx_update:
-
-            mock_varys = mock_varys_cls.return_value
-            mock_varys.receive.side_effect = [None, rerun_msg, KeyboardInterrupt()]
-            mock_get_metadata.return_value = make_metadata()
-            mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-            mock_ret_0.return_value = (False, payload)
-            mock_onyx_update.return_value = (False, False, payload)
-
-            with self.assertRaises(KeyboardInterrupt):
+        with patch(
+            "roz_scripts.mscape.chimera_runner.init_logger",
+            side_effect=RuntimeError("logger init failed"),
+        ):
+            with self.assertRaises(RuntimeError):
                 run(make_args())
-
-            mock_varys.acknowledge_message.assert_called_once_with(rerun_msg)
-            mock_varys.send.assert_any_call(
-                message=payload,
-                exchange="downstream-chimera_rerun-mscape",
-                queue_suffix="chimera",
-            )
-
-    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
-    @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
-    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
-    @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
-    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
-    @patch("os.path.exists")
-    @patch("pathlib.Path.mkdir")
-    @patch("time.sleep")
-    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
-    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
-    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
-    @patch("roz_scripts.mscape.chimera_runner.pipeline")
-    @patch("roz_scripts.mscape.chimera_runner.Varys")
-    @patch("roz_scripts.mscape.chimera_runner.init_logger")
-    def test_onyx_update_failure_after_bam_upload_nacks(
-        self, mock_logger, mock_varys_cls, mock_pipeline_cls, mock_get_metadata,
-        mock_create_ss, mock_ret_0, mock_sleep, mock_mkdir, mock_exists,
-        mock_handle_align, mock_handle_sylph, mock_push_report, mock_push_bam, mock_onyx_update
-    ):
-        payload = make_payload()
-        msg = make_message(payload)
-        mock_varys = mock_varys_cls.return_value
-        mock_varys.receive.side_effect = self._receive_side_effects(msg)
-        mock_get_metadata.return_value = make_metadata()
-        mock_pipeline_cls.return_value.execute.side_effect = [0, KeyboardInterrupt()]
-        mock_ret_0.return_value = (False, payload)
-        mock_exists.return_value = True
-        mock_handle_align.return_value = True
-        mock_handle_sylph.return_value = True
-        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
-        mock_onyx_update.return_value = (True, False, payload)  # update fails
-
-        with self.assertRaises(KeyboardInterrupt):
-            run(make_args())
-
-        mock_varys.nack_message.assert_called_with(msg)
-        mock_varys.acknowledge_message.assert_not_called()
