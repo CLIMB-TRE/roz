@@ -229,8 +229,8 @@ class pipeline:
                                 "name": job_name,
                                 "image": str(self.nxf_image),
                                 "resources": {
-                                    "requests": {"cpu": "2", "memory": "16G"},
-                                    "limits": {"cpu": "2", "memory": "16G"},
+                                    "requests": {"cpu": "1", "memory": "8G"},
+                                    "limits": {"cpu": "1", "memory": "8G"},
                                 },
                                 "volumeMounts": [
                                     {
