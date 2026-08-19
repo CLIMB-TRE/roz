@@ -1,4 +1,5 @@
 import boto3
+from botocore.client import BaseClient
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from collections import namedtuple
@@ -118,7 +119,7 @@ class pipeline:
         # self.timeout = timeout
         self.profile = profile
         self.job_prefix = job_prefix
-        self.cmd = None
+        self.cmd: list = []
 
     def execute(
         self,
@@ -173,7 +174,7 @@ class pipeline:
             cmd.append("-resume")
 
         if self.config:
-            cmd.extend(["-c", self.config.resolve()])
+            cmd.extend(["-c", str(self.config.resolve())])
 
         if self.profile:
             cmd.extend(["-profile", self.profile])
@@ -289,7 +290,7 @@ class pipeline:
                     _request_timeout=k8s_request_timeout,
                 )
 
-            if resp and resp.status.failed and resp.status.failed >= backoff_limit:
+            if resp and resp.status.failed and resp.status.failed >= backoff_limit:  # type: ignore
                 # A job with this name already reached a terminal failure in a
                 # previous invocation (e.g. the worker process was restarted and
                 # is reprocessing the same message) - delete it and start a fresh
@@ -335,14 +336,14 @@ class pipeline:
                     namespace=namespace,
                     _request_timeout=k8s_request_timeout,
                 )
-                if resp.status.succeeded:
-                    if resp.status.succeeded >= 1:
+                if resp.status.succeeded:  # type: ignore
+                    if resp.status.succeeded >= 1:  # type: ignore
                         returncode = 0
                         job_completed = True
                         break
 
-                if resp.status.failed:
-                    if resp.status.failed >= backoff_limit:
+                if resp.status.failed:  # type: ignore
+                    if resp.status.failed >= backoff_limit:  # type: ignore
                         api_instance.delete_namespaced_job(
                             name=job_name,
                             namespace=namespace,
@@ -357,8 +358,8 @@ class pipeline:
                 # back to wall-clock time since we started polling - if the pod
                 # never gets scheduled, start_time stays None forever and the
                 # loop would otherwise never hit the timeout.
-                if resp.status.start_time:
-                    job_age = time.time() - resp.status.start_time.timestamp()
+                if resp.status.start_time:  # type: ignore
+                    job_age = time.time() - resp.status.start_time.timestamp()  # type: ignore
                 else:
                     job_age = time.time() - job_loop_start
 
@@ -384,7 +385,7 @@ class pipeline:
                 stderr_fh.write(f"Failed to execute pipeline due to exception: {e}")
             returncode = 1
 
-        return returncode
+        return returncode  # type: ignore
 
 
 def init_logger(name, log_path, log_level):
@@ -400,12 +401,12 @@ def init_logger(name, log_path, log_level):
     return log
 
 
-def put_result_json(payload: dict, log: logging.getLogger):
+def put_result_json(payload: dict, log: logging.Logger):
     """Send the result payload to S3
 
     Args:
         payload (dict): The payload to send to S3
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
     """
 
     s3_credentials = get_s3_credentials()
@@ -428,12 +429,12 @@ def put_result_json(payload: dict, log: logging.getLogger):
         raise e
 
 
-def put_linkage_json(payload: dict, log: logging.getLogger):
+def put_linkage_json(payload: dict, log: logging.Logger):
     """Send the linkage payload to S3
 
     Args:
         payload (dict): The payload dict to create the linkage dict from
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
     """
 
     s3_credentials = get_s3_credentials()
@@ -521,14 +522,14 @@ def do_uris_exist(*s3_uris: str) -> bool:
 
 def csv_create(
     payload: dict,
-    log: logging.getLogger,
+    log: logging.Logger,
     test_submission: bool = False,
 ) -> tuple[bool, bool, dict]:
     """Function to create a new record in onyx from a metadata CSV file, can be used for testing or for real submissions
 
     Args:
         payload (dict): Payload dict for the current artifact
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         test_submission (bool, optional): Bool to indicate if submission is a test or not. Defaults to False.
 
     Returns:
@@ -560,12 +561,14 @@ def csv_create(
                 )
 
                 if not test_submission:
-                    payload["climb_id"] = response["climb_id"]
-                    payload["anonymised_run_index"] = response["run_index"]
-                    payload["anonymised_run_id"] = response["run_id"]
-                    payload["anonymised_biosample_id"] = response["biosample_id"]
-                    if response["biosample_source_id"]:
-                        payload["anonymised_biosample_source_id"] = response[
+                    # multiline=False guarantees a single dict response, but
+                    # onyx's declared return type is Dict | List[Dict]
+                    payload["climb_id"] = response["climb_id"]  # type: ignore
+                    payload["anonymised_run_index"] = response["run_index"]  # type: ignore
+                    payload["anonymised_run_id"] = response["run_id"]  # type: ignore
+                    payload["anonymised_biosample_id"] = response["biosample_id"]  # type: ignore
+                    if response["biosample_source_id"]:  # type: ignore
+                        payload["anonymised_biosample_source_id"] = response[  # type: ignore
                             "biosample_source_id"
                         ]
 
@@ -851,7 +854,7 @@ def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
     return (True, False, payload)
 
 
-def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
+def onyx_identify(payload: dict, identity_field: str, log: logging.Logger):
     if identity_field not in (
         "biosample_id",
         "run_id",
@@ -945,9 +948,17 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
                 )
                 return (False, True, payload)
 
+    # This should never be reached
+    payload.setdefault("onyx_errors", {})
+    payload["onyx_errors"].setdefault("onyx_errors", [])
+    payload["onyx_errors"]["onyx_errors"].append(
+        "End of onyx_identify func reached, this should never happen!"
+    )
+    return (False, True, payload)
+
 
 def onyx_reconcile(
-    payload: dict, identifier: str, fields_to_reconcile: list, log: logging.getLogger
+    payload: dict, identifier: str, fields_to_reconcile: list, log: logging.Logger
 ):
     identify_success, alert, payload = onyx_identify(payload, identifier, log)
 
@@ -1177,6 +1188,14 @@ def ensure_file_unseen(
                 )
                 return (True, True, True, payload)
 
+    # This should never be reached
+    payload.setdefault("onyx_errors", {})
+    payload["onyx_errors"].setdefault("onyx_errors", [])
+    payload["onyx_errors"]["onyx_errors"].append(
+        "End of ensure_file_unseen func reached, this should never happen!"
+    )
+    return (True, True, True, payload)
+
 
 def check_artifact_published(
     payload: dict, log: logging.Logger
@@ -1280,6 +1299,14 @@ def check_artifact_published(
                     f"Unhandled check_published error: {e}"
                 )
                 return (False, True, payload)
+
+    # This should never be reached
+    payload.setdefault("onyx_errors", {})
+    payload["onyx_errors"].setdefault("onyx_errors", [])
+    payload["onyx_errors"]["onyx_errors"].append(
+        "End of check_artifact_published func reached, this should never happen!"
+    )
+    return (False, True, payload)
 
 
 def onyx_update(
@@ -1471,7 +1498,7 @@ S3_CLIENT_CONFIG = Config(
 )
 
 
-def get_s3_client(s3_credentials: __s3_creds) -> boto3.client:
+def get_s3_client(s3_credentials: __s3_creds) -> BaseClient:
     """
     Build an S3 client with bounded connect/read timeouts and retries, so a
     stalled connection to the S3 endpoint cannot block a caller indefinitely.
@@ -1480,7 +1507,7 @@ def get_s3_client(s3_credentials: __s3_creds) -> boto3.client:
         s3_credentials (__s3_creds): Credentials as returned by get_s3_credentials()
 
     Returns:
-        boto3.client: Configured S3 client
+        BaseClient: Configured S3 client
     """
 
     return boto3.client(

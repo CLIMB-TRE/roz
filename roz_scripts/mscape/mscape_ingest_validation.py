@@ -6,12 +6,12 @@ from pathlib import Path
 import json
 import copy
 import boto3
+from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 import time
 import logging
 import argparse
 import multiprocessing as mp
-from collections import namedtuple
 import sys
 from itertools import batched
 from math import log, floor
@@ -36,6 +36,7 @@ from roz_scripts.utils.utils import (
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from varys import Varys
+from varys.utils import varys_message
 
 
 class worker_pool_handler:
@@ -220,28 +221,28 @@ def execute_validation_pipeline(
     ingest_pipe: pipeline,
     spike_in: str,
     job_heartbeat: JobHeartbeat | None = None,
-) -> tuple[int, str, str]:
+) -> int:
     """Execute the validation pipeline for a given artifact
 
     Args:
         payload (dict): The payload dict for the current artifact
         args (argparse.Namespace): The command line arguments object
-        log (logging.getLogger): The logger object
+        log (logging.Logger): The logger object
         ingest_pipe (pipeline): The instance of the ingest pipeline (see pipeline class)
         job_heartbeat (JobHeartbeat | None): Heartbeat handle for this job, so a
             liveness probe can tell this stage is still progressing rather than
             stuck, and so the deadline check tracks the pipeline's own timeout
 
     Returns:
-        tuple[int, str, str]: Tuple containing the return code, stdout and stderr of the pipeline
+        int: The return code of the pipeline
     """
 
     k2_db_path = os.path.join(
-        os.getenv("SCYLLA_K2_DB_PATH"), os.getenv("SCYLLA_K2_DB_DATE")
+        os.environ["SCYLLA_K2_DB_PATH"], os.environ["SCYLLA_K2_DB_DATE"]
     )
 
     taxonomy_path = os.path.join(
-        os.getenv("SCYLLA_TAXONOMY_PATH"), os.getenv("SCYLLA_TAXONOMY_DATE")
+        os.environ["SCYLLA_TAXONOMY_PATH"], os.environ["SCYLLA_TAXONOMY_DATE"]
     )
 
     parameters = {
@@ -270,6 +271,9 @@ def execute_validation_pipeline(
             payload["files"][".2.fastq.gz"]["uri"],
         )
 
+    else:
+        raise ValueError(f"Unrecognised platform: {payload['platform']}")
+
     if payload["platform"].startswith("illumina"):
         timeout *= 3
 
@@ -281,7 +285,9 @@ def execute_validation_pipeline(
     if not os.path.exists(log_path):
         os.makedirs(log_path)
 
-    nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
+    nxf_home = Path(
+        f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/"
+    )
     nxf_home.mkdir(parents=True, exist_ok=True)
     nxf_home.chmod(0o775)
 
@@ -315,14 +321,14 @@ def execute_validation_pipeline(
 
 
 def handle_spike_ins(
-    payload: dict, result_path: str, log: logging.getLogger, spike_in: str
+    payload: dict, result_path: str, log: logging.Logger, spike_in: str
 ) -> tuple[bool, bool, dict]:
     """Function to add spike-in information to an existing Onyx record from the Scylla spike_in_summary.json file
 
     Args:
         payload (dict): Dict containing the payload for the current artifact
         result_path (str): Path to the results directory
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         spike_in (str): Spike-in code for the current artifact
 
     Returns:
@@ -439,6 +445,8 @@ def dynamic_timeout(*s3_uris: str, logger: logging.Logger | None = None) -> int:
         int: Timeout in seconds
     """
 
+    min_timeout = int(os.getenv("ROZ_MIN_TIMEOUT", 1200))
+
     if logger is None:
         logger = logging.getLogger(__name__)
 
@@ -455,37 +463,37 @@ def dynamic_timeout(*s3_uris: str, logger: logging.Logger | None = None) -> int:
 
     except ClientError as dynamic_timeout_exception:
         logger.error(
-            f"Failed to get object metadata for S3 URI: {s3_uri} due to client error: {dynamic_timeout_exception}"
+            f"Failed to get object metadata for S3 URI: {s3_uri} due to client error: {dynamic_timeout_exception}"  # type: ignore
         )
 
-        return 3600
+        return min_timeout
 
     if content_length <= 1:
-        return 3600
+        return min_timeout
 
     size = content_length / 1000000
 
     timeout = floor(4700 * log(size)) - 20000
 
-    if timeout < 3600:
-        timeout = 3600
+    if timeout < min_timeout:
+        timeout = min_timeout
 
     return timeout
 
 
 def add_taxon_records(
-    payload: dict, result_path: str, log: logging.Logger, s3_client: boto3.client
-) -> tuple[bool, dict]:
+    payload: dict, result_path: str, log: logging.Logger, s3_client: BaseClient
+) -> tuple[bool, bool, dict]:
     """Function to add nested taxon records to an existing Onyx record from a Scylla reads_summary.json file
 
     Args:
         payload (dict): Dict containing the payload for the current artifact
         result_path (str): Result path for the current artifact
         log (logging.Logger): Logger object
-        s3_client (boto3.client): Boto3 client object for S3
+        s3_client (BaseClient): Boto3 client object for S3
 
     Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
 
     nested_records = []
@@ -640,18 +648,18 @@ def add_taxon_records(
 
 
 def push_taxon_reports(
-    payload: dict, result_path: str, log: logging.getLogger, s3_client: boto3.client
-) -> tuple[bool, dict]:
+    payload: dict, result_path: str, log: logging.Logger, s3_client: BaseClient
+) -> tuple[bool, bool, dict]:
     """Push taxa reports to long-term storage bucket and update the Onyx record with the S3 directory URI
 
     Args:
         payload (dict): Payload dict for the current artifact
         result_path (str): Path to the results directory
-        log (logging.getLogger): Logger object
-        s3_client (boto3.client): S3 boto3 client object
+        log (logging.Logger): Logger object
+        s3_client (BaseClient): S3 boto3 client object
 
     Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
 
     taxon_report_fail = False
@@ -709,7 +717,7 @@ def push_taxon_reports(
     if not taxon_report_fail:
         update_fail, update_alert, payload = onyx_update(
             payload=payload,
-            fields={"taxon_reports": f"s3://{s3_bucket}/{payload['climb_id']}/"},
+            fields={"taxon_reports": f"s3://{s3_bucket}/{payload['climb_id']}/"},  # type: ignore
             log=log,
         )
 
@@ -723,14 +731,14 @@ def push_taxon_reports(
 
 
 def add_classifier_calls(
-    payload: dict, result_path: str, log: logging.getLogger
+    payload: dict, result_path: str, log: logging.Logger
 ) -> tuple[bool, bool, dict]:
     """Add classifier calls to the Onyx record from the Scylla kraken_report.json file
 
     Args:
         payload (dict): Payload dict for the current artifact
         result_path (str): Path to the results directory
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the upload failed, a bool indicating whether to squawk in the alert channel and the updated payload dict
@@ -811,18 +819,18 @@ def add_classifier_calls(
 
 
 def push_report_file(
-    payload: dict, result_path: str, log: logging.getLogger, s3_client: boto3.client
-) -> tuple[bool, dict]:
+    payload: dict, result_path: str, log: logging.Logger, s3_client: BaseClient
+) -> tuple[bool, bool, dict]:
     """Push report file to long-term storage bucket and update the Onyx record with the report URI
 
     Args:
         payload (dict): Payload dict for the current artifact
         result_path (str): Path to the results directory
-        log (logging.getLogger): Logger object
-        s3_client (boto3.client): Boto3 client object for S3
+        log (logging.Logger): Logger object
+        s3_client (BaseClient): Boto3 client object for S3
 
     Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
 
     report_fail = False
@@ -872,20 +880,20 @@ def push_report_file(
 
 def add_reads_record(
     payload: dict,
-    s3_client: boto3.client,
+    s3_client: BaseClient,
     result_path: str,
-    log: logging.getLogger,
-) -> tuple[bool, dict]:
+    log: logging.Logger,
+) -> tuple[bool, bool, dict]:
     """Function to upload raw reads to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
     Args:
         payload (dict): Payload dict for the record to update
-        s3_client (boto3.client): Boto3 client object for S3
+        s3_client (BaseClient): Boto3 client object for S3
         result_path (str): Path to the results directory
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
 
     Returns:
-        tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
+        tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
     """
 
     raw_read_fail = False
@@ -985,18 +993,18 @@ def add_reads_record(
 
 def read_fraction_upload(
     payload: dict,
-    s3_client: boto3.client,
+    s3_client: BaseClient,
     result_path: str,
-    log: logging.getLogger,
+    log: logging.Logger,
     fraction_prefix: str,
 ) -> tuple[bool, bool, dict]:
     """Function to upload read fractions to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
     Args:
         payload (dict): Payload dict for the record to update
-        s3_client (boto3.client): Boto3 client object for S3
+        s3_client (BaseClient): Boto3 client object for S3
         result_path (str): Path to the results directory
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         fraction_prefix (str): Prefix for the read fraction
 
     Returns:
@@ -1118,7 +1126,7 @@ def read_fraction_upload(
 
 
 def ret_0_parser(
-    log: logging.getLogger,
+    log: logging.Logger,
     payload: dict,
     result_path: str,
     ingest_fail: bool = False,
@@ -1126,7 +1134,7 @@ def ret_0_parser(
     """Function to parse the execution trace of a Nextflow pipeline run to determine whether any of the processes failed.
 
     Args:
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         payload (dict): Payload dictionary
         result_path (str): Path to the results directory
         ingest_fail (bool): Boolean to indicate whether the ingest has failed up to this point (default: False)
@@ -1228,15 +1236,15 @@ def ret_0_parser(
 
 
 def handle_hcid(
-    log: logging.getLogger, payload: dict, result_path: str, s3_client: boto3.client
+    log: logging.Logger, payload: dict, result_path: str, s3_client: BaseClient
 ) -> tuple[bool, list, bool, dict]:
     """Function to handle the parsing of HCID warnings output by the Scylla pipeline
 
     Args:
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         payload (dict): Payload dictionary
         result_path (str): Path to the results directory
-        s3_client (boto3.client): Boto3 client object for S3
+        s3_client (BaseClient): Boto3 client object for S3
 
     Returns:
         tuple[bool, list, bool, dict]: Tuple containing a bool indicating whether the ingest has failed, a list of HCID alerts, a bool indicating whether to squawk in the alert channel and the updated payload dictionary
@@ -1305,20 +1313,20 @@ def handle_hcid(
 
 
 def validate(
-    message: namedtuple,
+    message: varys_message,
     args: argparse.Namespace,
     ingest_pipe: pipeline,
     low_priority: bool = False,
-) -> tuple[bool, bool, dict, namedtuple]:
+) -> tuple[bool, bool, bool | list, dict, varys_message]:
     """Function to validate a single artifact and update the Onyx record accordingly
 
     Args:
-        message (namedtuple): Varys message object for the current artifact
+        message (varys_message): Varys message object for the current artifact
         args (argparse.Namespace): Command line arguments object
         ingest_pipe (pipeline): Instance of the ingest pipeline (see pipeline class)
 
     Returns:
-        tuple[bool, bool, dict, namedtuple]: Tuple containing a bool indicating whether the validation was successful, a bool indicating whether to squawk in the alert channel, the updated payload dict and the Varys message object
+        tuple[bool, bool, bool | list, dict, varys_message]: Tuple containing a bool indicating whether the validation was successful, a bool indicating whether to squawk in the alert channel, the list of HCID alerts (or False if HCID checks were not reached), the updated payload dict and the Varys message object
     """
     s3_credentials = get_s3_credentials()
 
@@ -1339,9 +1347,7 @@ def validate(
     # and again to a post-pipeline budget once it finishes - so a liveness
     # probe watching the deadline tracks the current stage, not the job's
     # original (possibly 24h+) overall budget.
-    job_heartbeat = JobHeartbeat(
-        get_health_dir(), uuid=payload["uuid"], budget_s=600
-    )
+    job_heartbeat = JobHeartbeat(get_health_dir(), uuid=payload["uuid"], budget_s=600)
     job_heartbeat.beat(stage="pre_pipeline_checks")
 
     alert = False
@@ -1552,7 +1558,7 @@ def validate(
         payload=payload,
         args=args,
         ingest_pipe=ingest_pipe,
-        spike_in=artifact_metadata.get("spike_in"),
+        spike_in=artifact_metadata.get("spike_in", "none"),
         job_heartbeat=job_heartbeat,
     )
 
@@ -1566,7 +1572,7 @@ def validate(
 
     args.result_dir = Path(args.result_dir)
 
-    result_path = Path(args.result_dir.resolve(), payload["uuid"])
+    result_path = str(Path(args.result_dir.resolve(), payload["uuid"]))
 
     if rc != 0:
         log.error(
@@ -1734,7 +1740,7 @@ def validate(
 
     # Consider making this a little more versatile in future
 
-    classifier_splits = os.getenv("SCYLLA_K2_DB_PATH").split("/")
+    classifier_splits = os.environ["SCYLLA_K2_DB_PATH"].split("/")
     non_empty = [x for x in classifier_splits if x != ""]
     classifier_db = non_empty[-1]
 
@@ -1790,7 +1796,7 @@ def validate(
         payload=payload,
         result_path=result_path,
         log=log,
-        spike_in=artifact_metadata.get("spike_in"),
+        spike_in=artifact_metadata.get("spike_in", "none"),
     )
 
     if (
@@ -1927,24 +1933,24 @@ def run(args):
                 message = rerun_message
                 low_priority = True
 
-            if message:
+            if message:  # type: ignore
                 worker_pool.submit_job(
-                    message=message,
+                    message=message,  # type: ignore
                     args=args,
                     ingest_pipe=ingest_pipe,
-                    low_priority=low_priority,
+                    low_priority=low_priority,  # type: ignore
                 )
 
     except BaseException:
-        log.exception("Shutting down worker pool due to exception:")
-        health.mark_fatal(
+        log.exception("Shutting down worker pool due to exception:")  # type: ignore
+        health.mark_fatal(  # type: ignore
             "main loop crashed",
             alert_fn=lambda r: send_admin_alert(
-                varys_client, source=args.project, description=r
+                varys_client, source=args.project, description=r  # type: ignore
             ),
         )
-        worker_pool.close()
-        varys_client.close()
+        worker_pool.close()  # type: ignore
+        varys_client.close()  # type: ignore
         time.sleep(1)
         sys.exit(1)
 

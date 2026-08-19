@@ -353,10 +353,10 @@ def ret_0_parser(
 
                     else:
                         log.error(
-                            f"Process '{process}' failed with exit code '{trace['exit']}' for UUID: {payload['match_uuid']}"
+                            f"Process '{process}' failed with exit code '{exit_code}' for UUID: {payload['match_uuid']}"
                         )
                         raise Exception(
-                            f"Process '{process}' failed with unexpected exit code '{trace['exit']}'"
+                            f"Process '{process}' failed with unexpected exit code '{exit_code}'"
                         )
 
     except Exception:

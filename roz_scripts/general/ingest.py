@@ -42,7 +42,7 @@ def main():
     varys_client = varys.Varys(
         profile="roz",
         logfile=os.getenv("ROZ_INGEST_LOG"),
-        log_level=os.getenv("INGEST_LOG_LEVEL"),
+        log_level=os.environ["INGEST_LOG_LEVEL"],
         auto_acknowledge=False,
     )
 

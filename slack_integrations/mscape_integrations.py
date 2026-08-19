@@ -11,9 +11,9 @@ varys_client = Varys(
     auto_acknowledge=False,
 )
 
-new_artifact_url = os.getenv("NEW_ARTIFACT_WEBHOOK")
-public_result_url = os.getenv("PUBLIC_RESULT_WEBHOOK")
-alert_url = os.getenv("MSCAPE_ALERT_WEBHOOK")
+new_artifact_url = os.environ["NEW_ARTIFACT_WEBHOOK"]
+public_result_url = os.environ["PUBLIC_RESULT_WEBHOOK"]
+alert_url = os.environ["MSCAPE_ALERT_WEBHOOK"]
 
 new_artifact_message_template = """*New MScape Artifact Published*
 ```

@@ -151,7 +151,10 @@ def get_ncbi_taxonomy(ftp_url, filename, date):
 
     try:
         with _atomic_version_dir(version_dir):
-            _run(["unzip", "-o", archive, "-d", version_dir], f"extracting taxonomy {date}")
+            _run(
+                ["unzip", "-o", archive, "-d", version_dir],
+                f"extracting taxonomy {date}",
+            )
     finally:
         if os.path.exists(archive):
             os.remove(archive)
@@ -301,7 +304,7 @@ def get_ncbi_blast():
 def get_bakta_db():
     latest_url = doi.get_real_url_from_doi("10.5281/zenodo.4247252")
 
-    resp = requests.get(latest_url)
+    resp = requests.get(latest_url)  # type: ignore
 
     try:
         db_version_file = requests.get(f"{resp.url}/files/db-versions.json")
@@ -388,7 +391,10 @@ def get_gtdb_db():
 
     try:
         with _atomic_version_dir(version_dir):
-            _run(["tar", "-xf", archive, "-C", version_dir], f"extracting gtdb {latest_version}")
+            _run(
+                ["tar", "-xf", archive, "-C", version_dir],
+                f"extracting gtdb {latest_version}",
+            )
     finally:
         if os.path.exists(archive):
             os.remove(archive)
@@ -485,7 +491,9 @@ def _parse_sylph_docs(page_html):
             # e.g. "Prokaryotic (GTDB)" -> "gtdb"; "Viral" -> "viral" — the
             # parenthetical, when present, is the meaningful discriminator.
             paren_match = re.search(r"\(([^)]+)\)", type_text)
-            current_type = _sylph_slug(paren_match.group(1) if paren_match else type_text)
+            current_type = _sylph_slug(
+                paren_match.group(1) if paren_match else type_text
+            )
 
         if current_type is None:
             continue
@@ -566,7 +574,9 @@ def _select_latest_sylph_rows(rows):
             else:
                 print(f"sylph: skipping non-latest GTDB file {r['filename']}")
     elif gtdb_rows:
-        print("sylph: could not determine latest GTDB release -> skipping all GTDB rows")
+        print(
+            "sylph: could not determine latest GTDB release -> skipping all GTDB rows"
+        )
 
     groups = {}
     for r in other_rows:
@@ -582,7 +592,7 @@ def _select_latest_sylph_rows(rows):
         kinds = {k[0] for k, _ in keyed if k is not None}
 
         if all(k is not None for k, _ in keyed) and len(kinds) == 1:
-            ordered = sorted(keyed, key=lambda item: item[0][1], reverse=True)
+            ordered = sorted(keyed, key=lambda item: item[0][1], reverse=True)  # type: ignore
             for _, m in ordered[1:]:
                 print(
                     f"sylph: skipping non-latest {type_slug}/{family} c{c_value} ({m['filename']})"

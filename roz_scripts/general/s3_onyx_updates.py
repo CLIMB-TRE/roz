@@ -36,7 +36,7 @@ from onyx.exceptions import (
 def onyx_climb_identify(run_index: str, run_id: str, project: str, log):
 
     onyx_config = OnyxConfig(
-        domain=os.getenv("ONYX_DOMAIN"), token=os.getenv("ONYX_ROZ_TOKEN")
+        domain=os.environ["ONYX_DOMAIN"], token=os.getenv("ONYX_ROZ_TOKEN")
     )
 
     with OnyxClient(config=onyx_config) as client:
@@ -107,12 +107,14 @@ def onyx_climb_identify(run_index: str, run_id: str, project: str, log):
                 log.error(f"Unhandled onyx_climb_identify error: {e}")
                 return (True, False)
 
+        return (True, False)
+
 
 def onyx_identify_simple(
     identifier: str, identity_field: str, project: str, site: str, log
 ):
     onyx_config = OnyxConfig(
-        domain=os.getenv("ONYX_DOMAIN"), token=os.getenv("ONYX_ROZ_TOKEN")
+        domain=os.environ["ONYX_DOMAIN"], token=os.getenv("ONYX_ROZ_TOKEN")
     )
 
     with OnyxClient(config=onyx_config) as client:
@@ -171,6 +173,8 @@ def onyx_identify_simple(
             except Exception as e:
                 log.error(f"Unhandled onyx_identify error: {e}")
                 return (True, False)
+
+        return (True, False)
 
 
 def csv_update(parsed_message, config_dict, log):
@@ -255,8 +259,8 @@ def csv_update(parsed_message, config_dict, log):
         return (True, False)
 
     climb_id_fail, climb_id = onyx_climb_identify(
-        run_index=run_index,
-        run_id=run_id,
+        run_index=run_index,  # type: ignore
+        run_id=run_id,  # type: ignore
         project=parsed_bucket_name["project"],
         log=log,
     )
@@ -374,7 +378,7 @@ def run(args):
             auto_acknowledge=False,
         )
 
-        with open(os.getenv("ROZ_CONFIG_JSON"), "r") as f:
+        with open(os.environ["ROZ_CONFIG_JSON"], "r") as f:
             config_dict = json.load(f)
 
         health = HealthState(get_health_dir())
@@ -421,15 +425,15 @@ def run(args):
                     varys_client.nack_message(message)
 
     except BaseException as e:
-        log.exception("Unhandled error: ")
+        log.exception("Unhandled error: ")  # type: ignore
         reason = f"failed with unhandled exception: {e}"
-        health.mark_fatal(
+        health.mark_fatal(  # type: ignore
             reason,
             alert_fn=lambda r: send_admin_alert(
-                varys_client, source="s3_onyx_updates", description=r
+                varys_client, source="s3_onyx_updates", description=r  # type: ignore
             ),
         )
-        varys_client.close()
+        varys_client.close()  # type: ignore
         time.sleep(1)
         sys.exit(1)
 

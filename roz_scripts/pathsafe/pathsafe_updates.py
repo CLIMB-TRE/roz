@@ -196,14 +196,14 @@ def run(args):
                     time.sleep(1)
 
     except BaseException:
-        log.exception("Exception in main loop:")
-        health.mark_fatal(
+        log.exception("Exception in main loop:")  # type: ignore
+        health.mark_fatal(  # type: ignore
             "main loop crashed",
             alert_fn=lambda r: send_admin_alert(
-                varys_client, source="pathsafe_updates", description=r
+                varys_client, source="pathsafe_updates", description=r  # type: ignore
             ),
         )
-        varys_client.close()
+        varys_client.close()  # type: ignore
         time.sleep(1)
         sys.exit(1)
 
