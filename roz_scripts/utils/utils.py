@@ -1,9 +1,11 @@
+import argparse
 import boto3
 from botocore.client import BaseClient
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from collections import namedtuple
 import configparser
+from dataclasses import dataclass
 import os
 import sys
 from io import StringIO
@@ -91,6 +93,289 @@ def send_admin_alert(
     )
 
 
+NO_LIMIT = "none"  # sentinel accepted on the CLI to drop a single resource dimension
+
+_CPU_QUANTITY_RE = re.compile(r"^(\d+(?:\.\d+)?)(m)?$")
+_MEMORY_QUANTITY_RE = re.compile(
+    r"^(\d+(?:\.\d+)?)(E|P|T|G|M|K|Ei|Pi|Ti|Gi|Mi|Ki)?$"
+)
+
+_MEMORY_UNIT_MULTIPLIERS = {
+    "": 1,
+    "K": 1000,
+    "M": 1000**2,
+    "G": 1000**3,
+    "T": 1000**4,
+    "P": 1000**5,
+    "E": 1000**6,
+    "Ki": 1024,
+    "Mi": 1024**2,
+    "Gi": 1024**3,
+    "Ti": 1024**4,
+    "Pi": 1024**5,
+    "Ei": 1024**6,
+}
+
+
+class PodResourceError(ValueError):
+    """Raised when a pod resource quantity or combination of settings is invalid"""
+
+
+def parse_cpu_quantity(value: str) -> float:
+    """Parse a k8s CPU quantity (e.g. "1", "0.5", "500m") into a number of cores
+
+    Args:
+        value (str): The k8s CPU quantity to parse
+
+    Returns:
+        float: The quantity in whole cores
+    """
+    match = _CPU_QUANTITY_RE.match(value.strip())
+    if not match:
+        raise PodResourceError(f"Invalid CPU quantity: {value!r}")
+
+    number, suffix = match.groups()
+    cores = float(number) / 1000 if suffix == "m" else float(number)
+
+    if cores <= 0:
+        raise PodResourceError(f"CPU quantity must be positive, got: {value!r}")
+
+    return cores
+
+
+def parse_memory_quantity(value: str) -> float:
+    """Parse a k8s memory quantity (e.g. "8G", "512Mi") into a number of bytes
+
+    Args:
+        value (str): The k8s memory quantity to parse
+
+    Returns:
+        float: The quantity in bytes
+    """
+    match = _MEMORY_QUANTITY_RE.match(value.strip())
+    if not match:
+        raise PodResourceError(f"Invalid memory quantity: {value!r}")
+
+    number, suffix = match.groups()
+    multiplier = _MEMORY_UNIT_MULTIPLIERS[suffix or ""]
+    quantity = float(number) * multiplier
+
+    if quantity <= 0:
+        raise PodResourceError(f"Memory quantity must be positive, got: {value!r}")
+
+    return quantity
+
+
+@dataclass(frozen=True)
+class PodResources:
+    """CPU/memory/ephemeral-storage requests and limits for the k8s pod that
+    runs a nextflow pipeline as a Job (see `pipeline.execute`).
+
+    A limit field left as None mirrors the corresponding request (matching
+    k8s's own behaviour of a Guaranteed QoS pod when requests == limits). Set
+    a limit field to the NO_LIMIT sentinel ("none") to omit just that
+    dimension from the limits block, or set no_limits=True to omit the whole
+    limits block and let the pod run Burstable/unbounded on that dimension.
+    """
+
+    cpu_request: str = "1"
+    memory_request: str = "8G"
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    ephemeral_storage_request: str | None = None
+    ephemeral_storage_limit: str | None = None
+    no_limits: bool = False
+
+    def validate(self) -> None:
+        """Check that the requested quantities and combination of settings make sense
+
+        Raises:
+            PodResourceError: If a quantity is unparseable, or the settings are contradictory
+        """
+        request_cpu = parse_cpu_quantity(self.cpu_request)
+        request_memory = parse_memory_quantity(self.memory_request)
+
+        if self.ephemeral_storage_request is not None:
+            parse_memory_quantity(self.ephemeral_storage_request)
+
+        explicit_limits = {
+            "cpu_limit": self.cpu_limit,
+            "memory_limit": self.memory_limit,
+            "ephemeral_storage_limit": self.ephemeral_storage_limit,
+        }
+
+        if self.no_limits:
+            contradictions = [
+                name
+                for name, value in explicit_limits.items()
+                if value is not None and value.strip().lower() != NO_LIMIT
+            ]
+            if contradictions:
+                raise PodResourceError(
+                    f"no_limits=True but explicit limit(s) were also set: {', '.join(contradictions)}"
+                )
+            return
+
+        if (
+            self.cpu_limit is not None
+            and self.cpu_limit.strip().lower() != NO_LIMIT
+        ):
+            limit_cpu = parse_cpu_quantity(self.cpu_limit)
+            if limit_cpu < request_cpu:
+                raise PodResourceError(
+                    f"cpu_limit ({self.cpu_limit}) is less than cpu_request ({self.cpu_request})"
+                )
+
+        if (
+            self.memory_limit is not None
+            and self.memory_limit.strip().lower() != NO_LIMIT
+        ):
+            limit_memory = parse_memory_quantity(self.memory_limit)
+            if limit_memory < request_memory:
+                raise PodResourceError(
+                    f"memory_limit ({self.memory_limit}) is less than memory_request ({self.memory_request})"
+                )
+
+        if self.ephemeral_storage_limit is not None:
+            if self.ephemeral_storage_limit.strip().lower() != NO_LIMIT:
+                parse_memory_quantity(self.ephemeral_storage_limit)
+            elif self.ephemeral_storage_request is None:
+                raise PodResourceError(
+                    "ephemeral_storage_limit set to 'none' without ephemeral_storage_request"
+                )
+
+    def to_manifest(self) -> dict:
+        """Build the k8s "resources" dict for a pod container
+
+        Returns:
+            dict: A dict suitable for use as a container's "resources" field.
+                The "limits" key is omitted entirely (not emitted as an empty
+                dict) whenever no limit applies to any dimension.
+        """
+        requests = {"cpu": self.cpu_request, "memory": self.memory_request}
+        if self.ephemeral_storage_request is not None:
+            requests["ephemeral-storage"] = self.ephemeral_storage_request
+
+        manifest = {"requests": requests}
+
+        if self.no_limits:
+            return manifest
+
+        limits = {}
+
+        if self.cpu_limit is None:
+            limits["cpu"] = self.cpu_request
+        elif self.cpu_limit.strip().lower() != NO_LIMIT:
+            limits["cpu"] = self.cpu_limit
+
+        if self.memory_limit is None:
+            limits["memory"] = self.memory_request
+        elif self.memory_limit.strip().lower() != NO_LIMIT:
+            limits["memory"] = self.memory_limit
+
+        if self.ephemeral_storage_limit is not None:
+            if self.ephemeral_storage_limit.strip().lower() != NO_LIMIT:
+                limits["ephemeral-storage"] = self.ephemeral_storage_limit
+        elif self.ephemeral_storage_request is not None:
+            limits["ephemeral-storage"] = self.ephemeral_storage_request
+
+        if limits:
+            manifest["limits"] = limits
+
+        return manifest
+
+
+def add_nxf_pod_resource_args(parser: argparse.ArgumentParser) -> None:
+    """Add CLI flags controlling the nextflow k8s pod's resource requests/limits
+
+    Each flag falls back to a ROZ_NXF_POD_* environment variable, then to a
+    built-in default that reproduces the pipeline's historical hardcoded
+    1 CPU / 8G resources with mirrored limits (Guaranteed QoS), so existing
+    deployments are unaffected until these flags are explicitly set.
+
+    Args:
+        parser (argparse.ArgumentParser): The parser to add the arguments to
+    """
+    parser.add_argument(
+        "--nxf_pod_cpu_request",
+        default=os.getenv("ROZ_NXF_POD_CPU_REQUEST", "1"),
+        help="CPU request for the nextflow k8s pod (default: 1)",
+    )
+    parser.add_argument(
+        "--nxf_pod_memory_request",
+        default=os.getenv("ROZ_NXF_POD_MEMORY_REQUEST", "8G"),
+        help="Memory request for the nextflow k8s pod (default: 8G)",
+    )
+    parser.add_argument(
+        "--nxf_pod_cpu_limit",
+        default=os.getenv("ROZ_NXF_POD_CPU_LIMIT"),
+        help="CPU limit for the nextflow k8s pod. Defaults to mirroring the "
+        "request. Set to 'none' to omit a CPU limit while keeping other "
+        "limits.",
+    )
+    parser.add_argument(
+        "--nxf_pod_memory_limit",
+        default=os.getenv("ROZ_NXF_POD_MEMORY_LIMIT"),
+        help="Memory limit for the nextflow k8s pod. Defaults to mirroring "
+        "the request. Set to 'none' to omit a memory limit while keeping "
+        "other limits.",
+    )
+    parser.add_argument(
+        "--nxf_pod_no_limits",
+        action="store_true",
+        default=_env_flag("ROZ_NXF_POD_NO_LIMITS"),
+        help="Omit the whole resources.limits block for the nextflow k8s "
+        "pod, leaving only the requests (Burstable QoS, unbounded on this "
+        "node). Mutually exclusive with --nxf_pod_cpu_limit / "
+        "--nxf_pod_memory_limit.",
+    )
+    parser.add_argument(
+        "--nxf_pod_ephemeral_storage_request",
+        default=os.getenv("ROZ_NXF_POD_EPHEMERAL_STORAGE_REQUEST"),
+        help="Ephemeral storage request for the nextflow k8s pod. Omitted "
+        "by default; the pipeline's own working directories live on a "
+        "cephfs PVC, so this only accounts for container-local scratch "
+        "space (e.g. /tmp).",
+    )
+    parser.add_argument(
+        "--nxf_pod_ephemeral_storage_limit",
+        default=os.getenv("ROZ_NXF_POD_EPHEMERAL_STORAGE_LIMIT"),
+        help="Ephemeral storage limit for the nextflow k8s pod. Omitted by "
+        "default. Unlike memory, exceeding an ephemeral-storage limit "
+        "causes immediate pod eviction with no OOM-kill-and-retry grace.",
+    )
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def pod_resources_from_args(args: argparse.Namespace) -> PodResources:
+    """Build and validate a PodResources from parsed CLI args
+
+    Args:
+        args (argparse.Namespace): Parsed args, from a parser that was passed
+            through add_nxf_pod_resource_args()
+
+    Returns:
+        PodResources: The validated pod resource configuration
+
+    Raises:
+        PodResourceError: If the resulting configuration is invalid
+    """
+    pod_resources = PodResources(
+        cpu_request=args.nxf_pod_cpu_request,
+        memory_request=args.nxf_pod_memory_request,
+        cpu_limit=args.nxf_pod_cpu_limit,
+        memory_limit=args.nxf_pod_memory_limit,
+        ephemeral_storage_request=args.nxf_pod_ephemeral_storage_request,
+        ephemeral_storage_limit=args.nxf_pod_ephemeral_storage_limit,
+        no_limits=args.nxf_pod_no_limits,
+    )
+    pod_resources.validate()
+    return pod_resources
+
+
 class pipeline:
     def __init__(
         self,
@@ -100,6 +385,7 @@ class pipeline:
         nxf_image: str,
         job_prefix: str,
         profile=None,
+        pod_resources: PodResources | None = None,
     ):
         """
         Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
@@ -109,6 +395,9 @@ class pipeline:
             pipe (str): The pipeline to run as a github repo in the format 'user/repo'
             config (str): Path to a nextflow config file
             profile (str): The nextflow profile to use
+            pod_resources (PodResources | None): CPU/memory/ephemeral-storage
+                requests and limits for the k8s pod. Defaults to
+                PodResources() (1 CPU / 8G, mirrored limits) if not given.
 
         """
 
@@ -119,6 +408,7 @@ class pipeline:
         # self.timeout = timeout
         self.profile = profile
         self.job_prefix = job_prefix
+        self.pod_resources = pod_resources or PodResources()
         self.cmd: list = []
 
     def execute(
@@ -134,6 +424,7 @@ class pipeline:
         workingdir: Path,
         resume: bool = False,
         progress_cb=None,
+        pod_resources: PodResources | None = None,
     ) -> int:
         """
         Execute the pipeline as a k8s job
@@ -152,6 +443,8 @@ class pipeline:
             progress_cb (Callable[[str], None] | None): Called on every poll
                 iteration with a short stage description, so a caller can
                 prove liveness while this method blocks for a long time
+            pod_resources (PodResources | None): Overrides self.pod_resources
+                for this call only, if given
 
         Returns:
             int: The (fake) return code of the job
@@ -229,10 +522,9 @@ class pipeline:
                             {
                                 "name": job_name,
                                 "image": str(self.nxf_image),
-                                "resources": {
-                                    "requests": {"cpu": "1", "memory": "8G"},
-                                    "limits": {"cpu": "1", "memory": "8G"},
-                                },
+                                "resources": (
+                                    pod_resources or self.pod_resources
+                                ).to_manifest(),
                                 "volumeMounts": [
                                     {
                                         "mountPath": "/shared/public/",

@@ -33,6 +33,9 @@ from roz_scripts.utils.utils import (
     EtagMismatchError,
     get_pod_namespace,
     send_admin_alert,
+    add_nxf_pod_resource_args,
+    pod_resources_from_args,
+    PodResourceError,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from varys import Varys
@@ -1891,6 +1894,7 @@ def run(args):
             config=args.nxf_config,
             nxf_image=args.nxf_image,
             job_prefix="ingest",
+            pod_resources=args.nxf_pod_resources,
         )
 
         health = HealthState(get_health_dir())
@@ -1972,9 +1976,16 @@ def main():
     parser.add_argument("--retry-delay", type=int, default=180)
     parser.add_argument("--max_human_reads", type=int, default=10000)
     parser.add_argument("--publish_delay_log", type=Path)
+    add_nxf_pod_resource_args(parser)
 
     global args
     args = parser.parse_args()
+
+    try:
+        args.nxf_pod_resources = pod_resources_from_args(args)
+    except PodResourceError as e:
+        print(f"Invalid nextflow pod resource configuration: {e}", file=sys.stderr)
+        sys.exit(3)
 
     for i in (
         "ONYX_DOMAIN",

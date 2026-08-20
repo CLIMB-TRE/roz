@@ -34,6 +34,9 @@ from roz_scripts.utils.utils import (
     get_pod_namespace,
     S3_CLIENT_CONFIG,
     send_admin_alert,
+    add_nxf_pod_resource_args,
+    pod_resources_from_args,
+    PodResourceError,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from varys import Varys
@@ -832,6 +835,7 @@ def run(args):
             config=args.nxf_config,
             nxf_image=args.nxf_image,
             job_prefix="chimera",
+            pod_resources=args.nxf_pod_resources,
         )
 
         health = HealthState(get_health_dir())
@@ -964,7 +968,14 @@ def main():
         help="Path to nextflow config file",
         required=True,
     )
+    add_nxf_pod_resource_args(parser)
     args = parser.parse_args()
+
+    try:
+        args.nxf_pod_resources = pod_resources_from_args(args)
+    except PodResourceError as e:
+        print(f"Invalid nextflow pod resource configuration: {e}", file=sys.stderr)
+        sys.exit(3)
 
     for i in (
         "ONYX_DOMAIN",

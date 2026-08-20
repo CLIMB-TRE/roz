@@ -18,6 +18,10 @@ from roz_scripts.utils.utils import (
     valid_character_checks,
     pipeline,
     send_admin_alert,
+    PodResources,
+    PodResourceError,
+    parse_cpu_quantity,
+    parse_memory_quantity,
 )
 
 from kubernetes.client.exceptions import ApiException
@@ -795,6 +799,133 @@ class test_pipeline_execute(unittest.TestCase):
         self.assertEqual(returncode, 0)
         api_instance.create_namespaced_job.assert_not_called()
         api_instance.delete_namespaced_job.assert_not_called()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_default_pod_resources_in_manifest(
+        self, mock_k8s_config, mock_batch_cls, mock_sleep
+    ):
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(succeeded=1),
+        ]
+
+        self.pipe.execute(**self.execute_kwargs)
+
+        body = api_instance.create_namespaced_job.call_args.kwargs["body"]
+        container = body["spec"]["template"]["spec"]["containers"][0]
+        self.assertEqual(
+            container["resources"],
+            {
+                "requests": {"cpu": "1", "memory": "8G"},
+                "limits": {"cpu": "1", "memory": "8G"},
+            },
+        )
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_custom_pod_resources_in_manifest(
+        self, mock_k8s_config, mock_batch_cls, mock_sleep
+    ):
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(succeeded=1),
+        ]
+
+        custom_pipe = pipeline(
+            pipe="some/pipeline",
+            branch="main",
+            config=None,
+            nxf_image="some_image",
+            job_prefix="test",
+            pod_resources=PodResources(
+                cpu_request="4", memory_request="32G", no_limits=True
+            ),
+        )
+
+        custom_pipe.execute(**self.execute_kwargs)
+
+        body = api_instance.create_namespaced_job.call_args.kwargs["body"]
+        container = body["spec"]["template"]["spec"]["containers"][0]
+        self.assertEqual(
+            container["resources"],
+            {"requests": {"cpu": "4", "memory": "32G"}},
+        )
+
+
+class test_pod_resources(unittest.TestCase):
+    def test_parse_cpu_quantity(self):
+        self.assertEqual(parse_cpu_quantity("1"), 1)
+        self.assertEqual(parse_cpu_quantity("0.5"), 0.5)
+        self.assertEqual(parse_cpu_quantity("500m"), 0.5)
+
+        with self.assertRaises(PodResourceError):
+            parse_cpu_quantity("bogus")
+
+        with self.assertRaises(PodResourceError):
+            parse_cpu_quantity("-1")
+
+    def test_parse_memory_quantity(self):
+        self.assertEqual(parse_memory_quantity("8G"), 8_000_000_000)
+        self.assertEqual(parse_memory_quantity("8Gi"), 8 * 1024**3)
+        self.assertEqual(parse_memory_quantity("512Mi"), 512 * 1024**2)
+
+        with self.assertRaises(PodResourceError):
+            parse_memory_quantity("bogus")
+
+        with self.assertRaises(PodResourceError):
+            parse_memory_quantity("0")
+
+    def test_default_manifest_matches_historical_hardcoded_values(self):
+        self.assertEqual(
+            PodResources().to_manifest(),
+            {
+                "requests": {"cpu": "1", "memory": "8G"},
+                "limits": {"cpu": "1", "memory": "8G"},
+            },
+        )
+
+    def test_no_limits_omits_limits_key_entirely(self):
+        manifest = PodResources(no_limits=True).to_manifest()
+        self.assertNotIn("limits", manifest)
+        self.assertEqual(manifest["requests"], {"cpu": "1", "memory": "8G"})
+
+    def test_per_dimension_none_limit(self):
+        manifest = PodResources(cpu_limit="none", memory_limit="16G").to_manifest()
+        self.assertNotIn("cpu", manifest["limits"])
+        self.assertEqual(manifest["limits"]["memory"], "16G")
+
+    def test_ephemeral_storage_included_when_set(self):
+        manifest = PodResources(
+            ephemeral_storage_request="2Gi", ephemeral_storage_limit="4Gi"
+        ).to_manifest()
+        self.assertEqual(manifest["requests"]["ephemeral-storage"], "2Gi")
+        self.assertEqual(manifest["limits"]["ephemeral-storage"], "4Gi")
+
+    def test_ephemeral_storage_omitted_when_unset(self):
+        manifest = PodResources().to_manifest()
+        self.assertNotIn("ephemeral-storage", manifest["requests"])
+        self.assertNotIn("ephemeral-storage", manifest["limits"])
+
+    def test_validate_rejects_no_limits_with_explicit_limit(self):
+        with self.assertRaises(PodResourceError):
+            PodResources(no_limits=True, cpu_limit="2").validate()
+
+    def test_validate_rejects_limit_below_request(self):
+        with self.assertRaises(PodResourceError):
+            PodResources(cpu_request="2", cpu_limit="1").validate()
+
+        with self.assertRaises(PodResourceError):
+            PodResources(memory_request="16G", memory_limit="8G").validate()
+
+    def test_validate_accepts_sensible_defaults(self):
+        PodResources().validate()
+        PodResources(no_limits=True).validate()
+        PodResources(cpu_limit="none", memory_limit="16G").validate()
 
 
 class test_onyx_update_payload_key_errors(unittest.TestCase):

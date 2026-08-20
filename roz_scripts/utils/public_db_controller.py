@@ -16,7 +16,7 @@ import urllib.parse
 from urllib.error import URLError
 import datetime
 import requests
-import doi
+import doi  # type: ignore
 import re
 
 base_db_path = "/shared/public/db/"
