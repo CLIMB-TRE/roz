@@ -15,6 +15,7 @@ from roz_scripts.mscape.mscape_ingest_validation import (
     run,
 )
 from roz_scripts.utils.health import HealthState
+from roz_scripts.utils.utils import PodResources
 
 
 def setUpModule():
@@ -81,6 +82,7 @@ def make_args(**kwargs):
         retry_delay=0,
         max_human_reads=10000,
         publish_delay_log=None,
+        nxf_pod_resources=PodResources(),
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)

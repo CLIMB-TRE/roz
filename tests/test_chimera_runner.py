@@ -30,6 +30,7 @@ from roz_scripts.mscape.chimera_runner import (
     ret_0_parser,
     run,
 )
+from roz_scripts.utils.utils import PodResources
 
 
 def setUpModule():
@@ -96,6 +97,7 @@ def make_args(**kwargs):
         log_level="DEBUG",
         n_workers=3,
         chimera_timeout=3600,
+        nxf_pod_resources=PodResources(),
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
