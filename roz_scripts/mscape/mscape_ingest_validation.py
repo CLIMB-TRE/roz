@@ -476,7 +476,7 @@ def dynamic_timeout(*s3_uris: str, logger: logging.Logger | None = None) -> int:
 
     size = content_length / 1000000
 
-    timeout = floor(4700 * log(size)) - 20000
+    timeout = floor(3200 * log(size)) - 20000
 
     if timeout < min_timeout:
         timeout = min_timeout
