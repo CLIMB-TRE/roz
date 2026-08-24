@@ -21,7 +21,7 @@ ADVERSARIAL_CONFIG_PATH = os.path.join(DIR, "fixtures", "test_config_adversarial
 
 class test_short_site(unittest.TestCase):
     def test_dotted_site_returns_second_to_last_component(self):
-        self.assertEqual(short_site("gpha.ukhsa.mscape"), "ukhsa")
+        self.assertEqual(short_site("clinic1.trust1.mscape"), "trust1")
 
     def test_bare_site_returns_itself(self):
         self.assertEqual(short_site("mscape"), "mscape")
@@ -134,9 +134,9 @@ class test_parse_bucket_name_adversarial(unittest.TestCase):
         self.assertEqual(match.test_flag, "prod")
 
     def test_multi_level_dotted_site(self):
-        bucket_name = "adversarialscape-gpha.ukhsa.adversarialscape-illumina-prod"
+        bucket_name = "adversarialscape-clinic1.trust1.adversarialscape-illumina-prod"
         match = parse_bucket_name(self.config, bucket_name)
-        self.assertEqual(match.site, "gpha.ukhsa.adversarialscape")
+        self.assertEqual(match.site, "clinic1.trust1.adversarialscape")
 
     def test_illumina_se_platform_not_confused_with_illumina(self):
         bucket_name = "adversarialscape-adversarialscape-illumina.se-prod"

@@ -178,7 +178,7 @@ class BucketMatch:
 def short_site(site: str) -> str:
     """Derive the short form of a site name used for exchange names and dedup keys
 
-    e.g. "gpha.ukhsa.mscape" -> "ukhsa". Note this is a lossy heuristic that
+    e.g. "clinic1.trust1.mscape" -> "trust1". Note this is a lossy heuristic that
     can collide between distinct sites sharing a second-to-last dotted
     component - it exists here, centralised, purely to match pre-existing
     behaviour rather than as an endorsement of the scheme.

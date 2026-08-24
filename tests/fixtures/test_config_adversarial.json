@@ -6,8 +6,8 @@
       "artifact_layout": "project|run_index|run_id",
       "sites": {
         "adversarialscape": "analysis",
-        "gpha.ukhsa.adversarialscape": "analysis",
-        "tarzet.ukhsa.adversarialscape": "uploader",
+        "clinic1.trust1.adversarialscape": "analysis",
+        "clinic2.trust1.adversarialscape": "uploader",
         "hyphen-site.adversarialscape": "uploader",
         "collide.adversarialscape": "uploader",
         "collide": "uploader"
