@@ -49,27 +49,27 @@
         }
       },
       "project_buckets": {
-        "fake_widget_alpha": {
+        "published_reads": {
           "name_layout": "{project}-fake-widget-alpha",
           "policy": {},
           "owner": "admin"
         },
-        "fake_widget_beta": {
+        "published_binned_reads": {
           "name_layout": "{project}-fake-widget-beta",
           "policy": {"analysis": "project_read_list"},
           "owner": "admin"
         },
-        "fake-widget-gamma": {
+        "published-read-fractions": {
           "name_layout": "{project}-fake-widget-gamma",
           "policy": {"analysis": "project_read_list"},
           "owner": "admin"
         },
-        "fake_widget_delta": {
+        "published_taxon_reports": {
           "name_layout": "{project}-fake-widget-delta",
           "policy": {"analysis": "project_read_list"},
           "owner": "admin"
         },
-        "fake_widget_epsilon": {
+        "published_scylla_reports": {
           "name_layout": "{project}-fake-widget-epsilon",
           "policy": {"analysis": "project_read"},
           "owner": "admin"
@@ -84,17 +84,17 @@
           "policy": {"analysis": "project_read"},
           "owner": "admin"
         },
-        "fake_widget_eta": {
+        "published_hcid_reports": {
           "name_layout": "{project}-fake-widget-eta",
           "policy": {"analysis": "project_read_list"},
           "owner": "admin"
         },
-        "fake_widget_theta": {
+        "chimera_bams": {
           "name_layout": "{project}-fake-widget-theta",
           "policy": {"analysis": "project_read_list"},
           "owner": "admin"
         },
-        "fake_widget_iota": {
+        "chimera_reports": {
           "name_layout": "{project}-fake-widget-iota",
           "policy": {"analysis": "project_read_list"},
           "owner": "admin"
@@ -184,13 +184,13 @@
         }
       },
       "project_buckets": {
-        "fake_widget_alpha": {
-          "name_layout": "{project}-fake-widget-alpha",
+        "published_reads": {
+          "name_layout": "{project}-fake-reads-store",
           "policy": {"analysis": "project_read"},
           "owner": "admin"
         },
-        "fake_widget_beta": {
-          "name_layout": "{project}-fake-widget-beta",
+        "published_assemblies": {
+          "name_layout": "{project}-fake-assembly-store",
           "policy": {"analysis": "project_read"},
           "owner": "admin"
         }

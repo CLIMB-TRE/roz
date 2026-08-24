@@ -30,6 +30,8 @@ from onyx.exceptions import (
     OnyxClientError,
 )
 
+from roz_scripts.utils.config import site_bucket
+
 from kubernetes import config as k8s_config
 from kubernetes.client import ApiClient
 from kubernetes.client.exceptions import ApiException
@@ -693,21 +695,26 @@ def init_logger(name, log_path, log_level):
     return log
 
 
-def put_result_json(payload: dict, log: logging.Logger):
+def put_result_json(payload: dict, log: logging.Logger, config: dict):
     """Send the result payload to S3
 
     Args:
         payload (dict): The payload to send to S3
         log (logging.Logger): Logger object
+        config (dict): The loaded roz config, from load_config()
     """
 
     s3_credentials = get_s3_credentials()
 
     s3_client = get_s3_client(s3_credentials)
 
+    results_bucket = site_bucket(
+        config, payload["project"], payload["raw_site"], "results"
+    )
+
     try:
         s3_client.put_object(
-            Bucket=f"{payload['project']}-{payload['raw_site']}-results",
+            Bucket=results_bucket,
             Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.result.json",
             Body=json.dumps(payload),
         )
@@ -721,17 +728,22 @@ def put_result_json(payload: dict, log: logging.Logger):
         raise e
 
 
-def put_linkage_json(payload: dict, log: logging.Logger):
+def put_linkage_json(payload: dict, log: logging.Logger, config: dict):
     """Send the linkage payload to S3
 
     Args:
         payload (dict): The payload dict to create the linkage dict from
         log (logging.Logger): Logger object
+        config (dict): The loaded roz config, from load_config()
     """
 
     s3_credentials = get_s3_credentials()
 
     s3_client = get_s3_client(s3_credentials)
+
+    results_bucket = site_bucket(
+        config, payload["project"], payload["raw_site"], "results"
+    )
 
     linkage_dict = {
         "publish_timestamp": time.time_ns(),
@@ -751,7 +763,7 @@ def put_linkage_json(payload: dict, log: logging.Logger):
 
     try:
         s3_client.put_object(
-            Bucket=f"{payload['project']}-{payload['raw_site']}-results",
+            Bucket=results_bucket,
             Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.linkage.json",
             Body=json.dumps(linkage_dict),
         )

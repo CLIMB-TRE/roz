@@ -33,17 +33,19 @@ from roz_scripts.utils.utils import (
     PodResourceError,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
+from roz_scripts.utils.config import load_config, project_bucket, ConfigError
 from varys import Varys
 from onyx import OnyxClient
 from botocore.client import BaseClient
 
 
 class worker_pool_handler:
-    def __init__(self, workers, logger, varys_client, health: HealthState):
+    def __init__(self, workers, logger, varys_client, health: HealthState, config: dict):
         self._log = logger
         self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
         self._health = health
+        self._config = config
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
@@ -81,7 +83,7 @@ class worker_pool_handler:
                 queue_suffix="validator",
             )
 
-            put_result_json(payload, self._log)
+            put_result_json(payload, self._log, self._config)
 
             if not payload["test_flag"]:
                 new_artifact_payload = {
@@ -102,7 +104,7 @@ class worker_pool_handler:
                     queue_suffix="validator",
                 )
 
-                put_linkage_json(payload, self._log)
+                put_linkage_json(payload, self._log, self._config)
 
             self._varys_client.acknowledge_message(message)
 
@@ -143,7 +145,7 @@ class worker_pool_handler:
                         queue_suffix="validator",
                     )
 
-                    put_result_json(payload, self._log)
+                    put_result_json(payload, self._log, self._config)
 
                     self._varys_client.nack_message(message)
 
@@ -172,7 +174,7 @@ class worker_pool_handler:
                     queue_suffix="validator",
                 )
 
-                put_result_json(payload, self._log)
+                put_result_json(payload, self._log, self._config)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
@@ -199,6 +201,7 @@ def assembly_to_s3(
     s3_client: BaseClient,
     result_path: str,
     log: logging.Logger,
+    config: dict,
 ) -> tuple[bool, dict]:
     """Function to upload raw reads to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
@@ -207,12 +210,15 @@ def assembly_to_s3(
         s3_client (BaseClient): Boto3 client object for S3
         result_path (str): Path to the results directory
         log (logging.Logger): Logger object
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
     """
 
     s3_fail = False
+
+    assembly_bucket = project_bucket(config, "pathsafe", "published_assemblies")
 
     assembly_path = os.path.join(
         result_path, f"assembly/{payload['uuid']}.result.fasta"
@@ -221,14 +227,14 @@ def assembly_to_s3(
     try:
         s3_client.upload_file(
             assembly_path,
-            "pathsafe-published-assembly",
+            assembly_bucket,
             f"{payload['climb_id']}.assembly.fasta",
         )
 
         payload["assembly_presigned_url"] = s3_client.generate_presigned_url(
             "get_object",
             Params={
-                "Bucket": "pathsafe-published-assembly",
+                "Bucket": assembly_bucket,
                 "Key": f"{payload['climb_id']}.assembly.fasta",
             },
             ExpiresIn=86400,
@@ -245,7 +251,7 @@ def assembly_to_s3(
         update_fail, alert, payload = onyx_update(
             payload=payload,
             fields={
-                "assembly": f"s3://pathsafe-published-assembly/{payload['climb_id']}.assembly.fasta",
+                "assembly": f"s3://{assembly_bucket}/{payload['climb_id']}.assembly.fasta",
             },
             log=log,
         )
@@ -778,6 +784,7 @@ def validate(
         s3_client=s3_client,
         result_path=result_path,
         log=log,
+        config=args.config,
     )
 
     if s3_fail:
@@ -859,7 +866,11 @@ def run(args):
         health = HealthState(get_health_dir())
 
         worker_pool = worker_pool_handler(
-            workers=args.n_workers, logger=log, varys_client=varys_client, health=health
+            workers=args.n_workers,
+            logger=log,
+            varys_client=varys_client,
+            health=health,
+            config=args.config,
         )
 
         while True:
@@ -924,6 +935,11 @@ def main():
         default=180,
         help="Time to wait before re-queuing a failed message",
     )
+    parser.add_argument(
+        "--config",
+        default=os.getenv("ROZ_CONFIG_JSON"),
+        help="Path to the roz config JSON file. Defaults to $ROZ_CONFIG_JSON.",
+    )
     add_nxf_pod_resource_args(parser)
     args = parser.parse_args()
 
@@ -943,10 +959,17 @@ def main():
         "NXF_HOME",
         "PATHOGENWATCH_API_KEY",
         "PATHOGENWATCH_ENDPOINT_URL",
+        "ROZ_CONFIG_JSON",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
+
+    try:
+        args.config = load_config(args.config)
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     run(args)
 

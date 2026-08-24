@@ -18,6 +18,7 @@ from roz_scripts.utils.utils import (
     send_admin_alert,
 )
 from roz_scripts.utils.health import HealthState, get_health_dir
+from roz_scripts.utils.config import load_config, ConfigError
 
 
 def main():
@@ -29,10 +30,17 @@ def main():
         "VARYS_CFG",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "ROZ_CONFIG_JSON",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
+
+    try:
+        config = load_config()
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     # Setup producer / consumer
     log = init_logger(
@@ -90,7 +98,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             log.info(
@@ -119,7 +127,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             log.info(
@@ -146,7 +154,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             payload["onyx_test_create_status"] = True
@@ -172,7 +180,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             payload["biosample_id"] = metadata["biosample_id"]

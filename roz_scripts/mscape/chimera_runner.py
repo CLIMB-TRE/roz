@@ -39,6 +39,7 @@ from roz_scripts.utils.utils import (
     PodResourceError,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
+from roz_scripts.utils.config import load_config, project_bucket, ConfigError
 from varys import Varys
 
 
@@ -482,7 +483,7 @@ def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logg
     return True
 
 
-def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
+def push_bam_file(bam_path: str, payload: dict, log: logging.Logger, config: dict):
 
     s3_client = boto3.client(
         "s3",
@@ -490,7 +491,7 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
         config=S3_CLIENT_CONFIG,
     )
 
-    s3_bucket = f"{payload['project']}-chimera-bams"
+    s3_bucket = project_bucket(config, payload["project"], "chimera_bams")
 
     s3_key = f"{payload['climb_id']}.chimera.bam"
 
@@ -518,6 +519,7 @@ def push_chimera_report(
     db_version: str | None,
     payload: dict,
     log: logging.Logger,
+    config: dict,
 ) -> str:
 
     s3_client = boto3.client(
@@ -525,7 +527,7 @@ def push_chimera_report(
         endpoint_url="https://s3.climb.ac.uk",
     )
 
-    s3_bucket = f"{payload['project']}-chimera-reports"
+    s3_bucket = project_bucket(config, payload["project"], "chimera_reports")
 
     s3_key = f"{payload['climb_id']}.{report_suffix}"
 
@@ -715,6 +717,7 @@ def process_record(
                 db_version=args.alignment_db_version,
                 payload=payload,
                 log=log,
+                config=args.config,
             )
         except Exception:
             return fail(f"Failed to push alignment report for {match_uuid}")
@@ -761,6 +764,7 @@ def process_record(
                     db_version=args.sylph_db_version,
                     payload=payload,
                     log=log,
+                    config=args.config,
                 )
             except Exception:
                 return fail(f"Failed to push Sylph report for {match_uuid}")
@@ -784,6 +788,7 @@ def process_record(
             bam_path=bam_path,
             payload=payload,
             log=log,
+            config=args.config,
         )
 
         update_fail, update_alert, payload = onyx_update(
@@ -968,6 +973,11 @@ def main():
         help="Path to nextflow config file",
         required=True,
     )
+    parser.add_argument(
+        "--config",
+        default=os.getenv("ROZ_CONFIG_JSON"),
+        help="Path to the roz config JSON file. Defaults to $ROZ_CONFIG_JSON.",
+    )
     add_nxf_pod_resource_args(parser)
     args = parser.parse_args()
 
@@ -985,10 +995,17 @@ def main():
         "AWS_SECRET_ACCESS_KEY",
         "NXF_WORK",
         "NXF_HOME",
+        "ROZ_CONFIG_JSON",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
+
+    try:
+        args.config = load_config(args.config)
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     run(args)
 

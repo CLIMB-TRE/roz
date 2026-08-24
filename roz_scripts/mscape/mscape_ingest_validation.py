@@ -38,16 +38,20 @@ from roz_scripts.utils.utils import (
     PodResourceError,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
+from roz_scripts.utils.config import load_config, project_bucket, ConfigError
 from varys import Varys
 from varys.utils import varys_message
 
 
 class worker_pool_handler:
-    def __init__(self, workers, logger, varys_client, project, health: HealthState):
+    def __init__(
+        self, workers, logger, varys_client, project, health: HealthState, config: dict
+    ):
         self._log = logger
         self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
         self._health = health
+        self._config = config
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
@@ -114,7 +118,7 @@ class worker_pool_handler:
                 queue_suffix="validator",
             )
 
-            put_result_json(payload, self._log)
+            put_result_json(payload, self._log, self._config)
 
             if not payload["test_flag"]:
                 new_artifact_payload = {
@@ -135,7 +139,7 @@ class worker_pool_handler:
                     ]
 
                 if not payload["low_priority"]:
-                    put_linkage_json(payload=payload, log=self._log)
+                    put_linkage_json(payload=payload, log=self._log, config=self._config)
 
                     self._varys_client.send(
                         message=new_artifact_payload,
@@ -196,7 +200,7 @@ class worker_pool_handler:
                     queue_suffix="validator",
                 )
 
-                put_result_json(payload, self._log)
+                put_result_json(payload, self._log, self._config)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
@@ -485,7 +489,11 @@ def dynamic_timeout(*s3_uris: str, logger: logging.Logger | None = None) -> int:
 
 
 def add_taxon_records(
-    payload: dict, result_path: str, log: logging.Logger, s3_client: BaseClient
+    payload: dict,
+    result_path: str,
+    log: logging.Logger,
+    s3_client: BaseClient,
+    config: dict,
 ) -> tuple[bool, bool, dict]:
     """Function to add nested taxon records to an existing Onyx record from a Scylla reads_summary.json file
 
@@ -494,6 +502,7 @@ def add_taxon_records(
         result_path (str): Result path for the current artifact
         log (logging.Logger): Logger object
         s3_client (BaseClient): Boto3 client object for S3
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
@@ -568,7 +577,7 @@ def add_taxon_records(
                 )
 
                 try:
-                    s3_bucket = f"{payload['project']}-published-binned-reads"
+                    s3_bucket = project_bucket(config, payload["project"], "published_binned_reads")
                     s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon_id']}_{i}.fastq.gz"
                     s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
@@ -598,7 +607,7 @@ def add_taxon_records(
             )
 
             try:
-                s3_bucket = f"{payload['project']}-published-binned-reads"
+                s3_bucket = project_bucket(config, payload["project"], "published_binned_reads")
                 s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon_id']}.fastq.gz"
                 s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
@@ -651,7 +660,11 @@ def add_taxon_records(
 
 
 def push_taxon_reports(
-    payload: dict, result_path: str, log: logging.Logger, s3_client: BaseClient
+    payload: dict,
+    result_path: str,
+    log: logging.Logger,
+    s3_client: BaseClient,
+    config: dict,
 ) -> tuple[bool, bool, dict]:
     """Push taxa reports to long-term storage bucket and update the Onyx record with the S3 directory URI
 
@@ -660,6 +673,7 @@ def push_taxon_reports(
         result_path (str): Path to the results directory
         log (logging.Logger): Logger object
         s3_client (BaseClient): S3 boto3 client object
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
@@ -680,7 +694,7 @@ def push_taxon_reports(
 
         reports = os.listdir(taxon_report_path)
 
-        s3_bucket = f"{payload['project']}-published-taxon-reports"
+        s3_bucket = project_bucket(config, payload["project"], "published_taxon_reports")
 
         for report in reports:
             # Skip directories and hidden files just incase
@@ -822,7 +836,11 @@ def add_classifier_calls(
 
 
 def push_report_file(
-    payload: dict, result_path: str, log: logging.Logger, s3_client: BaseClient
+    payload: dict,
+    result_path: str,
+    log: logging.Logger,
+    s3_client: BaseClient,
+    config: dict,
 ) -> tuple[bool, bool, dict]:
     """Push report file to long-term storage bucket and update the Onyx record with the report URI
 
@@ -831,6 +849,7 @@ def push_report_file(
         result_path (str): Path to the results directory
         log (logging.Logger): Logger object
         s3_client (BaseClient): Boto3 client object for S3
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
@@ -841,7 +860,7 @@ def push_report_file(
 
     report_path = os.path.join(result_path, f"{payload['uuid']}_report.html")
 
-    s3_bucket = f"{payload['project']}-published-reports"
+    s3_bucket = project_bucket(config, payload["project"], "published_scylla_reports")
 
     s3_key = f"{payload['climb_id']}_scylla_report.html"
 
@@ -886,6 +905,7 @@ def add_reads_record(
     s3_client: BaseClient,
     result_path: str,
     log: logging.Logger,
+    config: dict,
 ) -> tuple[bool, bool, dict]:
     """Function to upload raw reads to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
@@ -894,6 +914,7 @@ def add_reads_record(
         s3_client (BaseClient): Boto3 client object for S3
         result_path (str): Path to the results directory
         log (logging.Logger): Logger object
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
@@ -902,7 +923,7 @@ def add_reads_record(
     raw_read_fail = False
     alert = False
 
-    s3_bucket = f"{payload['project']}-published-reads"
+    s3_bucket = project_bucket(config, payload["project"], "published_reads")
 
     if payload["platform"] == "illumina":
         for i in (1, 2):
@@ -1000,6 +1021,7 @@ def read_fraction_upload(
     result_path: str,
     log: logging.Logger,
     fraction_prefix: str,
+    config: dict,
 ) -> tuple[bool, bool, dict]:
     """Function to upload read fractions to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
@@ -1009,6 +1031,7 @@ def read_fraction_upload(
         result_path (str): Path to the results directory
         log (logging.Logger): Logger object
         fraction_prefix (str): Prefix for the read fraction
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the upload failed, a bool indicating whether to squawk in the alert channel and the updated payload dict
@@ -1017,7 +1040,7 @@ def read_fraction_upload(
     read_fraction_fail = False
     alert = False
 
-    s3_bucket = f"{payload['project']}-published-read-fractions"
+    s3_bucket = project_bucket(config, payload["project"], "published-read-fractions")
 
     if payload["platform"] == "illumina":
         for i in (1, 2):
@@ -1239,7 +1262,11 @@ def ret_0_parser(
 
 
 def handle_hcid(
-    log: logging.Logger, payload: dict, result_path: str, s3_client: BaseClient
+    log: logging.Logger,
+    payload: dict,
+    result_path: str,
+    s3_client: BaseClient,
+    config: dict,
 ) -> tuple[bool, list, bool, dict]:
     """Function to handle the parsing of HCID warnings output by the Scylla pipeline
 
@@ -1248,6 +1275,7 @@ def handle_hcid(
         payload (dict): Payload dictionary
         result_path (str): Path to the results directory
         s3_client (BaseClient): Boto3 client object for S3
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, list, bool, dict]: Tuple containing a bool indicating whether the ingest has failed, a list of HCID alerts, a bool indicating whether to squawk in the alert channel and the updated payload dictionary
@@ -1258,7 +1286,7 @@ def handle_hcid(
 
     hcid_alerts = []
 
-    s3_bucket = f"{payload['project']}-published-hcid"
+    s3_bucket = project_bucket(config, payload["project"], "published_hcid_reports")
 
     try:
         hcid_path = os.path.join(result_path, "qc")
@@ -1731,10 +1759,15 @@ def validate(
         s3_client=s3_client,
         result_path=result_path,
         log=log,
+        config=args.config,
     )
 
     binned_read_fail, taxa_alert, payload = add_taxon_records(
-        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+        payload=payload,
+        result_path=result_path,
+        log=log,
+        s3_client=s3_client,
+        config=args.config,
     )
 
     classifier_calls_fail, classifier_alert, payload = add_classifier_calls(
@@ -1775,6 +1808,7 @@ def validate(
             result_path=result_path,
             log=log,
             fraction_prefix=fraction,
+            config=args.config,
         )
 
         if fraction_alert:
@@ -1784,15 +1818,27 @@ def validate(
             fraction_fail_outer = True
 
     report_fail, report_alert, payload = push_report_file(
-        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+        payload=payload,
+        result_path=result_path,
+        log=log,
+        s3_client=s3_client,
+        config=args.config,
     )
 
     taxon_report_fail, taxa_reports_alert, payload = push_taxon_reports(
-        payload=payload, result_path=result_path, log=log, s3_client=s3_client
+        payload=payload,
+        result_path=result_path,
+        log=log,
+        s3_client=s3_client,
+        config=args.config,
     )
 
     hcid_fail, hcid_alerts, hcid_alert, payload = handle_hcid(
-        log=log, payload=payload, result_path=result_path, s3_client=s3_client
+        log=log,
+        payload=payload,
+        result_path=result_path,
+        s3_client=s3_client,
+        config=args.config,
     )
 
     spike_in_fail, spike_in_alert, payload = handle_spike_ins(
@@ -1905,6 +1951,7 @@ def run(args):
             varys_client=varys_client,
             project=args.project,
             health=health,
+            config=args.config,
         )
 
         while True:
@@ -1976,6 +2023,11 @@ def main():
     parser.add_argument("--retry-delay", type=int, default=180)
     parser.add_argument("--max_human_reads", type=int, default=10000)
     parser.add_argument("--publish_delay_log", type=Path)
+    parser.add_argument(
+        "--config",
+        default=os.getenv("ROZ_CONFIG_JSON"),
+        help="Path to the roz config JSON file. Defaults to $ROZ_CONFIG_JSON.",
+    )
     add_nxf_pod_resource_args(parser)
 
     global args
@@ -1999,12 +2051,19 @@ def main():
         "SCYLLA_K2_DB_DATE",
         "SCYLLA_TAXONOMY_PATH",
         "SCYLLA_TAXONOMY_DATE",
+        "ROZ_CONFIG_JSON",
     ):
         if not os.getenv(i):
             print(
                 f"The environmental variabl1e '{i}' has not been set", file=sys.stderr
             )
             sys.exit(3)
+
+    try:
+        args.config = load_config(args.config)
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     run(args)
 
