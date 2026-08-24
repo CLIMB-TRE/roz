@@ -77,9 +77,9 @@ example_csv_msg = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscape-birm-ont-prod",
+                    "name": "mscape-birm.mscape-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm.mscape-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
@@ -119,9 +119,9 @@ example_csv_msg_2 = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscape-birm-ont-prod",
+                    "name": "mscape-birm.mscape-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm.mscape-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
@@ -161,9 +161,9 @@ example_fastq_msg = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscape-birm-ont-prod",
+                    "name": "mscape-birm.mscape-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm.mscape-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
@@ -203,9 +203,9 @@ incorrect_fastq_msg = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscape-birm-ont-prod",
+                    "name": "mscape-birm.mscape-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm.mscape-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
@@ -245,9 +245,9 @@ mismatch_project_message = {
                 "s3SchemaVersion": "1.0",
                 "configurationId": "inbound.s3",
                 "bucket": {
-                    "name": "mscape-birm-ont-prod",
+                    "name": "mscape-birm.mscape-ont-prod",
                     "ownerIdentity": {"principalId": "testuser"},
-                    "arn": "arn:aws:s3:::mscape-birm-ont-prod",
+                    "arn": "arn:aws:s3:::mscape-birm.mscape-ont-prod",
                     "id": "testdata",
                 },
                 "object": {
