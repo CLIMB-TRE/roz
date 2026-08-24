@@ -598,7 +598,7 @@ class Test_S3_matcher(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = S3_MATCHER_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = os.path.join(DIR, "fixtures", "test_config.json")
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
@@ -796,7 +796,7 @@ class Test_ingest(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = os.path.join(DIR, "fixtures", "test_config.json")
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
@@ -951,7 +951,7 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = os.path.join(DIR, "fixtures", "test_config.json")
         os.environ["ONYX_DOMAIN"] = "domain"
         os.environ["ONYX_TOKEN"] = "testing"
 
@@ -2479,7 +2479,7 @@ class Test_pathsafe_validator(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = os.path.join(DIR, "fixtures", "test_config.json")
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["PATHOGENWATCH_API_KEY"] = "nonsense"
