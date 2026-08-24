@@ -79,6 +79,19 @@ def make_message(payload=None):
     return msg
 
 
+def make_config():
+    return {
+        "configs": {
+            "mscape": {
+                "project_buckets": {
+                    "chimera_bams": {"name_layout": "{project}-fake-chimera-bams"},
+                    "chimera_reports": {"name_layout": "{project}-fake-chimera-reports"},
+                }
+            }
+        }
+    }
+
+
 def make_args(**kwargs):
     defaults = dict(
         project="mscape",
@@ -98,6 +111,7 @@ def make_args(**kwargs):
         n_workers=3,
         chimera_timeout=3600,
         nxf_pod_resources=PodResources(),
+        config=make_config(),
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -564,12 +578,12 @@ class TestPushBamFile(unittest.TestCase):
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
 
-        uri = push_bam_file("/tmp/CLIMB001.bam", self.payload, self.log)
+        uri = push_bam_file("/tmp/CLIMB001.bam", self.payload, self.log, make_config())
 
-        self.assertEqual(uri, "s3://mscape-chimera-bams/CLIMB001.chimera.bam")
+        self.assertEqual(uri, "s3://mscape-fake-chimera-bams/CLIMB001.chimera.bam")
         mock_s3.upload_file.assert_called_once_with(
             "/tmp/CLIMB001.bam",
-            "mscape-chimera-bams",
+            "mscape-fake-chimera-bams",
             "CLIMB001.chimera.bam",
         )
 
@@ -580,14 +594,14 @@ class TestPushBamFile(unittest.TestCase):
         mock_boto_client.return_value = mock_s3
 
         with self.assertRaises(Exception, msg="S3 upload failed"):
-            push_bam_file("/tmp/CLIMB001.bam", self.payload, self.log)
+            push_bam_file("/tmp/CLIMB001.bam", self.payload, self.log, make_config())
 
     @patch("roz_scripts.mscape.chimera_runner.boto3.client")
     def test_uses_climb_id_in_key(self, mock_boto_client):
         payload = make_payload(climb_id="CLIMB999")
         mock_boto_client.return_value = MagicMock()
 
-        uri = push_bam_file("/tmp/CLIMB999.bam", payload, self.log)
+        uri = push_bam_file("/tmp/CLIMB999.bam", payload, self.log, make_config())
 
         self.assertIn("CLIMB999", uri)
 
@@ -612,19 +626,20 @@ class TestPushChimeraReport(unittest.TestCase):
             "v1.0",
             self.payload,
             self.log,
+            make_config(),
         )
 
         self.assertEqual(
-            uri, "s3://mscape-chimera-reports/CLIMB001.alignment_report.tsv"
+            uri, "s3://mscape-fake-chimera-reports/CLIMB001.alignment_report.tsv"
         )
         mock_s3.upload_file.assert_any_call(
             "/tmp/CLIMB001.alignment_report.tsv",
-            "mscape-chimera-reports",
+            "mscape-fake-chimera-reports",
             "CLIMB001.alignment_report.tsv",
         )
         mock_s3.upload_file.assert_any_call(
             "/tmp/CLIMB001.alignment_report.tsv",
-            "mscape-chimera-reports",
+            "mscape-fake-chimera-reports",
             "CLIMB001.v1.0.alignment_report.tsv",
         )
         self.assertEqual(mock_s3.upload_file.call_count, 2)
@@ -641,6 +656,7 @@ class TestPushChimeraReport(unittest.TestCase):
                 None,
                 self.payload,
                 self.log,
+                make_config(),
             )
 
         mock_s3.upload_file.assert_not_called()
@@ -658,6 +674,7 @@ class TestPushChimeraReport(unittest.TestCase):
                 "v1.0",
                 self.payload,
                 self.log,
+                make_config(),
             )
 
 

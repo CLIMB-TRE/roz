@@ -83,6 +83,7 @@ def make_args(**kwargs):
         max_human_reads=10000,
         publish_delay_log=None,
         nxf_pod_resources=PodResources(),
+        config={},
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -99,7 +100,12 @@ class TestWorkerPoolHandlerInit(unittest.TestCase):
         varys = MagicMock()
 
         handler = worker_pool_handler(
-            workers=4, logger=log, varys_client=varys, project="mscape", health=MagicMock()
+            workers=4,
+            logger=log,
+            varys_client=varys,
+            project="mscape",
+            health=MagicMock(),
+            config=MagicMock(),
         )
 
         mock_pool_cls.assert_called_once_with(processes=4)
@@ -115,6 +121,7 @@ class TestWorkerPoolHandlerSubmitJob(unittest.TestCase):
                 varys_client=MagicMock(),
                 project="mscape",
                 health=MagicMock(),
+                config=MagicMock(),
             )
         self.message = make_message()
         self.args = make_args()
@@ -151,6 +158,7 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
                 varys_client=MagicMock(),
                 project="mscape",
                 health=MagicMock(),
+                config=MagicMock(),
             )
         self.message = make_message()
 
@@ -167,7 +175,7 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
             exchange="inbound-results-mscape-birm",
             queue_suffix="validator",
         )
-        mock_put_result.assert_called_once_with(payload, self.handler._log)
+        mock_put_result.assert_called_once_with(payload, self.handler._log, self.handler._config)
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
@@ -194,7 +202,7 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         payload = base_payload()
         self.handler.callback((True, False, [], payload, self.message))
 
-        mock_put_linkage.assert_called_once_with(payload=payload, log=self.handler._log)
+        mock_put_linkage.assert_called_once_with(payload=payload, log=self.handler._log, config=self.handler._config)
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
@@ -266,7 +274,7 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
             exchange="inbound-results-mscape-birm",
             queue_suffix="validator",
         )
-        mock_put_result.assert_called_once_with(payload, self.handler._log)
+        mock_put_result.assert_called_once_with(payload, self.handler._log, self.handler._config)
         self.handler._varys_client.acknowledge_message.assert_called_once_with(self.message)
 
     # --- Alert flag ---
@@ -408,7 +416,7 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
             exchange="inbound-results-mscape-birm",
             queue_suffix="validator",
         )
-        mock_put_result.assert_called_once_with(payload, self.handler._log)
+        mock_put_result.assert_called_once_with(payload, self.handler._log, self.handler._config)
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_failure_no_rerun_does_not_nack(self, mock_put_result):
@@ -492,6 +500,7 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
                 varys_client=MagicMock(),
                 project="mscape",
                 health=self.health,
+                config=MagicMock(),
             )
 
     def test_error_callback_sends_dead_worker_message(self):
