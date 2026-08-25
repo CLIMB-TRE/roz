@@ -897,7 +897,10 @@ def check_bucket_exist_and_create(
                 continue
 
             if dry_run:
-                print(f"Dry run, not creating bucket: {bucket_arn}", file=sys.stdout)
+                print(
+                    f"Dry run, bucket {bucket_arn} does not exist, not creating",
+                    file=sys.stdout,
+                )
                 continue
 
             print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
@@ -917,15 +920,16 @@ def check_bucket_exist_and_create(
             for bucket, bucket_arn in site_config["site_buckets"]:
                 exists = check_site_bucket_exists(bucket_arn=bucket_arn, site=site)
 
-                if dry_run:
-                    print(
-                        f"Dry run, not creating bucket: {bucket_arn}", file=sys.stdout
-                    )
-                    continue
-
                 if exists:
                     print(
                         f"Bucket {bucket_arn} already exists, no need to create",
+                        file=sys.stdout,
+                    )
+                    continue
+
+                if dry_run:
+                    print(
+                        f"Dry run, bucket {bucket_arn} does not exist, not creating",
                         file=sys.stdout,
                     )
                     continue
