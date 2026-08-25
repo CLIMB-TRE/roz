@@ -1217,6 +1217,13 @@ def diff_bucket_policy_grants(
         aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}, "admin": {...}}
         site (str | None): The owning site, for a site bucket; None for a project bucket
 
+    Note on the admin principal: RGW grants the bucket-owning account (admin) implicit
+    full access regardless of what the policy document says, so an absent or narrowed
+    admin statement has no functional effect - the same reasoning test_policies already
+    applies by never checking admin's probed permissions against correct_perms. The
+    admin principal is therefore excluded from missing_principals/action_mismatches
+    here too, to avoid flagging permanent, non-actionable drift.
+
     Returns:
         dict: {"missing_principals": [...], "unexpected_principals": [...], "action_mismatches": {principal: {"missing": [...], "extra": [...]}}}
     """
@@ -1246,8 +1253,10 @@ def diff_bucket_policy_grants(
     expected_principals = set(expected_grants)
     deployed_principals = set(deployed_grants)
 
+    admin_arn = f"arn:aws:iam:::user/{aws_credentials_dict['admin']['username']}"
+
     action_mismatches = {}
-    for principal in expected_principals & deployed_principals:
+    for principal in (expected_principals & deployed_principals) - {admin_arn}:
         missing_actions = expected_grants[principal] - deployed_grants[principal]
         extra_actions = deployed_grants[principal] - expected_grants[principal]
         if missing_actions or extra_actions:
@@ -1257,7 +1266,9 @@ def diff_bucket_policy_grants(
             }
 
     return {
-        "missing_principals": sorted(expected_principals - deployed_principals),
+        "missing_principals": sorted(
+            (expected_principals - deployed_principals) - {admin_arn}
+        ),
         "unexpected_principals": sorted(deployed_principals - expected_principals),
         "action_mismatches": action_mismatches,
     }
@@ -1328,6 +1339,317 @@ def audit_policy_diff_report(
                 report["site_buckets"][(site, bucket, bucket_arn)] = diff
 
     return report
+
+
+def retest_fixed_buckets(
+    to_fix: dict, aws_credentials_dict: dict, config_dict: dict
+) -> dict:
+    """Re-check only the buckets that were just fixed, not the whole config_map
+
+    Buckets that weren't in to_fix weren't touched by apply_policies, so re-auditing
+    them again would just repeat the per-bucket diff/ACL cost for no new information.
+
+    Args:
+        to_fix (dict): {"site_buckets": {(bucket, bucket_arn, project, site)}, "project_buckets": {(bucket, bucket_arn, project)}}
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}, "admin": {...}}
+        config_dict (dict): The config file as a dictionary
+
+    Returns:
+        dict: Same shape as to_fix, containing only the buckets that still show drift
+    """
+    retest_to_fix = {"site_buckets": set(), "project_buckets": set()}
+
+    for bucket, bucket_arn, project, site in to_fix["site_buckets"]:
+        diff = diff_bucket_policy_grants(
+            bucket_name=bucket,
+            bucket_arn=bucket_arn,
+            project=project,
+            config_dict=config_dict,
+            aws_credentials_dict=aws_credentials_dict,
+            site=site,
+        )
+        acl = audit_bucket_acl(bucket_arn, aws_credentials_dict)
+
+        if _bucket_needs_fix(diff, acl):
+            retest_to_fix["site_buckets"].add((bucket, bucket_arn, project, site))
+
+    for bucket, bucket_arn, project in to_fix["project_buckets"]:
+        diff = diff_bucket_policy_grants(
+            bucket_name=bucket,
+            bucket_arn=bucket_arn,
+            project=project,
+            config_dict=config_dict,
+            aws_credentials_dict=aws_credentials_dict,
+        )
+        acl = audit_bucket_acl(bucket_arn, aws_credentials_dict)
+
+        if _bucket_needs_fix(diff, acl):
+            retest_to_fix["project_buckets"].add((bucket, bucket_arn, project))
+
+    return retest_to_fix
+
+
+PUBLIC_ACL_URIS = (
+    "http://acs.amazonaws.com/groups/global/AllUsers",
+    "http://acs.amazonaws.com/groups/global/AuthenticatedUsers",
+)
+
+
+def audit_bucket_acl(bucket_arn: str, aws_credentials_dict: dict) -> dict:
+    """Check a bucket's ACL for grants a policy document diff can't see
+
+    The policy document only covers explicit statements - bucket ACLs are a
+    separate access-control layer that generate_site_policy/generate_project_policy
+    never touch, so a public/authenticated-users ACL grant would be invisible to
+    diff_bucket_policy_grants even though it's a real access leak.
+
+    Args:
+        bucket_arn (str): The ARN of the bucket
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}, "admin": {...}}
+
+    Returns:
+        dict: {"unexpected_grants": [{"grantee": ..., "permission": ...}]}
+    """
+    admin_credentials = aws_credentials_dict["admin"]
+
+    s3 = get_s3_client(admin_credentials)
+
+    response = s3.get_bucket_acl(Bucket=bucket_arn)
+
+    owner_id = response.get("Owner", {}).get("ID")
+
+    unexpected_grants = []
+    for grant in response.get("Grants", []):
+        grantee = grant.get("Grantee", {})
+
+        if grantee.get("URI") in PUBLIC_ACL_URIS:
+            unexpected_grants.append(
+                {"grantee": grantee["URI"], "permission": grant.get("Permission")}
+            )
+        elif grantee.get("ID") and grantee["ID"] != owner_id:
+            unexpected_grants.append(
+                {"grantee": grantee["ID"], "permission": grant.get("Permission")}
+            )
+
+    return {"unexpected_grants": unexpected_grants}
+
+
+def _bucket_needs_fix(diff: dict, acl: dict) -> bool:
+    return bool(
+        diff["missing_principals"]
+        or diff["unexpected_principals"]
+        or diff["action_mismatches"]
+        or acl["unexpected_grants"]
+    )
+
+
+def audit_and_test_policies(
+    aws_credentials_dict: dict,
+    config_map: dict,
+    config_dict: dict,
+    dry_run: bool = False,
+) -> tuple:
+    """Stage 3 audit: decide which buckets need fixing from a policy-document diff
+    plus an ACL check, instead of the O(buckets x sites x 4 calls) functional-probe
+    cross product in audit_all_buckets/test_policies.
+
+    This makes one GetBucketPolicy and one GetBucketAcl call per bucket (both
+    admin-credentialed), regardless of how many sites exist - see the plan in the
+    policy-check complexity reduction work for the reasoning and trade-offs (a
+    document diff can't see RGW enforcement bugs or bypass ACLs on its own, which
+    is why the ACL check exists and why run_canary_probes supplements this with a
+    small rotating sample of real functional probes).
+
+    Args:
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}, "admin": {...}}
+        config_map (dict): The config map as a dictionary
+        config_dict (dict): The config file as a dictionary
+        dry_run (bool, optional): If True, skip live calls and return empty results
+
+    Returns:
+        tuple: (audit_report, to_fix) where audit_report is {"project_buckets": {(bucket, bucket_arn): {"diff": ..., "acl": ...}}, "site_buckets": {(site, bucket, bucket_arn): {"diff": ..., "acl": ...}}} and to_fix matches the shape test_policies returns: {"site_buckets": {(bucket, bucket_arn, project, site)}, "project_buckets": {(bucket, bucket_arn, project)}}
+    """
+    audit_report: dict = {"project_buckets": {}, "site_buckets": {}}
+    to_fix = {"site_buckets": set(), "project_buckets": set()}
+
+    if dry_run:
+        return audit_report, to_fix
+
+    for project, project_config in config_map.items():
+        for bucket, bucket_arn in project_config["project_buckets"]:
+            diff = diff_bucket_policy_grants(
+                bucket_name=bucket,
+                bucket_arn=bucket_arn,
+                project=project,
+                config_dict=config_dict,
+                aws_credentials_dict=aws_credentials_dict,
+            )
+            acl = audit_bucket_acl(bucket_arn, aws_credentials_dict)
+
+            audit_report["project_buckets"][(bucket, bucket_arn)] = {
+                "diff": diff,
+                "acl": acl,
+            }
+
+            if _bucket_needs_fix(diff, acl):
+                print(
+                    f"Policy drift detected for project bucket {bucket_arn}: {diff}, acl: {acl}",
+                    file=sys.stdout,
+                )
+                to_fix["project_buckets"].add((bucket, bucket_arn, project))
+
+        for site, site_config in project_config["sites"].items():
+            for bucket, bucket_arn in site_config["site_buckets"]:
+                diff = diff_bucket_policy_grants(
+                    bucket_name=bucket,
+                    bucket_arn=bucket_arn,
+                    project=project,
+                    config_dict=config_dict,
+                    aws_credentials_dict=aws_credentials_dict,
+                    site=site,
+                )
+                acl = audit_bucket_acl(bucket_arn, aws_credentials_dict)
+
+                audit_report["site_buckets"][(site, bucket, bucket_arn)] = {
+                    "diff": diff,
+                    "acl": acl,
+                }
+
+                if _bucket_needs_fix(diff, acl):
+                    print(
+                        f"Policy drift detected for site bucket {bucket_arn} (site={site}): {diff}, acl: {acl}",
+                        file=sys.stdout,
+                    )
+                    to_fix["site_buckets"].add((bucket, bucket_arn, project, site))
+
+    return audit_report, to_fix
+
+
+def _rotating_index(group_key: str, candidates_len: int) -> int:
+    """Deterministic index that rotates daily, without needing state persisted between runs"""
+    if candidates_len == 0:
+        return 0
+
+    import datetime
+    import zlib
+
+    day_of_year = datetime.date.today().timetuple().tm_yday
+    offset = zlib.crc32(group_key.encode())
+
+    return (day_of_year + offset) % candidates_len
+
+
+def select_canary_targets(config_map: dict) -> dict:
+    """Pick one site bucket per project to fully functionally probe, rotating daily
+
+    Also picks one non-owning site to probe the same bucket with, so each canary
+    round checks both a correct positive (owner has access) and a correct negative
+    (a non-owner does not) - the two things the retired per-site cross product used
+    to check for every site, that this canary now checks for one rotating sample
+    instead.
+
+    Args:
+        config_map (dict): The config map as a dictionary
+
+    Returns:
+        dict: {project: (bucket, bucket_arn, owner_site, other_site | None)}
+    """
+    targets = {}
+
+    for project, project_config in config_map.items():
+        candidates = sorted(
+            (bucket, bucket_arn, site)
+            for site, site_config in project_config["sites"].items()
+            for bucket, bucket_arn in site_config["site_buckets"]
+        )
+
+        if not candidates:
+            continue
+
+        bucket, bucket_arn, owner_site = candidates[
+            _rotating_index(f"{project}-site-bucket", len(candidates))
+        ]
+
+        other_sites = sorted(s for s in project_config["sites"] if s != owner_site)
+        other_site = None
+        if other_sites:
+            other_site = other_sites[
+                _rotating_index(f"{project}-{bucket_arn}-other-site", len(other_sites))
+            ]
+
+        targets[project] = (bucket, bucket_arn, owner_site, other_site)
+
+    return targets
+
+
+def run_canary_probes(
+    aws_credentials_dict: dict, config_map: dict, dry_run: bool = False
+) -> dict:
+    """Run a reduced functional-probe sanity check alongside the policy-document diff
+
+    For one rotating site bucket per project, this probes both the owning site
+    (expected to have access) and one non-owning site (expected not to), so real
+    enforcement drift (a Ceph bug, a Deny/Allow ordering issue) that a document diff
+    can't see gets caught eventually, at O(projects) cost instead of O(buckets x
+    sites). Put/delete are only probed against a "-test" flagged bucket, using the
+    same throwaway key as the retired can_site_put_object/can_site_delete_object
+    probes, to avoid disturbing real data.
+
+    Args:
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}, "admin": {...}}
+        config_map (dict): The config map as a dictionary
+        dry_run (bool, optional): If True, skip live calls and return an empty result
+
+    Returns:
+        dict: {project: {"bucket_arn": ..., "owner_site": ..., "probes": {site: {permission: bool}}}}
+    """
+    results: dict = {}
+
+    if dry_run:
+        return results
+
+    targets = select_canary_targets(config_map)
+
+    for project, (_bucket, bucket_arn, owner_site, other_site) in targets.items():
+        probes = {}
+
+        for probe_site in (s for s in (owner_site, other_site) if s):
+            probe_result = {
+                "list": can_site_list_objects(
+                    bucket_arn, aws_credentials_dict, project, probe_site
+                ),
+                "get": can_site_get_object(
+                    bucket_arn, aws_credentials_dict, project, probe_site
+                ),
+            }
+
+            if "-test" in bucket_arn:
+                probe_result["put"] = can_site_put_object(
+                    bucket_arn, aws_credentials_dict, project, probe_site
+                )
+                probe_result["delete"] = can_site_delete_object(
+                    bucket_arn, aws_credentials_dict, project, probe_site
+                )
+
+            probes[probe_site] = probe_result
+
+            expected_access = probe_site == owner_site
+            for permission, result in probe_result.items():
+                if result != expected_access:
+                    print(
+                        f"[canary] Unexpected result for site bucket {bucket_arn}: "
+                        f"site={probe_site} (owner={owner_site}), permission={permission}, "
+                        f"result={result}, expected_access={expected_access}",
+                        file=sys.stdout,
+                    )
+
+        results[project] = {
+            "bucket_arn": bucket_arn,
+            "owner_site": owner_site,
+            "probes": probes,
+        }
+
+    return results
 
 
 def _json_safe(obj):
@@ -1751,29 +2073,37 @@ def run(args):
 
     if not args.dry_run:
 
-        audit_dict = audit_all_buckets(
-            aws_credentials_dict=aws_credentials_dict, config_map=config_map
-        )
+        if args.legacy_audit:
+            # Retired O(buckets x sites x 4 calls) probe-based audit, kept available
+            # as a rollback/comparison path - see the policy-check complexity
+            # reduction plan for why this was replaced by a policy-document diff.
+            audit_dict = audit_all_buckets(
+                aws_credentials_dict=aws_credentials_dict, config_map=config_map
+            )
 
-        to_fix = test_policies(audit_dict=audit_dict, config_dict=config_dict)
-
-        if args.audit_report:
-            policy_diff_report = audit_policy_diff_report(
+            to_fix = test_policies(audit_dict=audit_dict, config_dict=config_dict)
+        else:
+            policy_audit_report, to_fix = audit_and_test_policies(
                 aws_credentials_dict=aws_credentials_dict,
                 config_map=config_map,
                 config_dict=config_dict,
             )
 
+            canary_results = run_canary_probes(
+                aws_credentials_dict=aws_credentials_dict, config_map=config_map
+            )
+
+        if args.audit_report:
+            report_payload = {"to_fix": _json_safe(to_fix)}
+
+            if args.legacy_audit:
+                report_payload["audit_dict"] = _json_safe(audit_dict)
+            else:
+                report_payload["policy_audit_report"] = _json_safe(policy_audit_report)
+                report_payload["canary_results"] = _json_safe(canary_results)
+
             with open(args.audit_report, "w") as f:
-                json.dump(
-                    {
-                        "audit_dict": _json_safe(audit_dict),
-                        "to_fix": _json_safe(to_fix),
-                        "policy_diff_report": _json_safe(policy_diff_report),
-                    },
-                    f,
-                    indent=2,
-                )
+                json.dump(report_payload, f, indent=2)
 
             print(f"Wrote audit report to {args.audit_report}", file=sys.stdout)
 
@@ -1860,15 +2190,24 @@ def run(args):
                 )
 
     if (to_fix["site_buckets"] or to_fix["project_buckets"]) and not args.dry_run:
-        retest_audit_dict = audit_all_buckets(
-            aws_credentials_dict=aws_credentials_dict,
-            config_map=config_map,
-            dry_run=args.dry_run,
-        )
+        if args.legacy_audit:
+            retest_audit_dict = audit_all_buckets(
+                aws_credentials_dict=aws_credentials_dict,
+                config_map=config_map,
+                dry_run=args.dry_run,
+            )
 
-        retest_to_fix = test_policies(
-            audit_dict=retest_audit_dict, config_dict=config_dict
-        )
+            retest_to_fix = test_policies(
+                audit_dict=retest_audit_dict, config_dict=config_dict
+            )
+        else:
+            # Only the buckets that were just fixed need re-checking - the rest of
+            # config_map wasn't touched by apply_policies.
+            retest_to_fix = retest_fixed_buckets(
+                to_fix=to_fix,
+                aws_credentials_dict=aws_credentials_dict,
+                config_dict=config_dict,
+            )
 
         if retest_to_fix["site_buckets"] or retest_to_fix["project_buckets"]:
             print(
@@ -1931,9 +2270,20 @@ def main():
         type=str,
         default=None,
         help=(
-            "Path to write a JSON audit report to (the probe-based audit_dict/to_fix, "
-            "plus a report-only policy-document diff against what config expects). "
-            "Purely diagnostic - never affects which buckets get fixed."
+            "Path to write a JSON audit report to, for the audit mechanism actually "
+            "in use this run (policy-document diff + ACL check + canary probes by "
+            "default, or the retired per-site functional-probe audit_dict with "
+            "--legacy-audit)."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-audit",
+        action="store_true",
+        help=(
+            "Use the retired O(buckets x sites x 4 calls) functional-probe audit "
+            "(audit_all_buckets/test_policies) instead of the policy-document diff. "
+            "Rollback/comparison path only - see the policy-check complexity "
+            "reduction plan."
         ),
     )
     args = parser.parse_args()
