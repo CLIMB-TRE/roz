@@ -347,6 +347,49 @@ class TestS3Controller(unittest.TestCase):
 
             self.assertFalse(bucket_does_not_exist)
 
+    def test_bryn_team_slug_uses_username_not_config_site_key(self):
+        # "subsite1.site2.project1" is a config site key whose actual bryn/RGW
+        # username ("bryn-site2.subsite1.project1") truncates to a completely
+        # different slug - the two must not be conflated, or existence checks and
+        # policy puts end up hitting the wrong team's bryn endpoint.
+        site = "subsite1.site2.project1"
+        username = fake_aws_cred_dict["project1"][site]["username"]
+
+        slug = s3_controller.bryn_team_slug(fake_aws_cred_dict, "project1", site)
+
+        self.assertEqual(slug, username[0:16].replace(".", "-"))
+        self.assertNotEqual(slug, site[0:16].replace(".", "-"))
+
+    def test_check_bucket_exist_and_create_uses_consistent_slug_for_existence_and_creation(
+        self,
+    ):
+        # Regression test: check_site_bucket_exists and create_site_bucket must be
+        # queried against the same bryn team slug for a given site, or the
+        # existence check can silently look at the wrong team's buckets.
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+
+        with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
+            mock_requests.get.return_value = mock_response(404, {})
+            mock_requests.post.return_value = mock_response(201, {})
+
+            s3_controller.check_bucket_exist_and_create(
+                fake_aws_cred_dict, config_map, fake_roz_cfg_dict
+            )
+
+            expected_slug = s3_controller.bryn_team_slug(
+                fake_aws_cred_dict, "project1", "subsite1.site2.project1"
+            )
+
+            get_urls = [call.args[0] for call in mock_requests.get.call_args_list]
+            post_urls = [call.args[0] for call in mock_requests.post.call_args_list]
+
+            self.assertTrue(
+                any(f"/teams/{expected_slug}/" in url for url in get_urls)
+            )
+            self.assertTrue(
+                any(f"/teams/{expected_slug}/" in url for url in post_urls)
+            )
+
     def test_create_site_bucket(self):
         with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
             mock_requests.post = Mock(
@@ -607,8 +650,13 @@ class TestS3Controller(unittest.TestCase):
         config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
         self._apply_expected_policies(config_map)
 
+        # "fake_files" has a non-empty policy (project_read) for its sites, unlike
+        # "fake_files_2" (policy: {}) which would show no drift when its policy
+        # document is deleted, since it has no expected non-admin grants at all.
         bucket, bucket_arn = next(
-            iter(config_map["project1"]["project_buckets"])
+            pair
+            for pair in config_map["project1"]["project_buckets"]
+            if pair[0] == "fake_files"
         )
         self.s3_client.delete_bucket_policy(Bucket=bucket_arn)
 
@@ -645,8 +693,13 @@ class TestS3Controller(unittest.TestCase):
         config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
         self._apply_expected_policies(config_map)
 
+        # "fake_files" has a non-empty policy (project_read) for its sites, unlike
+        # "fake_files_2" (policy: {}) which would show no drift when its policy
+        # document is deleted, since it has no expected non-admin grants at all.
         bucket, bucket_arn = next(
-            iter(config_map["project1"]["project_buckets"])
+            pair
+            for pair in config_map["project1"]["project_buckets"]
+            if pair[0] == "fake_files"
         )
         self.s3_client.delete_bucket_policy(Bucket=bucket_arn)
 

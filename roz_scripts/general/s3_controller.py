@@ -117,6 +117,26 @@ def resolve_credentials(
     return aws_credentials_dict[project][site]
 
 
+def bryn_team_slug(aws_credentials_dict: dict, project: str, site: str) -> str:
+    """Derive a site's bryn team slug from its RGW/bryn username
+
+    This must be derived from the site's actual username, NOT the config "site"
+    key - the two are not guaranteed to match (a team's RGW username can differ
+    from the name used for it in config), and bryn's team-scoped endpoints are
+    keyed on the username-derived slug, not the config key.
+
+    Args:
+        aws_credentials_dict (dict): A dictionary of the form {project: {site: {aws_access_key_id: "", aws_secret_access_key: "", username: ""}}, "admin": {...}}
+        project (str): The project the site belongs to
+        site (str): The site's config key
+
+    Returns:
+        str: The bryn team slug
+    """
+    username = aws_credentials_dict[project][site]["username"]
+    return username[0:16].replace(".", "-")
+
+
 def get_s3_client(credentials: dict, config: Config | None = None):
     """Construct a boto3 S3 client for the given credentials
 
@@ -441,7 +461,7 @@ def generate_site_policy(
 
     site_role = config_dict["configs"][project]["sites"][site]
 
-    site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(".", "-")
+    site_slug = bryn_team_slug(aws_credentials_dict, project, site)
 
     # admin_slug = aws_credentials_dict["admin"]["username"][0:16].replace(".", "-")
 
@@ -607,9 +627,7 @@ def generate_project_policy(
         if not correct_perms:
             continue
 
-        site_slug = aws_credentials_dict[project][site]["username"][0:16].replace(
-            ".", "-"
-        )
+        site_slug = bryn_team_slug(aws_credentials_dict, project, site)
 
         site_arns_by_permission_set.setdefault(permission_set, []).append(
             f"arn:aws:iam:::user/bryn-{site_slug}"
@@ -715,23 +733,24 @@ def create_site_bucket(
         sys.exit(r.status_code)
 
 
-def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
+def put_site_policy(bucket_arn: str, slug: str, policy: dict) -> bool:
     """Put a policy on a bucket via bryn
 
     Args:
         bucket_arn (str): The ARN of the bucket
-        site (str): The site the bucket belongs to
+        slug (str): The site's bryn team slug - derived from the site's RGW/bryn
+            username (aws_credentials_dict[project][site]["username"]), NOT the
+            config "site" key, since the two can differ. See create_site_bucket,
+            which already gets this right, for the derivation.
         policy (dict): The policy to put on the bucket as a dictionary
 
     Returns:
         bool: True if the policy was put on the bucket, False otherwise
     """
-    site_slug = site[0:16].replace(".", "-")
-
     bryn_url = os.getenv("BRYN_API_URL")
 
     endpoint_url = (
-        f"{bryn_url}/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+        f"{bryn_url}/admin-api/teams/{slug}/ceph/s3/buckets/{bucket_arn}/"
     )
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
@@ -753,23 +772,24 @@ def put_site_policy(bucket_arn: str, site: str, policy: dict) -> bool:
         return False
 
 
-def check_site_bucket_exists(bucket_arn: str, site: str) -> bool:
+def check_site_bucket_exists(bucket_arn: str, slug: str) -> bool:
     """Check if a bucket exists via bryn
 
     Args:
         bucket_arn (str): The ARN of the bucket
-        site (str): The site the bucket belongs to
+        slug (str): The site's bryn team slug - derived from the site's RGW/bryn
+            username (aws_credentials_dict[project][site]["username"]), NOT the
+            config "site" key, since the two can differ. See create_site_bucket,
+            which already gets this right, for the derivation.
 
     Returns:
         bool: True if the bucket exists, False otherwise
     """
 
-    site_slug = site[0:16].replace(".", "-")
-
     bryn_url = os.getenv("BRYN_API_URL")
 
     endpoint_url = (
-        f"{bryn_url}/admin-api/teams/{site_slug}/ceph/s3/buckets/{bucket_arn}/"
+        f"{bryn_url}/admin-api/teams/{slug}/ceph/s3/buckets/{bucket_arn}/"
     )
 
     headers = {"Authorization": f"token {os.getenv('BRYN_API_TOKEN')}"}
@@ -917,8 +937,10 @@ def check_bucket_exist_and_create(
 
         # Create in buckets (made by site user)
         for site, site_config in project_config["sites"].items():
+            site_slug = bryn_team_slug(aws_credentials_dict, project, site)
+
             for bucket, bucket_arn in site_config["site_buckets"]:
-                exists = check_site_bucket_exists(bucket_arn=bucket_arn, site=site)
+                exists = check_site_bucket_exists(bucket_arn=bucket_arn, slug=site_slug)
 
                 if exists:
                     print(
@@ -935,10 +957,6 @@ def check_bucket_exist_and_create(
                     continue
 
                 print(f"Idempotently creating bucket {bucket_arn}", file=sys.stdout)
-
-                site_slug = aws_credentials_dict[project][site]["username"][
-                    0:16
-                ].replace(".", "-")
 
                 policy = generate_site_policy(
                     bucket_name=bucket,
@@ -1701,7 +1719,7 @@ def apply_policies(
                 print(f"Applying policy: {json.dumps(policy)} for bucket {bucket_arn}")
                 policy_success = put_site_policy(
                     bucket_arn=bucket_arn,
-                    site=site,
+                    slug=bryn_team_slug(aws_credentials_dict, project, site),
                     policy=policy,
                 )
 
@@ -1792,7 +1810,7 @@ def apply_policies(
                     if not dry_run:
                         policy_success = put_site_policy(
                             bucket_arn=bucket_arn,
-                            site=site,
+                            slug=bryn_team_slug(aws_credentials_dict, project, site),
                             policy=policy,
                         )
 
