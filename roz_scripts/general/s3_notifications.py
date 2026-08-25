@@ -6,6 +6,7 @@ import copy
 import os
 import json
 import boto3
+from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 import sys
 import time
@@ -53,11 +54,11 @@ message_template = {
 }
 
 
-def get_bucket_objects(s3_client: boto3.client, bucket_arn: str) -> list:
+def get_bucket_objects(s3_client: BaseClient, bucket_arn: str) -> list:
     """Get all objects in a bucket
 
     Args:
-        s3_client (boto3.client): s3 client
+        s3_client (BaseClient): s3 client
         bucket_arn (str): bucket arn
 
     Returns:
@@ -133,7 +134,7 @@ def run(args):
         aws_secret_access_key=s3_credentials.secret_key,
     )
 
-    config_dict = json.load(open(os.getenv("ROZ_CONFIG_JSON"), "r"))
+    config_dict = json.load(open(os.environ["ROZ_CONFIG_JSON"], "r"))
 
     config_map = create_config_map(config_dict)
 

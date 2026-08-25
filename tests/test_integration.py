@@ -1,13 +1,11 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from roz_scripts import (
-    s3_matcher,
-    ingest,
-    mscape_ingest_validation,
-    utils,
-    pathsafe_validation,
-)
+from roz_scripts.general import s3_matcher, ingest
+from roz_scripts.mscape import mscape_ingest_validation
+from roz_scripts.pathsafe import pathsafe_validation
+from roz_scripts.utils import utils
+from roz_scripts.utils.config import load_config, project_bucket, site_bucket
 
 from onyx.exceptions import OnyxRequestError
 
@@ -24,6 +22,31 @@ import pika
 import copy
 
 DIR = os.path.dirname(__file__)
+TEST_CONFIG_PATH = os.path.join(DIR, "fixtures", "test_config.json")
+_TEST_CONFIG = load_config(TEST_CONFIG_PATH)
+PATHSAFE_ASSEMBLY_BUCKET = project_bucket(
+    _TEST_CONFIG, "pathsafe", "published_assemblies"
+)
+MSCAPE_PUBLISHED_READS_BUCKET = project_bucket(_TEST_CONFIG, "mscape", "published_reads")
+MSCAPE_PUBLISHED_SCYLLA_REPORTS_BUCKET = project_bucket(
+    _TEST_CONFIG, "mscape", "published_scylla_reports"
+)
+MSCAPE_PUBLISHED_TAXON_REPORTS_BUCKET = project_bucket(
+    _TEST_CONFIG, "mscape", "published_taxon_reports"
+)
+MSCAPE_PUBLISHED_BINNED_READS_BUCKET = project_bucket(
+    _TEST_CONFIG, "mscape", "published_binned_reads"
+)
+MSCAPE_PUBLISHED_READ_FRACTIONS_BUCKET = project_bucket(
+    _TEST_CONFIG, "mscape", "published-read-fractions"
+)
+MSCAPE_PUBLISHED_HCID_BUCKET = project_bucket(
+    _TEST_CONFIG, "mscape", "published_hcid_reports"
+)
+MSCAPE_BIRM_RESULTS_BUCKET = site_bucket(_TEST_CONFIG, "mscape", "birm", "results")
+MSCAPE_SUBTEAM_BIRM_RESULTS_BUCKET = site_bucket(
+    _TEST_CONFIG, "mscape", "subteam1.birm.mscape", "results"
+)
 S3_MATCHER_LOG_FILENAME = os.path.join(DIR, "s3_matcher.log")
 ROZ_INGEST_LOG_FILENAME = os.path.join(DIR, "ingest.log")
 MSCAPE_VALIDATION_LOG_FILENAME = os.path.join(DIR, "mscape_validation.log")
@@ -601,7 +624,7 @@ class Test_S3_matcher(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = S3_MATCHER_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = TEST_CONFIG_PATH
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
@@ -756,7 +779,7 @@ class Test_ingest(unittest.TestCase):
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
         self.s3_client.create_bucket(Bucket="mscape-subteam1.birm.mscape-ont-prod")
-        self.s3_client.create_bucket(Bucket="mscape-subteam1.birm.mscape-results")
+        self.s3_client.create_bucket(Bucket=MSCAPE_SUBTEAM_BIRM_RESULTS_BUCKET)
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("run_index,run_id,biosample_id,project,platform,site\n")
@@ -799,7 +822,7 @@ class Test_ingest(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = TEST_CONFIG_PATH
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
 
@@ -897,13 +920,13 @@ class Test_mscape_validator(unittest.TestCase):
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
         self.s3_client.create_bucket(Bucket="mscape-birm-ont-prod")
-        self.s3_client.create_bucket(Bucket="mscape-birm-results")
-        self.s3_client.create_bucket(Bucket="mscape-published-reads")
-        self.s3_client.create_bucket(Bucket="mscape-published-reports")
-        self.s3_client.create_bucket(Bucket="mscape-published-taxon-reports")
-        self.s3_client.create_bucket(Bucket="mscape-published-binned-reads")
-        self.s3_client.create_bucket(Bucket="mscape-published-read-fractions")
-        self.s3_client.create_bucket(Bucket="mscape-published-hcid")
+        self.s3_client.create_bucket(Bucket=MSCAPE_BIRM_RESULTS_BUCKET)
+        self.s3_client.create_bucket(Bucket=MSCAPE_PUBLISHED_READS_BUCKET)
+        self.s3_client.create_bucket(Bucket=MSCAPE_PUBLISHED_SCYLLA_REPORTS_BUCKET)
+        self.s3_client.create_bucket(Bucket=MSCAPE_PUBLISHED_TAXON_REPORTS_BUCKET)
+        self.s3_client.create_bucket(Bucket=MSCAPE_PUBLISHED_BINNED_READS_BUCKET)
+        self.s3_client.create_bucket(Bucket=MSCAPE_PUBLISHED_READ_FRACTIONS_BUCKET)
+        self.s3_client.create_bucket(Bucket=MSCAPE_PUBLISHED_HCID_BUCKET)
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("run_index,run_id,project,platform,site,spike_in\n")
@@ -954,7 +977,7 @@ class Test_mscape_validator(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = TEST_CONFIG_PATH
         os.environ["ONYX_DOMAIN"] = "domain"
         os.environ["ONYX_TOKEN"] = "testing"
 
@@ -1136,7 +1159,7 @@ class Test_mscape_validator(unittest.TestCase):
                 publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1181,14 +1204,14 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(payload["test_flag"], False)
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reads"
+                Bucket=MSCAPE_PUBLISHED_READS_BUCKET
             )
             self.assertEqual(
                 published_reads_contents["Contents"][0]["Key"], "test_climb_id.fastq.gz"
             )
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reports"
+                Bucket=MSCAPE_PUBLISHED_SCYLLA_REPORTS_BUCKET
             )
             self.assertEqual(
                 published_reports_contents["Contents"][0]["Key"],
@@ -1196,15 +1219,22 @@ class Test_mscape_validator(unittest.TestCase):
             )
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-taxon-reports"
+                Bucket=MSCAPE_PUBLISHED_TAXON_REPORTS_BUCKET
             )
+            published_taxon_reports_keys = [
+                x["Key"] for x in published_taxon_reports_contents["Contents"]
+            ]
             self.assertIn(
                 "test_climb_id/test_climb_id_PlusPF.kraken_report.txt",
-                [x["Key"] for x in published_taxon_reports_contents["Contents"]],
+                published_taxon_reports_keys,
+            )
+            self.assertIn(
+                "test_climb_id/test_climb_id_PlusPF.kraken_report.2024-01-01.txt",
+                published_taxon_reports_keys,
             )
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-binned-reads"
+                Bucket=MSCAPE_PUBLISHED_BINNED_READS_BUCKET
             )
             self.assertEqual(
                 published_binned_reads_contents["Contents"][0]["Key"],
@@ -1339,7 +1369,7 @@ class Test_mscape_validator(unittest.TestCase):
                 publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1379,25 +1409,25 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(payload["scylla_version"], "test_version")
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reads"
+                Bucket=MSCAPE_PUBLISHED_READS_BUCKET
             )
             print(published_reads_contents)
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reports"
+                Bucket=MSCAPE_PUBLISHED_SCYLLA_REPORTS_BUCKET
             )
             print(published_reports_contents)
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-taxon-reports"
+                Bucket=MSCAPE_PUBLISHED_TAXON_REPORTS_BUCKET
             )
             print(published_taxon_reports_contents)
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-binned-reads"
+                Bucket=MSCAPE_PUBLISHED_BINNED_READS_BUCKET
             )
             print(published_binned_reads_contents)
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
@@ -1513,7 +1543,7 @@ class Test_mscape_validator(unittest.TestCase):
                 publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1549,25 +1579,25 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(payload["scylla_version"], "test_version")
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reads"
+                Bucket=MSCAPE_PUBLISHED_READS_BUCKET
             )
             print(published_reads_contents)
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reports"
+                Bucket=MSCAPE_PUBLISHED_SCYLLA_REPORTS_BUCKET
             )
             print(published_reports_contents)
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-taxon-reports"
+                Bucket=MSCAPE_PUBLISHED_TAXON_REPORTS_BUCKET
             )
             print(published_taxon_reports_contents)
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-binned-reads"
+                Bucket=MSCAPE_PUBLISHED_BINNED_READS_BUCKET
             )
             print(published_binned_reads_contents)
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
@@ -1789,6 +1819,7 @@ class Test_mscape_validator(unittest.TestCase):
                 log_level="DEBUG",
                 nxf_executable="test",
                 nxf_config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -1832,22 +1863,22 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertFalse(payload["onyx_create_status"])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reads"
+                Bucket=MSCAPE_PUBLISHED_READS_BUCKET
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reports"
+                Bucket=MSCAPE_PUBLISHED_SCYLLA_REPORTS_BUCKET
             )
             self.assertNotIn("Contents", published_reports_contents.keys())
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-taxon-reports"
+                Bucket=MSCAPE_PUBLISHED_TAXON_REPORTS_BUCKET
             )
             self.assertNotIn("Contents", published_taxon_reports_contents.keys())
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-binned-reads"
+                Bucket=MSCAPE_PUBLISHED_BINNED_READS_BUCKET
             )
             self.assertNotIn("Contents", published_binned_reads_contents.keys())
 
@@ -2095,7 +2126,7 @@ class Test_mscape_validator(unittest.TestCase):
                 publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -2140,14 +2171,14 @@ class Test_mscape_validator(unittest.TestCase):
             self.assertEqual(payload["test_flag"], False)
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reads"
+                Bucket=MSCAPE_PUBLISHED_READS_BUCKET
             )
             self.assertEqual(
                 published_reads_contents["Contents"][0]["Key"], "test_climb_id.fastq.gz"
             )
 
             published_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-reports"
+                Bucket=MSCAPE_PUBLISHED_SCYLLA_REPORTS_BUCKET
             )
             self.assertEqual(
                 published_reports_contents["Contents"][0]["Key"],
@@ -2155,15 +2186,22 @@ class Test_mscape_validator(unittest.TestCase):
             )
 
             published_taxon_reports_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-taxon-reports"
+                Bucket=MSCAPE_PUBLISHED_TAXON_REPORTS_BUCKET
             )
+            published_taxon_reports_keys = [
+                x["Key"] for x in published_taxon_reports_contents["Contents"]
+            ]
             self.assertIn(
                 "test_climb_id/test_climb_id_PlusPF.kraken_report.txt",
-                [x["Key"] for x in published_taxon_reports_contents["Contents"]],
+                published_taxon_reports_keys,
+            )
+            self.assertIn(
+                "test_climb_id/test_climb_id_PlusPF.kraken_report.2024-01-01.txt",
+                published_taxon_reports_keys,
             )
 
             published_binned_reads_contents = self.s3_client.list_objects(
-                Bucket="mscape-published-binned-reads"
+                Bucket=MSCAPE_PUBLISHED_BINNED_READS_BUCKET
             )
             self.assertEqual(
                 published_binned_reads_contents["Contents"][0]["Key"],
@@ -2338,7 +2376,7 @@ class Test_mscape_validator(unittest.TestCase):
                 publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -2380,7 +2418,7 @@ class Test_mscape_validator(unittest.TestCase):
                 hcid_alerts[0],
             )
 
-            hcid_contents = self.s3_client.list_objects(Bucket="mscape-published-hcid")
+            hcid_contents = self.s3_client.list_objects(Bucket=MSCAPE_PUBLISHED_HCID_BUCKET)
             for x in (
                 "test_climb_id/test_climb_id.1570291.warning.json",
                 "test_climb_id/test_climb_id.hcid.counts.csv",
@@ -2408,7 +2446,7 @@ class Test_pathsafe_validator(unittest.TestCase):
 
         self.s3_client = boto3.client("s3", endpoint_url="http://localhost:5000")
         self.s3_client.create_bucket(Bucket="pathsafe-birm-illumina-prod")
-        self.s3_client.create_bucket(Bucket="pathsafe-published-assembly")
+        self.s3_client.create_bucket(Bucket=PATHSAFE_ASSEMBLY_BUCKET)
 
         with open(TEST_CSV_FILENAME, "w") as f:
             f.write("run_index,run_id,project,platform,site,submitted_species\n")
@@ -2468,7 +2506,7 @@ class Test_pathsafe_validator(unittest.TestCase):
         os.environ["VARYS_CFG"] = VARYS_CFG_PATH
         os.environ["S3_MATCHER_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["INGEST_LOG_LEVEL"] = "DEBUG"
-        os.environ["ROZ_CONFIG_JSON"] = "config/config.json"
+        os.environ["ROZ_CONFIG_JSON"] = TEST_CONFIG_PATH
         os.environ["ONYX_ROZ_PASSWORD"] = "password"
         os.environ["ROZ_INGEST_LOG"] = ROZ_INGEST_LOG_FILENAME
         os.environ["PATHOGENWATCH_API_KEY"] = "nonsense"
@@ -2498,10 +2536,10 @@ class Test_pathsafe_validator(unittest.TestCase):
 
     def test_successful_test(self):
         with (
-            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.pathsafe.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+            patch("roz_scripts.pathsafe.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = 0
 
@@ -2593,7 +2631,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -2632,17 +2670,17 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertFalse(payload["ingest_errors"])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="pathsafe-published-assembly"
+                Bucket=PATHSAFE_ASSEMBLY_BUCKET
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
             self.assertNotIn("assembly_presigned_url", payload.keys())
 
     def test_onyx_fail(self):
         with (
-            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.pathsafe.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+            patch("roz_scripts.pathsafe.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = 0
 
@@ -2858,6 +2896,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 log_level="DEBUG",
                 nxf_executable="test",
                 nxf_config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -2899,17 +2938,17 @@ class Test_pathsafe_validator(unittest.TestCase):
             )
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="pathsafe-published-assembly"
+                Bucket=PATHSAFE_ASSEMBLY_BUCKET
             )
             self.assertNotIn("Contents", published_reads_contents.keys())
             self.assertNotIn("assembly_presigned_url", payload.keys())
 
     def test_validator_successful(self):
         with (
-            patch("roz_scripts.pathsafe_validation.pipeline") as mock_pipeline,
-            patch("roz_scripts.pathsafe_validation.OnyxClient") as mock_local_client,
+            patch("roz_scripts.pathsafe.pathsafe_validation.pipeline") as mock_pipeline,
+            patch("roz_scripts.pathsafe.pathsafe_validation.OnyxClient") as mock_local_client,
             patch("roz_scripts.utils.utils.OnyxClient") as mock_util_client,
-            patch("roz_scripts.pathsafe_validation.requests") as mock_requests,
+            patch("roz_scripts.pathsafe.pathsafe_validation.requests") as mock_requests,
         ):
             mock_pipeline.return_value.execute.return_value = 0
 
@@ -3008,7 +3047,7 @@ class Test_pathsafe_validator(unittest.TestCase):
                 logfile=PATHSAFE_VALIDATION_LOG_FILENAME,
                 log_level="DEBUG",
                 nxf_executable="test",
-                config="test",
+                config=_TEST_CONFIG,
                 k2_host="test",
                 result_dir=DIR,
                 n_workers=2,
@@ -3056,7 +3095,7 @@ class Test_pathsafe_validator(unittest.TestCase):
             self.assertEqual(payload["ingest_errors"], [])
 
             published_reads_contents = self.s3_client.list_objects(
-                Bucket="pathsafe-published-assembly"
+                Bucket=PATHSAFE_ASSEMBLY_BUCKET
             )
             self.assertEqual(
                 published_reads_contents["Contents"][0]["Key"],

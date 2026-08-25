@@ -19,6 +19,7 @@ from roz_scripts.utils.utils import (
     pipeline,
     init_logger,
     get_s3_credentials,
+    get_s3_client,
     put_result_json,
     put_linkage_json,
     get_onyx_credentials,
@@ -27,16 +28,24 @@ from roz_scripts.utils.utils import (
     EtagMismatchError,
     get_pod_namespace,
     send_admin_alert,
+    add_nxf_pod_resource_args,
+    pod_resources_from_args,
+    PodResourceError,
 )
+from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
+from roz_scripts.utils.config import load_config, project_bucket, ConfigError
 from varys import Varys
 from onyx import OnyxClient
+from botocore.client import BaseClient
 
 
 class worker_pool_handler:
-    def __init__(self, workers, logger, varys_client):
+    def __init__(self, workers, logger, varys_client, health: HealthState, config: dict):
         self._log = logger
         self.worker_pool = mp.Pool(processes=workers)
         self._varys_client = varys_client
+        self._health = health
+        self._config = config
 
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
@@ -61,6 +70,8 @@ class worker_pool_handler:
     def callback(self, validate_result):
         success, payload, message = validate_result
 
+        self._health.clear_job(payload["uuid"])
+
         if success:
             self._log.info(
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
@@ -72,7 +83,7 @@ class worker_pool_handler:
                 queue_suffix="validator",
             )
 
-            put_result_json(payload, self._log)
+            put_result_json(payload, self._log, self._config)
 
             if not payload["test_flag"]:
                 new_artifact_payload = {
@@ -93,9 +104,9 @@ class worker_pool_handler:
                     queue_suffix="validator",
                 )
 
-                put_linkage_json(payload, self._log)
+                put_linkage_json(payload, self._log, self._config)
 
-                self._varys_client.acknowledge_message(message)
+            self._varys_client.acknowledge_message(message)
 
         else:
             self._log.info(
@@ -134,11 +145,15 @@ class worker_pool_handler:
                         queue_suffix="validator",
                     )
 
-                    put_result_json(payload, self._log)
+                    put_result_json(payload, self._log, self._config)
 
                     self._varys_client.nack_message(message)
 
-                    os.remove("/tmp/healthy")
+                    # Admin alert for this specific failure was already sent
+                    # above - mark_fatal here just triggers the restart.
+                    self._health.mark_fatal(
+                        f"Validation failed after 5 attempts for UUID: {payload['uuid']}, shutting down worker pool"
+                    )
 
                     raise ValueError(
                         "Validation failed after 5 attempts, shutting down worker pool"
@@ -159,7 +174,7 @@ class worker_pool_handler:
                     queue_suffix="validator",
                 )
 
-                put_result_json(payload, self._log)
+                put_result_json(payload, self._log, self._config)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
@@ -168,15 +183,13 @@ class worker_pool_handler:
             exchange="pathsafe-restricted-announce",
             queue_suffix="dead_worker",
         )
-        try:
-            send_admin_alert(
-                self._varys_client,
-                source="pathsafe",
-                description=f"ingest worker failed with unhandled exception: {exception}",
-            )
-        except Exception as alert_exception:
-            self._log.error(f"Failed to send admin alert: {alert_exception}")
-        os.remove("/tmp/healthy")
+        reason = f"ingest worker failed with unhandled exception: {exception}"
+        self._health.mark_fatal(
+            reason,
+            alert_fn=lambda r: send_admin_alert(
+                self._varys_client, source="pathsafe", description=r
+            ),
+        )
 
     def close(self):
         self.worker_pool.close()
@@ -185,23 +198,27 @@ class worker_pool_handler:
 
 def assembly_to_s3(
     payload: dict,
-    s3_client: boto3.client,
+    s3_client: BaseClient,
     result_path: str,
-    log: logging.getLogger,
+    log: logging.Logger,
+    config: dict,
 ) -> tuple[bool, dict]:
     """Function to upload raw reads to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
     Args:
         payload (dict): Payload dict for the record to update
-        s3_client (boto3.client): Boto3 client object for S3
+        s3_client (BaseClient): Boto3 client object for S3
         result_path (str): Path to the results directory
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
+        config (dict): The loaded roz config, from load_config()
 
     Returns:
         tuple[bool, dict]: Tuple containing a bool indicating whether the upload failed and the updated payload dict
     """
 
     s3_fail = False
+
+    assembly_bucket = project_bucket(config, "pathsafe", "published_assemblies")
 
     assembly_path = os.path.join(
         result_path, f"assembly/{payload['uuid']}.result.fasta"
@@ -210,14 +227,14 @@ def assembly_to_s3(
     try:
         s3_client.upload_file(
             assembly_path,
-            "pathsafe-published-assembly",
+            assembly_bucket,
             f"{payload['climb_id']}.assembly.fasta",
         )
 
         payload["assembly_presigned_url"] = s3_client.generate_presigned_url(
             "get_object",
             Params={
-                "Bucket": "pathsafe-published-assembly",
+                "Bucket": assembly_bucket,
                 "Key": f"{payload['climb_id']}.assembly.fasta",
             },
             ExpiresIn=86400,
@@ -234,7 +251,7 @@ def assembly_to_s3(
         update_fail, alert, payload = onyx_update(
             payload=payload,
             fields={
-                "assembly": f"s3://pathsafe-published-assembly/{payload['climb_id']}.assembly.fasta",
+                "assembly": f"s3://{assembly_bucket}/{payload['climb_id']}.assembly.fasta",
             },
             log=log,
         )
@@ -246,14 +263,14 @@ def assembly_to_s3(
 
 
 def pathogenwatch_submission(
-    payload: dict, log: logging.getLogger
+    payload: dict, log: logging.Logger
 ) -> tuple[bool, dict]:
     """Function to submit a genome to pathogenwatch
 
     Args:
         payload (dict): Payload dict for the record to update
-        log (logging.getLogger): Logger object
-        s3_client (boto3.client): Boto3 client object for S3
+        log (logging.Logger): Logger object
+        s3_client (BaseClient): Boto3 client object for S3
 
     Returns:
         tuple[bool, dict]: Tuple containing a bool indicating whether the submission failed and the updated payload dict
@@ -379,20 +396,24 @@ def pathogenwatch_submission(
 def execute_assembly_pipeline(
     payload: dict,
     args: argparse.Namespace,
-    log: logging.getLogger,
+    log: logging.Logger,
     ingest_pipe: pipeline,
     artifact_metadata: dict,
-) -> tuple[int, bool, str, str]:
+    job_heartbeat: JobHeartbeat | None = None,
+) -> int:
     """Execute the validation pipeline for a given artifact
 
     Args:
         payload (dict): The payload dict for the current artifact
         args (argparse.Namespace): The command line arguments object
-        log (logging.getLogger): The logger object
+        log (logging.Logger): The logger object
         ingest_pipe (pipeline): The instance of the ingest pipeline (see pipeline class)
+        job_heartbeat (JobHeartbeat | None): Heartbeat handle for this job, so a
+            liveness probe can tell this stage is still progressing rather than
+            stuck, and so the deadline check tracks the pipeline's own timeout
 
     Returns:
-        tuple[int, bool, str, str]: A tuple containing the return code, a bool indicating whether the pipeline timed out, stdout and stderr
+        int: The return code of the pipeline execution
     """
 
     # These numbers are generated by taking the genome length x100, so for a 2.88Mbp genome (L. monocytogenes), the max_bases is 288000000
@@ -436,6 +457,11 @@ def execute_assembly_pipeline(
     stdout_path = os.path.join(log_path, "nextflow.stdout")
     stderr_path = os.path.join(log_path, "nextflow.stderr")
 
+    progress_cb = None
+    if job_heartbeat is not None:
+        job_heartbeat.beat(stage="running_pipeline", budget_s=args.timeout)
+        progress_cb = lambda stage: job_heartbeat.beat(stage=stage)
+
     return ingest_pipe.execute(
         params=parameters,
         logdir=log_path,
@@ -446,11 +472,12 @@ def execute_assembly_pipeline(
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         workingdir=log_path,
+        progress_cb=progress_cb,
     )
 
 
 def ret_0_parser(
-    log: logging.getLogger,
+    log: logging.Logger,
     payload: dict,
     result_path: str,
     ingest_fail: bool = False,
@@ -458,7 +485,7 @@ def ret_0_parser(
     """Function to parse the execution trace of a Nextflow pipeline run to determine whether any of the processes failed.
 
     Args:
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         payload (dict): Payload dictionary
         result_path (str): Path to the results directory
         ingest_fail (bool): Boolean to indicate whether the ingest has failed up to this point (default: False)
@@ -467,6 +494,7 @@ def ret_0_parser(
         tuple[bool, dict]: Tuple containing the ingest fail boolean and the payload dictionary
     """
 
+    trace_dict = {}
     try:
         with open(
             os.path.join(
@@ -477,7 +505,6 @@ def ret_0_parser(
         ) as trace_fh:
             reader = csv.DictReader(trace_fh, delimiter="\t")
 
-            trace_dict = {}
             for process in reader:
                 trace_dict[process["name"].split(":")[-1]] = process
 
@@ -524,7 +551,7 @@ def ret_0_parser(
 
 
 def ensure_files_not_empty(
-    log: logging.getLogger, payload: dict, s3_client: boto3.client
+    log: logging.Logger, payload: dict, s3_client: BaseClient
 ) -> tuple[bool, dict]:
 
     fail = False
@@ -579,12 +606,7 @@ def validate(
 ):
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     log = logging.getLogger("pathsafe.validate")
 
@@ -593,6 +615,11 @@ def validate(
     payload = copy.deepcopy(to_validate)
 
     payload["rerun"] = False
+
+    job_heartbeat = JobHeartbeat(
+        get_health_dir(), uuid=payload["uuid"], budget_s=600
+    )
+    job_heartbeat.beat(stage="pre_pipeline_checks")
 
     # This client is purely for pathsafe, ignore all other messages
     if to_validate["project"] != "pathsafe":
@@ -699,6 +726,11 @@ def validate(
         log=log,
         ingest_pipe=ingest_pipe,
         artifact_metadata=artifact_metadata,
+        job_heartbeat=job_heartbeat,
+    )
+
+    job_heartbeat.beat(
+        stage="post_pipeline_processing", budget_s=args.retry_delay + 1600
     )
 
     if ingest_pipe.cmd:
@@ -752,6 +784,7 @@ def validate(
         s3_client=s3_client,
         result_path=result_path,
         log=log,
+        config=args.config,
     )
 
     if s3_fail:
@@ -827,10 +860,17 @@ def run(args):
             config=args.nxf_config,
             nxf_image=args.nxf_image,
             job_prefix="ingest",
+            pod_resources=args.nxf_pod_resources,
         )
 
+        health = HealthState(get_health_dir())
+
         worker_pool = worker_pool_handler(
-            workers=args.n_workers, logger=log, varys_client=varys_client
+            workers=args.n_workers,
+            logger=log,
+            varys_client=varys_client,
+            health=health,
+            config=args.config,
         )
 
         while True:
@@ -842,10 +882,7 @@ def run(args):
                 timeout=60,
             )
 
-            # Add timestamp to file to indicate health
-            if os.path.exists("/tmp/healthy"):
-                with open("/tmp/healthy", "w") as fh:
-                    fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if message:
                 worker_pool.submit_job(
@@ -853,10 +890,15 @@ def run(args):
                 )
 
     except BaseException:
-        log.exception("Shutting down worker pool due to exception:")
-        os.remove("/tmp/healthy")
-        worker_pool.close()
-        varys_client.close()
+        log.exception("Shutting down worker pool due to exception:")  # type: ignore
+        health.mark_fatal(  # type: ignore
+            "main loop crashed",
+            alert_fn=lambda r: send_admin_alert(
+                varys_client, source="pathsafe", description=r  # type: ignore
+            ),
+        )
+        worker_pool.close()  # type: ignore
+        varys_client.close()  # type: ignore
 
 
 def main():
@@ -893,7 +935,19 @@ def main():
         default=180,
         help="Time to wait before re-queuing a failed message",
     )
+    parser.add_argument(
+        "--config",
+        default=os.getenv("ROZ_CONFIG_JSON"),
+        help="Path to the roz config JSON file. Defaults to $ROZ_CONFIG_JSON.",
+    )
+    add_nxf_pod_resource_args(parser)
     args = parser.parse_args()
+
+    try:
+        args.nxf_pod_resources = pod_resources_from_args(args)
+    except PodResourceError as e:
+        print(f"Invalid nextflow pod resource configuration: {e}", file=sys.stderr)
+        sys.exit(3)
 
     for i in (
         "ONYX_DOMAIN",
@@ -905,10 +959,17 @@ def main():
         "NXF_HOME",
         "PATHOGENWATCH_API_KEY",
         "PATHOGENWATCH_ENDPOINT_URL",
+        "ROZ_CONFIG_JSON",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
+
+    try:
+        args.config = load_config(args.config)
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     run(args)
 

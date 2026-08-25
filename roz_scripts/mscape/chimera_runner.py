@@ -1,14 +1,18 @@
 import argparse
+import functools
 import logging
 import json
 import sys
+import threading
 import time
+import multiprocessing as mp
 from pathlib import Path
 import os
 import csv
 from itertools import batched
 import boto3
 from glob import glob
+from typing import NamedTuple
 
 from onyx import (
     OnyxClient,
@@ -28,8 +32,207 @@ from roz_scripts.utils.utils import (
     init_logger,
     onyx_update,
     get_pod_namespace,
+    S3_CLIENT_CONFIG,
+    send_admin_alert,
+    add_nxf_pod_resource_args,
+    pod_resources_from_args,
+    PodResourceError,
 )
+from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
+from roz_scripts.utils.config import load_config, project_bucket, ConfigError
 from varys import Varys
+
+
+class chimera_worker_pool_handler:
+    def __init__(self, workers, logger, varys_client, project, health: HealthState):
+        self._log = logger
+        # `pipeline.execute()` does os.chdir() and mutates self.cmd, and
+        # JobHeartbeat/HealthState write per-pid files - both assume a
+        # distinct process per job, so this must stay multiprocessing, never
+        # threads. Pin the start method explicitly rather than relying on
+        # whatever mp.Pool's platform default happens to be.
+        self.worker_pool = mp.get_context("fork").Pool(processes=workers)
+        self._varys_client = varys_client
+        self._health = health
+        self._project = project
+
+        # Guards every varys ack/nack/send call made from callback()/
+        # error_callback(), which run on the pool's result-handler thread -
+        # without this, concurrent callbacks could race on lazy exchange/
+        # producer creation inside varys.
+        self._varys_lock = threading.Lock()
+        self._in_flight_lock = threading.Lock()
+        self._in_flight = 0
+
+        # Failures here are never dead-lettered - every message at this
+        # stage represents a record that must eventually be published, and
+        # a poison message no longer blocks the whole queue once there are
+        # multiple workers, so the only job of these counters is to alert a
+        # human rather than to cap retries.
+        self._failure_log = {}
+        self._timeout_log = {}
+        self._consecutive_worker_errors = 0
+
+        self._log.info(
+            f"Successfully initialised chimera worker pool with {workers} workers"
+        )
+
+    def _send_remote_alert(self, uuid: str, description: str) -> None:
+        send_admin_alert(
+            self._varys_client,
+            source=self._project,
+            description=description,
+            uuid=uuid,
+        )
+
+    def in_flight(self) -> int:
+        with self._in_flight_lock:
+            return self._in_flight
+
+    def _job_finished(self) -> None:
+        with self._in_flight_lock:
+            self._in_flight -= 1
+
+    def submit_job(self, message, args, chimera_pipe, namespace, is_rerun=False):
+        try:
+            match_uuid = json.loads(message.body)["match_uuid"]
+        except (json.JSONDecodeError, KeyError) as e:
+            self._log.error(f"Malformed message body, re-queueing: {e}")
+            with self._varys_lock:
+                self._varys_client.nack_message(message)
+            self._send_remote_alert(
+                "unknown",
+                f"Malformed chimera message body, requires manual intervention: {e}",
+            )
+            return
+
+        self._log.info(
+            f"Submitting chimera job to the worker pool for UUID: {match_uuid}"
+        )
+
+        with self._in_flight_lock:
+            self._in_flight += 1
+
+        self.worker_pool.apply_async(
+            func=process_record,
+            kwds={
+                "message": message,
+                "args": args,
+                "chimera_pipe": chimera_pipe,
+                "namespace": namespace,
+                "is_rerun": is_rerun,
+            },
+            callback=self.callback,
+            error_callback=functools.partial(self.error_callback, message),
+        )
+
+    def callback(self, result):
+        success, timed_out, payload, match_uuid, is_rerun, message = result
+
+        self._health.clear_job(match_uuid)
+        self._consecutive_worker_errors = 0
+
+        if success:
+            self._failure_log.pop(match_uuid, None)
+            self._timeout_log.pop(match_uuid, None)
+
+            self._log.info(
+                f"Successfully processed chimera record for UUID: {match_uuid}"
+            )
+
+            downstream_exchange = (
+                f"downstream-chimera_rerun-{self._project}"
+                if is_rerun
+                else f"downstream-chimera-{self._project}"
+            )
+
+            with self._varys_lock:
+                self._varys_client.acknowledge_message(message)
+                self._varys_client.send(
+                    message=payload,
+                    exchange=downstream_exchange,
+                    queue_suffix="chimera",
+                )
+
+            self._job_finished()
+            return
+
+        self._log.error(
+            f"Chimera processing failed for UUID: {match_uuid}, re-queueing message"
+        )
+
+        self._failure_log[match_uuid] = self._failure_log.get(match_uuid, 0) + 1
+        if self._failure_log[match_uuid] >= 5:
+            self._log.error(
+                f"UUID: {match_uuid} has failed {self._failure_log[match_uuid]} times, sending alert"
+            )
+            self._send_remote_alert(
+                match_uuid,
+                f"Repeated chimera processing failure ({self._failure_log[match_uuid]} attempts)",
+            )
+
+        if timed_out:
+            self._timeout_log[match_uuid] = self._timeout_log.get(match_uuid, 0) + 1
+            if self._timeout_log[match_uuid] >= 2:
+                self._log.error(
+                    f"UUID: {match_uuid} has timed out {self._timeout_log[match_uuid]} times, sending alert"
+                )
+                self._send_remote_alert(
+                    match_uuid,
+                    f"Chimera pipeline has timed out {self._timeout_log[match_uuid]} times",
+                )
+
+        # Never dead-letter: every message at this stage is vital, so always
+        # requeue rather than dropping it after N attempts. Parallelism
+        # means a poison message no longer blocks every other job - it just
+        # keeps retrying (and alerting) until someone intervenes.
+        with self._varys_lock:
+            self._varys_client.nack_message(message)
+
+        self._job_finished()
+
+    def error_callback(self, message, exception):
+        self._log.error(f"Chimera worker failed with unhandled exception: {exception}")
+
+        try:
+            match_uuid = json.loads(message.body).get("match_uuid", "unknown")
+        except (json.JSONDecodeError, AttributeError):
+            match_uuid = "unknown"
+
+        self._health.clear_job(match_uuid)
+
+        with self._varys_lock:
+            self._varys_client.nack_message(message)
+
+        self._varys_client.send(
+            message=f"{self._project} chimera worker failed with unhandled exception: {exception}",
+            exchange=f"{self._project}-restricted-announce",
+            queue_suffix="dead_worker",
+        )
+
+        self._job_finished()
+
+        # A single crashed job must not take the whole pod down - other
+        # in-flight jobs would be killed with it, and the message would be
+        # left neither acked nor nacked. Only escalate to a liveness-
+        # triggered restart once failures look systemic (e.g. a broken
+        # dependency) rather than one bad record.
+        self._consecutive_worker_errors += 1
+        if self._consecutive_worker_errors >= 3:
+            reason = (
+                f"chimera worker failed with {self._consecutive_worker_errors} "
+                f"consecutive unhandled exceptions: {exception}"
+            )
+            self._health.mark_fatal(
+                reason,
+                alert_fn=lambda r: send_admin_alert(
+                    self._varys_client, source=self._project, description=r
+                ),
+            )
+
+    def close(self):
+        self.worker_pool.close()
+        self.worker_pool.join()
 
 
 def onyx_get_metadata(
@@ -154,10 +357,10 @@ def ret_0_parser(
 
                     else:
                         log.error(
-                            f"Process '{process}' failed with exit code '{trace['exit']}' for UUID: {payload['match_uuid']}"
+                            f"Process '{process}' failed with exit code '{exit_code}' for UUID: {payload['match_uuid']}"
                         )
                         raise Exception(
-                            f"Process '{process}' failed with unexpected exit code '{trace['exit']}'"
+                            f"Process '{process}' failed with unexpected exit code '{exit_code}'"
                         )
 
     except Exception:
@@ -280,14 +483,15 @@ def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logg
     return True
 
 
-def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
+def push_bam_file(bam_path: str, payload: dict, log: logging.Logger, config: dict):
 
     s3_client = boto3.client(
         "s3",
         endpoint_url="https://s3.climb.ac.uk",
+        config=S3_CLIENT_CONFIG,
     )
 
-    s3_bucket = f"{payload['project']}-chimera-bams"
+    s3_bucket = project_bucket(config, payload["project"], "chimera_bams")
 
     s3_key = f"{payload['climb_id']}.chimera.bam"
 
@@ -309,7 +513,315 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger):
     return s3_uri
 
 
+def push_chimera_report(
+    report_path: str,
+    report_suffix: str,
+    db_version: str | None,
+    payload: dict,
+    log: logging.Logger,
+    config: dict,
+) -> str:
+
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url="https://s3.climb.ac.uk",
+    )
+
+    s3_bucket = project_bucket(config, payload["project"], "chimera_reports")
+
+    s3_key = f"{payload['climb_id']}.{report_suffix}"
+
+    s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
+    try:
+        if not db_version:
+            raise ValueError(
+                f"No DB version supplied for {report_suffix}, cannot upload db-version-tagged report"
+            )
+
+        s3_client.upload_file(
+            report_path,
+            s3_bucket,
+            s3_key,
+        )
+
+        s3_client.upload_file(
+            report_path,
+            s3_bucket,
+            f"{payload['climb_id']}.{db_version}.{report_suffix}",
+        )
+    except Exception:
+        log.exception(
+            f"Failed to upload {report_suffix} to S3 for UUID: {payload['match_uuid']}, error:"
+        )
+        raise
+
+    return s3_uri
+
+
+def process_record(
+    message,
+    args: argparse.Namespace,
+    chimera_pipe: pipeline,
+    namespace: str,
+    is_rerun: bool = False,
+) -> tuple[bool, bool, dict, str, bool, NamedTuple]:
+    """Run the chimera pipeline and process its reports for a single artifact.
+
+    This function runs inside a worker process of the pool in run() - it
+    never touches varys (ack/nack/publish) directly, since a multiprocessing
+    worker can be killed independently of the main process and must not be
+    the only thing holding a message's fate. Instead it always returns a
+    result tuple describing the outcome, and the pool's callback (running in
+    the main process) does all varys I/O.
+
+    Args:
+        message (namedtuple): Varys message object for the current artifact
+        args (argparse.Namespace): Command line arguments object
+        chimera_pipe (pipeline): Instance of the chimera pipeline (see pipeline class)
+        namespace (str): The k8s namespace to run the pipeline job in
+        is_rerun (bool): Whether this message came from the rerun exchange
+
+    Returns:
+        tuple[bool, bool, dict, str, bool, namedtuple]: success, whether this
+        attempt timed out, the (possibly updated) payload dict, the
+        match_uuid, is_rerun, and the original message object
+    """
+    log = logging.getLogger(f"{args.project}.chimera")
+
+    payload = json.loads(message.body)
+    match_uuid = payload["match_uuid"]
+
+    job_heartbeat = JobHeartbeat(get_health_dir(), uuid=match_uuid, budget_s=600)
+    job_heartbeat.beat(stage="pre_pipeline")
+
+    def fail(reason: str, timed_out: bool = False):
+        log.error(reason)
+        return (False, timed_out, payload, match_uuid, is_rerun, message)
+
+    try:
+        metadata = onyx_get_metadata(
+            args=args,
+            climb_id=payload["climb_id"],
+            log=log,
+            uuid=match_uuid,
+        )
+
+        if not metadata:
+            return fail(
+                f"Failed to get metadata for climb_id: {payload['climb_id']}, UUID: {match_uuid}. This should never happen."
+            )
+
+        record_outdir = Path(os.path.join(args.outdir, match_uuid))
+
+        record_outdir.mkdir(parents=True, exist_ok=True)
+        log.info(f"Creating samplesheet for {match_uuid}")
+
+        create_samplesheet(
+            [metadata],
+            Path(os.path.join(record_outdir, "samplesheet.csv")),
+        )
+
+        log.info(f"Running chimera pipeline for {match_uuid}")
+
+        pipeline_params = {
+            "input": os.path.join(record_outdir, "samplesheet.csv"),
+            "mm2_index": args.mm2_index,
+            "bwa_index_prefix": args.bwa_index_prefix,
+            "sylph_db": args.sylph_db,
+            "sylph_taxdb": args.sylph_taxdb,
+            "database_metadata": args.database_metadata,
+            "outdir": record_outdir,
+        }
+
+        nxf_home = Path(
+            f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/"
+        )
+        nxf_home.mkdir(parents=True, exist_ok=True)
+        nxf_home.chmod(0o775)
+
+        env_vars = {
+            "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+            "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+            "NXF_WORK": os.getenv("NXF_WORK"),
+            "NXF_HOME": str(nxf_home),
+        }
+
+        job_heartbeat.beat(stage="running_pipeline", budget_s=args.chimera_timeout)
+
+        rc = chimera_pipe.execute(
+            params=pipeline_params,
+            logdir=record_outdir,
+            timeout=args.chimera_timeout,
+            env_vars=env_vars,
+            namespace=namespace,
+            job_id=match_uuid,
+            stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
+            stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
+            workingdir=record_outdir,
+            progress_cb=lambda stage: job_heartbeat.beat(stage),
+        )
+
+        if rc != 0:
+            # k8s Job execution reports a hard timeout as rc 124 (see
+            # pipeline.execute) - track that distinctly so repeated timeouts
+            # of the same record can be alerted on separately from other
+            # failure modes.
+            return fail(
+                f"Chimera pipeline failed for {match_uuid} with return code {rc}",
+                timed_out=(rc == 124),
+            )
+
+        log.info(f"Chimera pipeline completed with exit code {rc} for {match_uuid}")
+
+        job_heartbeat.beat(stage="post_pipeline", budget_s=600)
+
+        ingest_fail, payload = ret_0_parser(
+            log=log,
+            payload=payload,
+            result_path=record_outdir,  # type: ignore
+            ingest_fail=False,
+        )
+
+        if ingest_fail:
+            return fail(
+                f"Chimera pipeline failed for {match_uuid} due to process failure"
+            )
+
+        log.info(f"Processing record for {metadata['climb_id']}")  # type: ignore
+
+        alignment_report_path = os.path.join(
+            record_outdir,
+            metadata["climb_id"],  # type: ignore
+            f"{metadata['climb_id']}.alignment_report.tsv",  # type: ignore
+        )
+
+        if not os.path.exists(alignment_report_path):
+            return fail(
+                f"Alignment report not found for {match_uuid} at expected path {alignment_report_path}"
+            )
+
+        alignment_success = handle_alignment_report(
+            alignment_report_path=alignment_report_path,
+            payload=payload,
+            log=log,
+        )
+
+        if not alignment_success:
+            return fail(f"Failed to process alignment report for {match_uuid}")
+
+        try:
+            push_chimera_report(
+                report_path=alignment_report_path,
+                report_suffix="alignment_report.tsv",
+                db_version=args.alignment_db_version,
+                payload=payload,
+                log=log,
+                config=args.config,
+            )
+        except Exception:
+            return fail(f"Failed to push alignment report for {match_uuid}")
+
+        sylph_report_path = os.path.join(
+            record_outdir,
+            metadata["climb_id"],  # type: ignore
+            f"{metadata['climb_id']}.sylph_taxonomy_report.tsv",  # type: ignore
+        )
+        if not os.path.exists(sylph_report_path):
+            if not payload.get("chimera_info"):
+                return fail(
+                    f"Sylph report not found for {match_uuid} at expected path {sylph_report_path}"
+                )
+
+            else:
+                sylph_taxonomy_info = payload["chimera_info"].get("SYLPH_TAXONOMY")
+                if (
+                    sylph_taxonomy_info
+                    and sylph_taxonomy_info.get("status") == "no_hits"
+                ):
+                    log.info(
+                        f"No Sylph report found for {match_uuid}, this just means that no hits were observed > 95% ANI"
+                    )
+                else:
+                    return fail(
+                        f"Sylph report not found for {match_uuid} at expected path {sylph_report_path}"
+                    )
+
+        else:
+            sylph_success = handle_sylph_report(
+                sylph_report_path=sylph_report_path,
+                payload=payload,
+                log=log,
+            )
+
+            if not sylph_success:
+                return fail(f"Failed to process Sylph report for {match_uuid}")
+
+            try:
+                push_chimera_report(
+                    report_path=sylph_report_path,
+                    report_suffix="sylph_taxonomy_report.tsv",
+                    db_version=args.sylph_db_version,
+                    payload=payload,
+                    log=log,
+                    config=args.config,
+                )
+            except Exception:
+                return fail(f"Failed to push Sylph report for {match_uuid}")
+
+            log.info(f"Successfully processed Sylph report for {match_uuid}")
+
+        log.info(
+            f"Successfully processed alignment / sylph reports for {metadata['climb_id']}"  # type: ignore
+        )
+
+        bam_path = os.path.join(
+            record_outdir, metadata["climb_id"], f"{metadata['climb_id']}.bam"  # type: ignore
+        )
+
+        if not os.path.exists(bam_path):
+            return fail(
+                f"BAM file not found for {match_uuid} at expected path {bam_path}"
+            )
+
+        bam_uri = push_bam_file(
+            bam_path=bam_path,
+            payload=payload,
+            log=log,
+            config=args.config,
+        )
+
+        update_fail, update_alert, payload = onyx_update(
+            payload=payload,
+            fields={
+                "chimera_bam": bam_uri,
+                "alignment_db_version": args.alignment_db_version,
+                "is_chimera_published": True,
+                "sylph_db_version": args.sylph_db_version,
+            },
+            log=log,
+        )
+        if update_fail or update_alert:
+            return fail(f"Failed to update Onyx with BAM URI for UUID: {match_uuid}")
+
+        log.info(f"Successfully updated Onyx for {metadata['climb_id']}")  # type: ignore
+
+        return (True, False, payload, match_uuid, is_rerun, message)
+
+    except Exception as e:
+        log.exception(f"Unhandled exception processing UUID {match_uuid}:")
+        return fail(f"Unhandled exception processing UUID {match_uuid}: {e}")
+
+    finally:
+        job_heartbeat.clear()
+
+
 def run(args):
+    log = None
+    health = None
+    varys_client = None
+    handler = None
+
     try:
         log = init_logger(f"{args.project}.chimera", args.logfile, args.log_level)
 
@@ -328,22 +840,40 @@ def run(args):
             config=args.nxf_config,
             nxf_image=args.nxf_image,
             job_prefix="chimera",
+            pod_resources=args.nxf_pod_resources,
+        )
+
+        health = HealthState(get_health_dir())
+
+        handler = chimera_worker_pool_handler(
+            workers=args.n_workers,
+            logger=log,
+            varys_client=varys_client,
+            project=args.project,
+            health=health,
         )
 
         while True:
+            if handler.in_flight() >= args.n_workers:
+                health.heartbeat()
+                time.sleep(5)
+                continue
+
             priority_message = varys_client.receive(
                 exchange=f"inbound-new_artifact-{args.project}",
                 queue_suffix="chimera",
-                prefetch_count=1,
+                prefetch_count=args.n_workers,
                 timeout=10,
             )
 
             rerun_message = varys_client.receive(
                 exchange=f"inbound-new_artifact_rerun-{args.project}",
                 queue_suffix="chimera",
-                prefetch_count=1,
+                prefetch_count=args.n_workers,
                 timeout=10,
             )
+
+            health.heartbeat()
 
             if not priority_message and not rerun_message:
                 time.sleep(60)
@@ -352,240 +882,44 @@ def run(args):
             if priority_message:
                 message = priority_message
                 is_rerun = False
-                payload = json.loads(message.body)
                 if rerun_message:
                     varys_client.nack_message(rerun_message)
             elif rerun_message:
                 message = rerun_message
                 is_rerun = True
-                payload = json.loads(message.body)
             else:
                 log.error("This should never happen, no message received")
                 continue
 
-            metadata = onyx_get_metadata(
+            handler.submit_job(
+                message=message,
                 args=args,
-                climb_id=payload["climb_id"],
-                log=log,
-                uuid=payload["match_uuid"],
-            )
-
-            if not metadata:
-                log.error(
-                    f"Failed to get metadata for climb_id: {payload['climb_id']}, UUID: {payload['match_uuid']}. This should never happen."
-                )
-                sys.exit(1)
-
-            record_outdir = Path(os.path.join(args.outdir, payload["match_uuid"]))
-
-            metadata_list = [metadata]
-
-            record_outdir.mkdir(parents=True, exist_ok=True)
-            log.info(f"Creating samplesheet for {payload['match_uuid']}")
-
-            create_samplesheet(
-                metadata_list,
-                Path(os.path.join(record_outdir, "samplesheet.csv")),
-            )
-
-            log.info(f"Running chimera pipeline for {payload['match_uuid']}")
-
-            pipeline_params = {
-                "input": os.path.join(record_outdir, "samplesheet.csv"),
-                "mm2_index": args.mm2_index,
-                "bwa_index_prefix": args.bwa_index_prefix,
-                "sylph_db": args.sylph_db,
-                "sylph_taxdb": args.sylph_taxdb,
-                "database_metadata": args.database_metadata,
-                "outdir": record_outdir,
-            }
-
-            nxf_home = Path(f"{os.environ['NXF_HOME'].rstrip('/')}/nextflow.worker.{os.getpid()}/")
-            nxf_home.mkdir(parents=True, exist_ok=True)
-            nxf_home.chmod(0o775)
-
-            env_vars = {
-                "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
-                "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-                "NXF_WORK": os.getenv("NXF_WORK"),
-                "NXF_HOME": str(nxf_home),
-            }
-
-            rc = chimera_pipe.execute(
-                params=pipeline_params,
-                logdir=record_outdir,
-                timeout=3600,
-                env_vars=env_vars,
+                chimera_pipe=chimera_pipe,
                 namespace=namespace,
-                job_id=payload["match_uuid"],
-                stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
-                stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
-                workingdir=record_outdir,
+                is_rerun=is_rerun,
             )
 
-            if rc != 0:
-                log.error(
-                    f"Chimera pipeline failed for {payload['match_uuid']} with return code {rc}"
-                )
-                # Do not acknowledge the message so it can be retried
-                varys_client.nack_message(message)
-                continue
-
-            log.info(
-                f"Chimera pipeline completed with exit code {rc} for {payload['match_uuid']}"
+    except BaseException as e:
+        if health is not None:
+            health.mark_fatal(
+                f"chimera runner crashed: {e}",
+                alert_fn=(
+                    (
+                        lambda r: send_admin_alert(
+                            varys_client, source="chimera_runner", description=r
+                        )
+                    )
+                    if varys_client is not None
+                    else None
+                ),
             )
-
-            ingest_fail, payload = ret_0_parser(
-                log=log,
-                payload=payload,
-                result_path=record_outdir,
-                ingest_fail=False,
-            )
-
-            if ingest_fail:
-                log.error(
-                    f"Chimera pipeline failed for {payload['match_uuid']} due to process failure"
-                )
-                # Do not acknowledge the message so it can be retried
-                varys_client.nack_message(message)
-                continue
-
-            # This is single sample currently but leaving loop in place in case of future multi-sample support
-            for record in metadata_list:
-                log.info(f"Processing record for {record['climb_id']}")
-
-                alignment_report_path = os.path.join(
-                    record_outdir,
-                    record["climb_id"],
-                    f"{record['climb_id']}.alignment_report.tsv",
-                )
-
-                if not os.path.exists(alignment_report_path):
-                    varys_client.nack_message(message)
-                    log.error(
-                        f"Alignment report not found for {payload['match_uuid']} at expected path {alignment_report_path}"
-                    )
-                    continue
-
-                alignment_success = handle_alignment_report(
-                    alignment_report_path=alignment_report_path,
-                    payload=payload,
-                    log=log,
-                )
-
-                if not alignment_success:
-                    log.error(
-                        f"Failed to process alignment report for {payload['match_uuid']}"
-                    )
-                    varys_client.nack_message(message)
-                    continue
-
-                sylph_report_path = os.path.join(
-                    record_outdir,
-                    record["climb_id"],
-                    f"{record['climb_id']}.sylph_taxonomy_report.tsv",
-                )
-                if not os.path.exists(sylph_report_path):
-                    if not payload.get("chimera_info"):
-                        log.error(
-                            f"Sylph report not found for {payload['match_uuid']} at expected path {sylph_report_path}"
-                        )
-                        varys_client.nack_message(message)
-                        continue
-
-                    else:
-                        sylph_taxonomy_info = payload["chimera_info"].get(
-                            "SYLPH_TAXONOMY"
-                        )
-                        if (
-                            sylph_taxonomy_info
-                            and sylph_taxonomy_info.get("status") == "no_hits"
-                        ):
-                            log.info(
-                                f"No Sylph report found for {payload['match_uuid']}, this just means that no hits were observed > 95% ANI"
-                            )
-                        else:
-                            log.error(
-                                f"Sylph report not found for {payload['match_uuid']} at expected path {sylph_report_path}"
-                            )
-                            varys_client.nack_message(message)
-                            continue
-
-                else:
-                    sylph_success = handle_sylph_report(
-                        sylph_report_path=sylph_report_path,
-                        payload=payload,
-                        log=log,
-                    )
-
-                    if not sylph_success:
-                        log.error(
-                            f"Failed to process Sylph report for {payload['match_uuid']}"
-                        )
-                        varys_client.nack_message(message)
-                        continue
-
-                    log.info(
-                        f"Successfully processed Sylph report for {payload['match_uuid']}"
-                    )
-
-                log.info(
-                    f"Successfully processed alignment / sylph reports for {record['climb_id']}"
-                )
-
-                bam_path = os.path.join(
-                    record_outdir, record["climb_id"], f"{record['climb_id']}.bam"
-                )
-
-                if not os.path.exists(bam_path):
-                    log.error(
-                        f"BAM file not found for {payload['match_uuid']} at expected path {bam_path}"
-                    )
-                    varys_client.nack_message(message)
-                    continue
-
-                bam_uri = push_bam_file(
-                    bam_path=bam_path,
-                    payload=payload,
-                    log=log,
-                )
-
-                update_fail, update_alert, payload = onyx_update(
-                    payload=payload,
-                    fields={
-                        "chimera_bam": bam_uri,
-                        "alignment_db_version": args.alignment_db_version,
-                        "is_chimera_published": True,
-                        "sylph_db_version": args.sylph_db_version,
-                    },
-                    log=log,
-                )
-                if update_fail or update_alert:
-                    log.error(
-                        f"Failed to update Onyx with BAM URI for UUID: {payload['match_uuid']}"
-                    )
-                    varys_client.nack_message(message)
-                    continue
-
-                log.info(f"Successfully updated Onyx for {record['climb_id']}")
-
-                varys_client.acknowledge_message(message)
-
-                downstream_exchange = (
-                    f"downstream-chimera_rerun-{args.project}"
-                    if is_rerun
-                    else f"downstream-chimera-{args.project}"
-                )
-                varys_client.send(
-                    message=payload,
-                    exchange=downstream_exchange,
-                    queue_suffix="chimera",
-                )
-
-    except BaseException:
-        varys_client.close()
+        if handler is not None:
+            handler.close()
+        if varys_client is not None:
+            varys_client.close()
         time.sleep(300)
-        log.exception("Shutting down chimera runner due to exception:")
+        if log is not None:
+            log.exception("Shutting down chimera runner due to exception:")
         raise
 
 
@@ -623,6 +957,13 @@ def main():
         "--sylph_taxdb", type=Path, required=True, help="Path to sylph taxdb"
     )
     parser.add_argument("--sylph_db_version", type=str, help="Sylph DB version")
+    parser.add_argument("--n_workers", type=int, default=3)
+    parser.add_argument(
+        "--chimera_timeout",
+        type=int,
+        default=3600,
+        help="Timeout in seconds for a single chimera pipeline run",
+    )
     parser.add_argument("--nxf_image", default="quay.io/climb-tre/nextflow:25.04.8")
     parser.add_argument("--logfile", type=Path, default=Path("chimera_runner.log"))
     parser.add_argument("--log_level", type=str, default="DEBUG")
@@ -632,7 +973,19 @@ def main():
         help="Path to nextflow config file",
         required=True,
     )
+    parser.add_argument(
+        "--config",
+        default=os.getenv("ROZ_CONFIG_JSON"),
+        help="Path to the roz config JSON file. Defaults to $ROZ_CONFIG_JSON.",
+    )
+    add_nxf_pod_resource_args(parser)
     args = parser.parse_args()
+
+    try:
+        args.nxf_pod_resources = pod_resources_from_args(args)
+    except PodResourceError as e:
+        print(f"Invalid nextflow pod resource configuration: {e}", file=sys.stderr)
+        sys.exit(3)
 
     for i in (
         "ONYX_DOMAIN",
@@ -642,10 +995,17 @@ def main():
         "AWS_SECRET_ACCESS_KEY",
         "NXF_WORK",
         "NXF_HOME",
+        "ROZ_CONFIG_JSON",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
+
+    try:
+        args.config = load_config(args.config)
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     run(args)
 

@@ -17,6 +17,8 @@ from roz_scripts.utils.utils import (
     NonPlaintextCSVError,
     send_admin_alert,
 )
+from roz_scripts.utils.health import HealthState, get_health_dir
+from roz_scripts.utils.config import load_config, ConfigError
 
 
 def main():
@@ -28,10 +30,17 @@ def main():
         "VARYS_CFG",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "ROZ_CONFIG_JSON",
     ):
         if not os.getenv(i):
             print(f"The environmental variable '{i}' has not been set", file=sys.stderr)
             sys.exit(3)
+
+    try:
+        config = load_config()
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     # Setup producer / consumer
     log = init_logger(
@@ -41,9 +50,11 @@ def main():
     varys_client = varys.Varys(
         profile="roz",
         logfile=os.getenv("ROZ_INGEST_LOG"),
-        log_level=os.getenv("INGEST_LOG_LEVEL"),
+        log_level=os.environ["INGEST_LOG_LEVEL"],
         auto_acknowledge=False,
     )
+
+    health = HealthState(get_health_dir())
 
     while True:
         message = None
@@ -52,8 +63,7 @@ def main():
                 exchange="inbound-matched", queue_suffix="ingest", timeout=60
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if not message:
                 continue
@@ -88,7 +98,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             log.info(
@@ -117,7 +127,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             log.info(
@@ -144,7 +154,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             payload["onyx_test_create_status"] = True
@@ -170,7 +180,7 @@ def main():
                     exchange=f"inbound-results-{payload['project']}-{payload['site']}",
                     queue_suffix="s3_matcher",
                 )
-                put_result_json(payload=payload, log=log)
+                put_result_json(payload=payload, log=log, config=config)
                 continue
 
             payload["biosample_id"] = metadata["biosample_id"]
@@ -184,17 +194,15 @@ def main():
             )
         except Exception as e:
             log.error(f"An unhandled exception occurred: {str(e)}")
-            try:
-                send_admin_alert(
-                    varys_client,
-                    source="onyx-checks",
-                    description=f"failed with unhandled exception: {e}",
-                )
-            except Exception as alert_exception:
-                log.error(f"Failed to send admin alert: {alert_exception}")
+            reason = f"failed with unhandled exception: {e}"
+            health.mark_fatal(
+                reason,
+                alert_fn=lambda r: send_admin_alert(
+                    varys_client, source="onyx-checks", description=r
+                ),
+            )
             if message:
                 varys_client.nack_message(message)
-            os.remove("/tmp/healthy")
             sys.exit(1)
 
 

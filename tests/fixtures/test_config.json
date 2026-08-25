@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "pathogen_configs": ["mscape"],
+  "configs": {
+    "mscape": {
+      "artifact_layout": "project|run_index|run_id",
+      "sites": {
+        "birm.mscape": "analysis",
+        "site1.mscape": "analysis",
+        "site2.mscape": "uploader",
+        "site3.mscape": "uploader",
+        "mscape": "analysis"
+      },
+      "csv_updates": false,
+      "bucket_policies": {
+        "site_ingest": ["get", "put", "list", "delete"],
+        "project_ingest": ["get", "put", "list", "delete"],
+        "project_write": ["get", "put", "list", "delete"],
+        "site_read": ["get"],
+        "project_read": ["get"],
+        "project_read_list": ["get", "list"],
+        "project_private": []
+      },
+      "site_buckets": {
+        "ingest": {
+          "name_layout": "{project}-{site}-{platform}-{test_flag}",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest",
+            "service": "site_ingest"
+          },
+          "owner": "{site}"
+        },
+        "results": {
+          "name_layout": "{project}-{site}-fakeresults",
+          "policy": {
+            "analysis": "site_ingest",
+            "uploader": "site_ingest",
+            "service": "site_ingest"
+          },
+          "owner": "{site}"
+        }
+      },
+      "notification_bucket_configs": {
+        "ingest": {
+          "rmq_exchange": "inbound-s3",
+          "rmq_queue_env": "s3_matcher",
+          "amqps": false
+        }
+      },
+      "project_buckets": {
+        "published_reads": {
+          "name_layout": "{project}-fake-widget-alpha",
+          "policy": {},
+          "owner": "admin"
+        },
+        "published_binned_reads": {
+          "name_layout": "{project}-fake-widget-beta",
+          "policy": {"analysis": "project_read_list"},
+          "owner": "admin"
+        },
+        "published-read-fractions": {
+          "name_layout": "{project}-fake-widget-gamma",
+          "policy": {"analysis": "project_read_list"},
+          "owner": "admin"
+        },
+        "published_taxon_reports": {
+          "name_layout": "{project}-fake-widget-delta",
+          "policy": {"analysis": "project_read_list"},
+          "owner": "admin"
+        },
+        "published_scylla_reports": {
+          "name_layout": "{project}-fake-widget-epsilon",
+          "policy": {"analysis": "project_read"},
+          "owner": "admin"
+        },
+        "ingest": {
+          "name_layout": "{project}-public-{platform}-{test_flag}",
+          "policy": {"analysis": "project_ingest"},
+          "owner": "admin"
+        },
+        "fake_widget_zeta": {
+          "name_layout": "{project}-fake-widget-zeta",
+          "policy": {"analysis": "project_read"},
+          "owner": "admin"
+        },
+        "published_hcid_reports": {
+          "name_layout": "{project}-fake-widget-eta",
+          "policy": {"analysis": "project_read_list"},
+          "owner": "admin"
+        },
+        "chimera_bams": {
+          "name_layout": "{project}-fake-widget-theta",
+          "policy": {"analysis": "project_read_list"},
+          "owner": "admin"
+        },
+        "chimera_reports": {
+          "name_layout": "{project}-fake-widget-iota",
+          "policy": {"analysis": "project_read_list"},
+          "owner": "admin"
+        },
+        "fake_widget_kappa": {
+          "name_layout": "{project}-fake-widget-kappa",
+          "policy": {"analysis": "project_read_list", "service": "project_write"},
+          "owner": "admin"
+        },
+        "fake_widget_lambda": {
+          "name_layout": "{project}-fake-widget-lambda",
+          "policy": {"analysis": "project_read_list", "service": "project_write"},
+          "owner": "admin"
+        },
+        "fake_widget_mu": {
+          "name_layout": "{project}-fake-widget-mu",
+          "policy": {"analysis": "project_read_list", "service": "project_write"},
+          "owner": "admin"
+        },
+        "fake_widget_nu": {
+          "name_layout": "{project}-fake-widget-nu",
+          "policy": {"analysis": "project_read_list", "service": "project_write"},
+          "owner": "admin"
+        },
+        "fake_widget_xi": {
+          "name_layout": "{project}-fake-widget-xi",
+          "policy": {"analysis": "project_read_list", "service": "project_write"},
+          "owner": "admin"
+        },
+        "fake_widget_omicron": {
+          "name_layout": "{project}-fake-widget-omicron",
+          "policy": {"analysis": "project_read_list", "service": "project_write"},
+          "owner": "admin"
+        },
+        "fake_widget_pi": {
+          "name_layout": "{project}-fake-widget-pi",
+          "policy": {"analysis": "project_read_list", "service": "project_write"},
+          "owner": "admin"
+        }
+      },
+      "file_specs": {
+        "illumina": {
+          ".1.fastq.gz": {"layout": "project.run_index.run_id.direction.ftype.gzip"},
+          ".2.fastq.gz": {"layout": "project.run_index.run_id.direction.ftype.gzip"},
+          ".csv": {"layout": "project.run_index.run_id.ftype"}
+        },
+        "illumina.se": {
+          ".fastq.gz": {"layout": "project.run_index.run_id.ftype.gzip"},
+          ".csv": {"layout": "project.run_index.run_id.ftype"}
+        },
+        "ont": {
+          ".fastq.gz": {"sections": 5, "layout": "project.run_index.run_id.ftype.gzip"},
+          ".csv": {"sections": 4, "layout": "project.run_index.run_id.ftype"}
+        }
+      }
+    },
+    "pathsafe": {
+      "artifact_layout": "project|run_index|run_id",
+      "sites": {
+        "birm.pathsafe": "uploader",
+        "site1.pathsafe": "uploader",
+        "site2.pathsafe": "analysis",
+        "pathsafe": "analysis"
+      },
+      "csv_updates": true,
+      "bucket_policies": {
+        "site_ingest": ["get", "put", "list", "delete"],
+        "project_read": ["get"]
+      },
+      "site_buckets": {
+        "ingest": {
+          "name_layout": "{project}-{site}-{platform}-{test_flag}",
+          "policy": {"uploader": "site_ingest", "analysis": "site_ingest"},
+          "owner": "{site}"
+        },
+        "results": {
+          "name_layout": "{project}-{site}-fakeresults",
+          "policy": {"uploader": "site_ingest", "analysis": "site_ingest"},
+          "owner": "{site}"
+        }
+      },
+      "notification_bucket_configs": {
+        "ingest": {
+          "rmq_exchange": "inbound-s3",
+          "rmq_queue_env": "s3_matcher",
+          "amqps": false
+        }
+      },
+      "project_buckets": {
+        "published_reads": {
+          "name_layout": "{project}-fake-reads-store",
+          "policy": {"analysis": "project_read"},
+          "owner": "admin"
+        },
+        "published_assemblies": {
+          "name_layout": "{project}-fake-assembly-store",
+          "policy": {"analysis": "project_read"},
+          "owner": "admin"
+        }
+      },
+      "file_specs": {
+        "illumina": {
+          ".1.fastq.gz": {"layout": "project.run_index.run_id.direction.ftype.gzip"},
+          ".2.fastq.gz": {"layout": "project.run_index.run_id.direction.ftype.gzip"},
+          ".csv": {"layout": "project.run_index.run_id.ftype"}
+        }
+      }
+    }
+  }
+}

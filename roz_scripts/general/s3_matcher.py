@@ -1,13 +1,16 @@
 from roz_scripts.utils.utils import (
     get_s3_credentials,
+    get_s3_client,
     init_logger,
     put_result_json,
     send_admin_alert,
 )
+from roz_scripts.utils.health import HealthState, get_health_dir
 from roz_scripts.general.s3_controller import create_config_map
 from varys import Varys
 
 import boto3
+from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 
 import uuid
@@ -17,11 +20,11 @@ import os
 import sys
 
 
-def get_existing_objects(s3_client: boto3.client, to_check: list) -> dict:
+def get_existing_objects(s3_client: BaseClient, to_check: list) -> dict:
     """Fetches existing object keys from S3.
 
     Args:
-        s3_client (boto3.client): s3 client
+        s3_client (BaseClient): s3 client
         to_check (list): list of bucket names to check
 
     Returns:
@@ -83,7 +86,7 @@ def parse_object_key(
         return (False, False)
 
     return (
-        extension,
+        extension,  # type: ignore
         {field: content for field, content in zip(spec_split, key_split)},
     )
 
@@ -224,7 +227,7 @@ def is_artifact_dict_complete(
 
 def parse_new_object_message(
     existing_object_dict: dict, new_object_message: dict, config_dict: dict
-) -> tuple[bool, dict, tuple, str]:
+) -> tuple[bool, dict, tuple, dict]:
     """Parses a new object message and adds it to the existing object dict.
 
     Args:
@@ -233,7 +236,7 @@ def parse_new_object_message(
         config_dict (dict): Dictionary parsed from the config file
 
     Returns:
-        tuple[bool, dict, tuple, str]: Tuple containing a boolean indicating if the artifact is complete, the updated existing object dict, the index tuple, and the parsed bucket name
+        tuple[bool, dict, tuple, dict]: Tuple containing a boolean indicating if the artifact is complete, the updated existing object dict, the index tuple, and the parsed bucket name
     """
 
     # There should only ever be one record here
@@ -408,20 +411,15 @@ def main():
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     varys_client = Varys(
         profile="roz",
         logfile=os.getenv("S3_MATCHER_LOG"),
-        log_level=os.getenv("INGEST_LOG_LEVEL"),
+        log_level=os.environ["INGEST_LOG_LEVEL"],
     )
 
-    with open(os.getenv("ROZ_CONFIG_JSON"), "r") as f:
+    with open(os.environ["ROZ_CONFIG_JSON"], "r") as f:
         config_dict = json.load(f)
 
     config_map = create_config_map(config_dict=config_dict)
@@ -444,6 +442,8 @@ def main():
         existing_objects=objects, config_dict=config_dict
     )
 
+    health = HealthState(get_health_dir())
+
     while True:
         try:
             message = varys_client.receive(
@@ -452,8 +452,7 @@ def main():
                 timeout=60,
             )
 
-            with open("/tmp/healthy", "w") as fh:
-                fh.write(str(time.time_ns()))
+            health.heartbeat()
 
             if not message:
                 continue
@@ -507,15 +506,13 @@ def main():
 
         except Exception as e:
             log.error(f"Unhandled exception: {str(e)}")
-            try:
-                send_admin_alert(
-                    varys_client,
-                    source="s3_matcher",
-                    description=f"failed with unhandled exception: {e}",
-                )
-            except Exception as alert_exception:
-                log.error(f"Failed to send admin alert: {alert_exception}")
-            os.remove("/tmp/healthy")
+            reason = f"failed with unhandled exception: {e}"
+            health.mark_fatal(
+                reason,
+                alert_fn=lambda r: send_admin_alert(
+                    varys_client, source="s3_matcher", description=r
+                ),
+            )
             sys.exit(1)
 
 

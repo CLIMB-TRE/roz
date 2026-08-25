@@ -1,12 +1,15 @@
+import argparse
 import boto3
+from botocore.client import BaseClient
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from collections import namedtuple
 import configparser
+from dataclasses import dataclass
 import os
 import sys
 from io import StringIO
 import logging
-import logging.handlers
 from pathlib import Path
 import time
 import csv
@@ -27,13 +30,18 @@ from onyx.exceptions import (
     OnyxClientError,
 )
 
+from roz_scripts.utils.config import site_bucket
+
 from kubernetes import config as k8s_config
 from kubernetes.client import ApiClient
 from kubernetes.client.exceptions import ApiException
+from kubernetes.client.api import BatchV1Api
 
 
 def get_pod_namespace() -> str:
-    sa_mount = Path(os.getenv("K8S_SECRETS_MOUNT", "/run/secrets/kubernetes.io/serviceaccount"))
+    sa_mount = Path(
+        os.getenv("K8S_SECRETS_MOUNT", "/run/secrets/kubernetes.io/serviceaccount")
+    )
     ns_file = sa_mount / "namespace"
     if ns_file.exists():
         return ns_file.read_text().strip()
@@ -43,7 +51,6 @@ def get_pod_namespace() -> str:
     raise RuntimeError(
         "Cannot determine k8s namespace: not running in a pod and POD_NAMESPACE is not set"
     )
-from kubernetes.client.api import BatchV1Api
 
 
 __s3_creds = namedtuple(
@@ -88,6 +95,289 @@ def send_admin_alert(
     )
 
 
+NO_LIMIT = "none"  # sentinel accepted on the CLI to drop a single resource dimension
+
+_CPU_QUANTITY_RE = re.compile(r"^(\d+(?:\.\d+)?)(m)?$")
+_MEMORY_QUANTITY_RE = re.compile(
+    r"^(\d+(?:\.\d+)?)(E|P|T|G|M|K|Ei|Pi|Ti|Gi|Mi|Ki)?$"
+)
+
+_MEMORY_UNIT_MULTIPLIERS = {
+    "": 1,
+    "K": 1000,
+    "M": 1000**2,
+    "G": 1000**3,
+    "T": 1000**4,
+    "P": 1000**5,
+    "E": 1000**6,
+    "Ki": 1024,
+    "Mi": 1024**2,
+    "Gi": 1024**3,
+    "Ti": 1024**4,
+    "Pi": 1024**5,
+    "Ei": 1024**6,
+}
+
+
+class PodResourceError(ValueError):
+    """Raised when a pod resource quantity or combination of settings is invalid"""
+
+
+def parse_cpu_quantity(value: str) -> float:
+    """Parse a k8s CPU quantity (e.g. "1", "0.5", "500m") into a number of cores
+
+    Args:
+        value (str): The k8s CPU quantity to parse
+
+    Returns:
+        float: The quantity in whole cores
+    """
+    match = _CPU_QUANTITY_RE.match(value.strip())
+    if not match:
+        raise PodResourceError(f"Invalid CPU quantity: {value!r}")
+
+    number, suffix = match.groups()
+    cores = float(number) / 1000 if suffix == "m" else float(number)
+
+    if cores <= 0:
+        raise PodResourceError(f"CPU quantity must be positive, got: {value!r}")
+
+    return cores
+
+
+def parse_memory_quantity(value: str) -> float:
+    """Parse a k8s memory quantity (e.g. "8G", "512Mi") into a number of bytes
+
+    Args:
+        value (str): The k8s memory quantity to parse
+
+    Returns:
+        float: The quantity in bytes
+    """
+    match = _MEMORY_QUANTITY_RE.match(value.strip())
+    if not match:
+        raise PodResourceError(f"Invalid memory quantity: {value!r}")
+
+    number, suffix = match.groups()
+    multiplier = _MEMORY_UNIT_MULTIPLIERS[suffix or ""]
+    quantity = float(number) * multiplier
+
+    if quantity <= 0:
+        raise PodResourceError(f"Memory quantity must be positive, got: {value!r}")
+
+    return quantity
+
+
+@dataclass(frozen=True)
+class PodResources:
+    """CPU/memory/ephemeral-storage requests and limits for the k8s pod that
+    runs a nextflow pipeline as a Job (see `pipeline.execute`).
+
+    A limit field left as None mirrors the corresponding request (matching
+    k8s's own behaviour of a Guaranteed QoS pod when requests == limits). Set
+    a limit field to the NO_LIMIT sentinel ("none") to omit just that
+    dimension from the limits block, or set no_limits=True to omit the whole
+    limits block and let the pod run Burstable/unbounded on that dimension.
+    """
+
+    cpu_request: str = "1"
+    memory_request: str = "8G"
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    ephemeral_storage_request: str | None = None
+    ephemeral_storage_limit: str | None = None
+    no_limits: bool = False
+
+    def validate(self) -> None:
+        """Check that the requested quantities and combination of settings make sense
+
+        Raises:
+            PodResourceError: If a quantity is unparseable, or the settings are contradictory
+        """
+        request_cpu = parse_cpu_quantity(self.cpu_request)
+        request_memory = parse_memory_quantity(self.memory_request)
+
+        if self.ephemeral_storage_request is not None:
+            parse_memory_quantity(self.ephemeral_storage_request)
+
+        explicit_limits = {
+            "cpu_limit": self.cpu_limit,
+            "memory_limit": self.memory_limit,
+            "ephemeral_storage_limit": self.ephemeral_storage_limit,
+        }
+
+        if self.no_limits:
+            contradictions = [
+                name
+                for name, value in explicit_limits.items()
+                if value is not None and value.strip().lower() != NO_LIMIT
+            ]
+            if contradictions:
+                raise PodResourceError(
+                    f"no_limits=True but explicit limit(s) were also set: {', '.join(contradictions)}"
+                )
+            return
+
+        if (
+            self.cpu_limit is not None
+            and self.cpu_limit.strip().lower() != NO_LIMIT
+        ):
+            limit_cpu = parse_cpu_quantity(self.cpu_limit)
+            if limit_cpu < request_cpu:
+                raise PodResourceError(
+                    f"cpu_limit ({self.cpu_limit}) is less than cpu_request ({self.cpu_request})"
+                )
+
+        if (
+            self.memory_limit is not None
+            and self.memory_limit.strip().lower() != NO_LIMIT
+        ):
+            limit_memory = parse_memory_quantity(self.memory_limit)
+            if limit_memory < request_memory:
+                raise PodResourceError(
+                    f"memory_limit ({self.memory_limit}) is less than memory_request ({self.memory_request})"
+                )
+
+        if self.ephemeral_storage_limit is not None:
+            if self.ephemeral_storage_limit.strip().lower() != NO_LIMIT:
+                parse_memory_quantity(self.ephemeral_storage_limit)
+            elif self.ephemeral_storage_request is None:
+                raise PodResourceError(
+                    "ephemeral_storage_limit set to 'none' without ephemeral_storage_request"
+                )
+
+    def to_manifest(self) -> dict:
+        """Build the k8s "resources" dict for a pod container
+
+        Returns:
+            dict: A dict suitable for use as a container's "resources" field.
+                The "limits" key is omitted entirely (not emitted as an empty
+                dict) whenever no limit applies to any dimension.
+        """
+        requests = {"cpu": self.cpu_request, "memory": self.memory_request}
+        if self.ephemeral_storage_request is not None:
+            requests["ephemeral-storage"] = self.ephemeral_storage_request
+
+        manifest = {"requests": requests}
+
+        if self.no_limits:
+            return manifest
+
+        limits = {}
+
+        if self.cpu_limit is None:
+            limits["cpu"] = self.cpu_request
+        elif self.cpu_limit.strip().lower() != NO_LIMIT:
+            limits["cpu"] = self.cpu_limit
+
+        if self.memory_limit is None:
+            limits["memory"] = self.memory_request
+        elif self.memory_limit.strip().lower() != NO_LIMIT:
+            limits["memory"] = self.memory_limit
+
+        if self.ephemeral_storage_limit is not None:
+            if self.ephemeral_storage_limit.strip().lower() != NO_LIMIT:
+                limits["ephemeral-storage"] = self.ephemeral_storage_limit
+        elif self.ephemeral_storage_request is not None:
+            limits["ephemeral-storage"] = self.ephemeral_storage_request
+
+        if limits:
+            manifest["limits"] = limits
+
+        return manifest
+
+
+def add_nxf_pod_resource_args(parser: argparse.ArgumentParser) -> None:
+    """Add CLI flags controlling the nextflow k8s pod's resource requests/limits
+
+    Each flag falls back to a ROZ_NXF_POD_* environment variable, then to a
+    built-in default that reproduces the pipeline's historical hardcoded
+    1 CPU / 8G resources with mirrored limits (Guaranteed QoS), so existing
+    deployments are unaffected until these flags are explicitly set.
+
+    Args:
+        parser (argparse.ArgumentParser): The parser to add the arguments to
+    """
+    parser.add_argument(
+        "--nxf_pod_cpu_request",
+        default=os.getenv("ROZ_NXF_POD_CPU_REQUEST", "1"),
+        help="CPU request for the nextflow k8s pod (default: 1)",
+    )
+    parser.add_argument(
+        "--nxf_pod_memory_request",
+        default=os.getenv("ROZ_NXF_POD_MEMORY_REQUEST", "8G"),
+        help="Memory request for the nextflow k8s pod (default: 8G)",
+    )
+    parser.add_argument(
+        "--nxf_pod_cpu_limit",
+        default=os.getenv("ROZ_NXF_POD_CPU_LIMIT"),
+        help="CPU limit for the nextflow k8s pod. Defaults to mirroring the "
+        "request. Set to 'none' to omit a CPU limit while keeping other "
+        "limits.",
+    )
+    parser.add_argument(
+        "--nxf_pod_memory_limit",
+        default=os.getenv("ROZ_NXF_POD_MEMORY_LIMIT"),
+        help="Memory limit for the nextflow k8s pod. Defaults to mirroring "
+        "the request. Set to 'none' to omit a memory limit while keeping "
+        "other limits.",
+    )
+    parser.add_argument(
+        "--nxf_pod_no_limits",
+        action="store_true",
+        default=_env_flag("ROZ_NXF_POD_NO_LIMITS"),
+        help="Omit the whole resources.limits block for the nextflow k8s "
+        "pod, leaving only the requests (Burstable QoS, unbounded on this "
+        "node). Mutually exclusive with --nxf_pod_cpu_limit / "
+        "--nxf_pod_memory_limit.",
+    )
+    parser.add_argument(
+        "--nxf_pod_ephemeral_storage_request",
+        default=os.getenv("ROZ_NXF_POD_EPHEMERAL_STORAGE_REQUEST"),
+        help="Ephemeral storage request for the nextflow k8s pod. Omitted "
+        "by default; the pipeline's own working directories live on a "
+        "cephfs PVC, so this only accounts for container-local scratch "
+        "space (e.g. /tmp).",
+    )
+    parser.add_argument(
+        "--nxf_pod_ephemeral_storage_limit",
+        default=os.getenv("ROZ_NXF_POD_EPHEMERAL_STORAGE_LIMIT"),
+        help="Ephemeral storage limit for the nextflow k8s pod. Omitted by "
+        "default. Unlike memory, exceeding an ephemeral-storage limit "
+        "causes immediate pod eviction with no OOM-kill-and-retry grace.",
+    )
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def pod_resources_from_args(args: argparse.Namespace) -> PodResources:
+    """Build and validate a PodResources from parsed CLI args
+
+    Args:
+        args (argparse.Namespace): Parsed args, from a parser that was passed
+            through add_nxf_pod_resource_args()
+
+    Returns:
+        PodResources: The validated pod resource configuration
+
+    Raises:
+        PodResourceError: If the resulting configuration is invalid
+    """
+    pod_resources = PodResources(
+        cpu_request=args.nxf_pod_cpu_request,
+        memory_request=args.nxf_pod_memory_request,
+        cpu_limit=args.nxf_pod_cpu_limit,
+        memory_limit=args.nxf_pod_memory_limit,
+        ephemeral_storage_request=args.nxf_pod_ephemeral_storage_request,
+        ephemeral_storage_limit=args.nxf_pod_ephemeral_storage_limit,
+        no_limits=args.nxf_pod_no_limits,
+    )
+    pod_resources.validate()
+    return pod_resources
+
+
 class pipeline:
     def __init__(
         self,
@@ -97,6 +387,7 @@ class pipeline:
         nxf_image: str,
         job_prefix: str,
         profile=None,
+        pod_resources: PodResources | None = None,
     ):
         """
         Run a nxf pipeline as a subprocess, this is only advisable for use with cloud executors, specifically k8s.
@@ -106,6 +397,9 @@ class pipeline:
             pipe (str): The pipeline to run as a github repo in the format 'user/repo'
             config (str): Path to a nextflow config file
             profile (str): The nextflow profile to use
+            pod_resources (PodResources | None): CPU/memory/ephemeral-storage
+                requests and limits for the k8s pod. Defaults to
+                PodResources() (1 CPU / 8G, mirrored limits) if not given.
 
         """
 
@@ -116,7 +410,8 @@ class pipeline:
         # self.timeout = timeout
         self.profile = profile
         self.job_prefix = job_prefix
-        self.cmd = None
+        self.pod_resources = pod_resources or PodResources()
+        self.cmd: list = []
 
     def execute(
         self,
@@ -130,6 +425,8 @@ class pipeline:
         stderr_path: str,
         workingdir: Path,
         resume: bool = False,
+        progress_cb=None,
+        pod_resources: PodResources | None = None,
     ) -> int:
         """
         Execute the pipeline as a k8s job
@@ -145,6 +442,11 @@ class pipeline:
             stderr_path (str): Path to the stderr file
             resume (bool): Whether to resume the pipeline
             workingdir (Path): Path to the nextflow work directory
+            progress_cb (Callable[[str], None] | None): Called on every poll
+                iteration with a short stage description, so a caller can
+                prove liveness while this method blocks for a long time
+            pod_resources (PodResources | None): Overrides self.pod_resources
+                for this call only, if given
 
         Returns:
             int: The (fake) return code of the job
@@ -167,7 +469,7 @@ class pipeline:
             cmd.append("-resume")
 
         if self.config:
-            cmd.extend(["-c", self.config.resolve()])
+            cmd.extend(["-c", str(self.config.resolve())])
 
         if self.profile:
             cmd.extend(["-profile", self.profile])
@@ -222,10 +524,9 @@ class pipeline:
                             {
                                 "name": job_name,
                                 "image": str(self.nxf_image),
-                                "resources": {
-                                    "requests": {"cpu": "2", "memory": "16G"},
-                                    "limits": {"cpu": "2", "memory": "16G"},
-                                },
+                                "resources": (
+                                    pod_resources or self.pod_resources
+                                ).to_manifest(),
                                 "volumeMounts": [
                                     {
                                         "mountPath": "/shared/public/",
@@ -251,6 +552,14 @@ class pipeline:
             },
         }
 
+        # (connect_timeout, read_timeout) for every k8s API call below, so a
+        # dropped connection to the API server can't block this method forever.
+        k8s_request_timeout = (10, 30)
+        # Upper bound on how long to wait for a job deletion to be confirmed
+        # before giving up - deletion is expected to be fast, so this is not
+        # tied to the caller-supplied pipeline `timeout`.
+        delete_confirm_timeout = 300
+
         try:
             self.cmd = cmd
             os.chdir(logdir)
@@ -260,7 +569,9 @@ class pipeline:
 
             try:
                 resp = api_instance.read_namespaced_job_status(
-                    name=job_name, namespace=namespace
+                    name=job_name,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
 
             except ApiException as e:
@@ -268,10 +579,12 @@ class pipeline:
                     raise
                 resp = None
                 api_instance.create_namespaced_job(
-                    body=job_manifest, namespace=namespace
+                    body=job_manifest,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
 
-            if resp and resp.status.failed and resp.status.failed >= backoff_limit:
+            if resp and resp.status.failed and resp.status.failed >= backoff_limit:  # type: ignore
                 # A job with this name already reached a terminal failure in a
                 # previous invocation (e.g. the worker process was restarted and
                 # is reprocessing the same message) - delete it and start a fresh
@@ -280,66 +593,93 @@ class pipeline:
                     name=job_name,
                     namespace=namespace,
                     propagation_policy="Foreground",
+                    _request_timeout=k8s_request_timeout,
                 )
 
+                delete_confirm_start = time.time()
                 while True:
                     try:
                         api_instance.read_namespaced_job_status(
-                            name=job_name, namespace=namespace
+                            name=job_name,
+                            namespace=namespace,
+                            _request_timeout=k8s_request_timeout,
                         )
                     except ApiException as e:
                         if e.status != 404:
                             raise
                         break
+                    if time.time() - delete_confirm_start > delete_confirm_timeout:
+                        raise TimeoutError(
+                            f"Timed out waiting for job {job_name} to be deleted"
+                        )
+                    if progress_cb:
+                        progress_cb("awaiting_job_deletion")
                     time.sleep(random.uniform(2.0, 3.0))
 
                 api_instance.create_namespaced_job(
-                    body=job_manifest, namespace=namespace
+                    body=job_manifest,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
 
+            job_loop_start = time.time()
             job_completed = False
             while not job_completed:
                 resp = api_instance.read_namespaced_job_status(
-                    name=job_name, namespace=namespace
+                    name=job_name,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
                 )
-                if resp.status.succeeded:
-                    if resp.status.succeeded >= 1:
+                if resp.status.succeeded:  # type: ignore
+                    if resp.status.succeeded >= 1:  # type: ignore
                         returncode = 0
                         job_completed = True
                         break
 
-                if resp.status.failed:
-                    if resp.status.failed >= backoff_limit:
+                if resp.status.failed:  # type: ignore
+                    if resp.status.failed >= backoff_limit:  # type: ignore
                         api_instance.delete_namespaced_job(
                             name=job_name,
                             namespace=namespace,
                             propagation_policy="Foreground",
+                            _request_timeout=k8s_request_timeout,
                         )
                         returncode = 1
                         job_completed = True
                         break
 
-                if resp.status.start_time:
-                    if time.time() - resp.status.start_time.timestamp() > timeout:
-                        api_instance.delete_namespaced_job(
-                            name=job_name,
-                            namespace=namespace,
-                            propagation_policy="Foreground",
-                        )
-                        returncode = 124
-                        job_completed = True
-                        break
+                # Use the job's reported start_time where available, but fall
+                # back to wall-clock time since we started polling - if the pod
+                # never gets scheduled, start_time stays None forever and the
+                # loop would otherwise never hit the timeout.
+                if resp.status.start_time:  # type: ignore
+                    job_age = time.time() - resp.status.start_time.timestamp()  # type: ignore
+                else:
+                    job_age = time.time() - job_loop_start
 
+                if job_age > timeout:
+                    api_instance.delete_namespaced_job(
+                        name=job_name,
+                        namespace=namespace,
+                        propagation_policy="Foreground",
+                        _request_timeout=k8s_request_timeout,
+                    )
+                    returncode = 124
+                    job_completed = True
+                    break
+
+                if progress_cb:
+                    progress_cb("awaiting_job_completion")
                 time.sleep(random.uniform(2.0, 3.0))
 
-        except BaseException as e:
+        except Exception as e:
             # proc = SimpleNamespace(returncode=1, stdout=str(k8s_exception), stderr="")
             # print(f"Failed to execute pipeline due to exception: {e}")
             with open(stderr_path, "w") as stderr_fh:
                 stderr_fh.write(f"Failed to execute pipeline due to exception: {e}")
             returncode = 1
 
-        return returncode
+        return returncode  # type: ignore
 
 
 def init_logger(name, log_path, log_level):
@@ -355,27 +695,26 @@ def init_logger(name, log_path, log_level):
     return log
 
 
-def put_result_json(payload: dict, log: logging.getLogger):
+def put_result_json(payload: dict, log: logging.Logger, config: dict):
     """Send the result payload to S3
 
     Args:
         payload (dict): The payload to send to S3
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
+        config (dict): The loaded roz config, from load_config()
     """
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        region_name=s3_credentials.region,
-        aws_secret_access_key=s3_credentials.secret_key,
+    s3_client = get_s3_client(s3_credentials)
+
+    results_bucket = site_bucket(
+        config, payload["project"], payload["raw_site"], "results"
     )
 
     try:
         s3_client.put_object(
-            Bucket=f"{payload['project']}-{payload['raw_site']}-results",
+            Bucket=results_bucket,
             Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.result.json",
             Body=json.dumps(payload),
         )
@@ -389,22 +728,21 @@ def put_result_json(payload: dict, log: logging.getLogger):
         raise e
 
 
-def put_linkage_json(payload: dict, log: logging.getLogger):
+def put_linkage_json(payload: dict, log: logging.Logger, config: dict):
     """Send the linkage payload to S3
 
     Args:
         payload (dict): The payload dict to create the linkage dict from
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
+        config (dict): The loaded roz config, from load_config()
     """
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        region_name=s3_credentials.region,
-        aws_secret_access_key=s3_credentials.secret_key,
+    s3_client = get_s3_client(s3_credentials)
+
+    results_bucket = site_bucket(
+        config, payload["project"], payload["raw_site"], "results"
     )
 
     linkage_dict = {
@@ -425,7 +763,7 @@ def put_linkage_json(payload: dict, log: logging.getLogger):
 
     try:
         s3_client.put_object(
-            Bucket=f"{payload['project']}-{payload['raw_site']}-results",
+            Bucket=results_bucket,
             Key=f"{payload['project']}.{payload['run_index']}.{payload['run_id']}.linkage.json",
             Body=json.dumps(linkage_dict),
         )
@@ -447,12 +785,7 @@ def are_files_empty(*s3_uris: str) -> bool:
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     try:
         for s3_uri in s3_uris:
@@ -477,12 +810,7 @@ def do_uris_exist(*s3_uris: str) -> bool:
 
     s3_credentials = get_s3_credentials()
 
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=s3_credentials.access_key,
-        aws_secret_access_key=s3_credentials.secret_key,
-        endpoint_url=s3_credentials.endpoint,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     try:
         for s3_uri in s3_uris:
@@ -498,14 +826,14 @@ def do_uris_exist(*s3_uris: str) -> bool:
 
 def csv_create(
     payload: dict,
-    log: logging.getLogger,
+    log: logging.Logger,
     test_submission: bool = False,
 ) -> tuple[bool, bool, dict]:
     """Function to create a new record in onyx from a metadata CSV file, can be used for testing or for real submissions
 
     Args:
         payload (dict): Payload dict for the current artifact
-        log (logging.getLogger): Logger object
+        log (logging.Logger): Logger object
         test_submission (bool, optional): Bool to indicate if submission is a test or not. Defaults to False.
 
     Returns:
@@ -537,12 +865,14 @@ def csv_create(
                 )
 
                 if not test_submission:
-                    payload["climb_id"] = response["climb_id"]
-                    payload["anonymised_run_index"] = response["run_index"]
-                    payload["anonymised_run_id"] = response["run_id"]
-                    payload["anonymised_biosample_id"] = response["biosample_id"]
-                    if response["biosample_source_id"]:
-                        payload["anonymised_biosample_source_id"] = response[
+                    # multiline=False guarantees a single dict response, but
+                    # onyx's declared return type is Dict | List[Dict]
+                    payload["climb_id"] = response["climb_id"]  # type: ignore
+                    payload["anonymised_run_index"] = response["run_index"]  # type: ignore
+                    payload["anonymised_run_id"] = response["run_id"]  # type: ignore
+                    payload["anonymised_biosample_id"] = response["biosample_id"]  # type: ignore
+                    if response["biosample_source_id"]:  # type: ignore
+                        payload["anonymised_biosample_source_id"] = response[  # type: ignore
                             "biosample_source_id"
                         ]
 
@@ -828,7 +1158,7 @@ def valid_character_checks(payload: dict) -> tuple[bool, bool, dict]:
     return (True, False, payload)
 
 
-def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
+def onyx_identify(payload: dict, identity_field: str, log: logging.Logger):
     if identity_field not in (
         "biosample_id",
         "run_id",
@@ -922,9 +1252,17 @@ def onyx_identify(payload: dict, identity_field: str, log: logging.getLogger):
                 )
                 return (False, True, payload)
 
+    # This should never be reached
+    payload.setdefault("onyx_errors", {})
+    payload["onyx_errors"].setdefault("onyx_errors", [])
+    payload["onyx_errors"]["onyx_errors"].append(
+        "End of onyx_identify func reached, this should never happen!"
+    )
+    return (False, True, payload)
+
 
 def onyx_reconcile(
-    payload: dict, identifier: str, fields_to_reconcile: list, log: logging.getLogger
+    payload: dict, identifier: str, fields_to_reconcile: list, log: logging.Logger
 ):
     identify_success, alert, payload = onyx_identify(payload, identifier, log)
 
@@ -1154,6 +1492,14 @@ def ensure_file_unseen(
                 )
                 return (True, True, True, payload)
 
+    # This should never be reached
+    payload.setdefault("onyx_errors", {})
+    payload["onyx_errors"].setdefault("onyx_errors", [])
+    payload["onyx_errors"]["onyx_errors"].append(
+        "End of ensure_file_unseen func reached, this should never happen!"
+    )
+    return (True, True, True, payload)
+
 
 def check_artifact_published(
     payload: dict, log: logging.Logger
@@ -1258,6 +1604,14 @@ def check_artifact_published(
                 )
                 return (False, True, payload)
 
+    # This should never be reached
+    payload.setdefault("onyx_errors", {})
+    payload["onyx_errors"].setdefault("onyx_errors", [])
+    payload["onyx_errors"]["onyx_errors"].append(
+        "End of check_artifact_published func reached, this should never happen!"
+    )
+    return (False, True, payload)
+
 
 def onyx_update(
     payload: dict,
@@ -1324,7 +1678,7 @@ def onyx_update(
 
             except OnyxClientError as e:
                 log.error(
-                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                    f"Onyx update failed for artifact: {payload.get('artifact', 'NA')}, UUID: {payload.get('uuid') or payload.get('match_uuid', 'NA')}. Error: {e}"
                 )
                 payload.setdefault("onyx_update_errors", {})
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
@@ -1334,7 +1688,7 @@ def onyx_update(
 
             except OnyxRequestError as e:
                 log.error(
-                    f"Onyx update failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
+                    f"Onyx update failed for artifact: {payload.get('artifact', 'NA')}, UUID: {payload.get('uuid') or payload.get('match_uuid', 'NA')}. Error: {e}"
                 )
 
                 payload.setdefault("onyx_update_errors", {})
@@ -1346,6 +1700,7 @@ def onyx_update(
 
             except Exception as e:
                 log.error(f"Unhandled onyx_update error: {e}")
+                payload.setdefault("onyx_update_errors", {})
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
                 payload["onyx_update_errors"]["onyx_errors"].append(
                     f"Unhandled onyx_update error: {e}"
@@ -1440,6 +1795,35 @@ def get_s3_credentials(
     return s3_credentials
 
 
+S3_CLIENT_CONFIG = Config(
+    connect_timeout=10,
+    read_timeout=60,
+    retries={"max_attempts": 3, "mode": "standard"},
+)
+
+
+def get_s3_client(s3_credentials: __s3_creds) -> BaseClient:
+    """
+    Build an S3 client with bounded connect/read timeouts and retries, so a
+    stalled connection to the S3 endpoint cannot block a caller indefinitely.
+
+    Args:
+        s3_credentials (__s3_creds): Credentials as returned by get_s3_credentials()
+
+    Returns:
+        BaseClient: Configured S3 client
+    """
+
+    return boto3.client(
+        "s3",
+        endpoint_url=s3_credentials.endpoint,
+        aws_access_key_id=s3_credentials.access_key,
+        region_name=s3_credentials.region,
+        aws_secret_access_key=s3_credentials.secret_key,
+        config=S3_CLIENT_CONFIG,
+    )
+
+
 def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
     """
     Take file from S3 URI and return a file handle-like object using StringIO
@@ -1459,13 +1843,7 @@ def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
 
     key = s3_uri.replace("s3://", "").split("/", 1)[1]
 
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_credentials.endpoint,
-        aws_access_key_id=s3_credentials.access_key,
-        region_name=s3_credentials.region,
-        aws_secret_access_key=s3_credentials.secret_key,
-    )
+    s3_client = get_s3_client(s3_credentials)
 
     file_obj = s3_client.get_object(Bucket=bucket, Key=key)
 

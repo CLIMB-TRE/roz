@@ -94,7 +94,9 @@ perm_map = {
 }
 
 
-def resolve_credentials(aws_credentials_dict: dict, project: str, site: str) -> dict:
+def resolve_credentials(
+    aws_credentials_dict: dict, project: str, site: str | None
+) -> dict:
     """Resolve the credentials to use for a given project/site pair.
 
     The "admin" identity is a top-level key in aws_credentials_dict rather than
@@ -115,7 +117,7 @@ def resolve_credentials(aws_credentials_dict: dict, project: str, site: str) -> 
     return aws_credentials_dict[project][site]
 
 
-def get_s3_client(credentials: dict, config: Config = None):
+def get_s3_client(credentials: dict, config: Config | None = None):
     """Construct a boto3 S3 client for the given credentials
 
     Args:
@@ -168,7 +170,7 @@ def create_config_map(config_dict: dict) -> dict:
     for project, config in config_dict["configs"].items():
         # Put this in the config file eventually so it can vary on a per-project basis
 
-        project_config = {
+        project_config: dict = {
             "sites": {site: {"site_buckets": set()} for site in config["sites"]}
         }
 
@@ -244,7 +246,7 @@ def check_project_bucket_exists(
 
     s3 = get_s3_resource(credentials)
 
-    bucket = s3.Bucket(bucket_name)
+    bucket = s3.Bucket(bucket_name)  # type: ignore
 
     if bucket.creation_date:
         return True
@@ -379,7 +381,11 @@ def can_site_delete_object(
 
 
 def put_project_policy(
-    bucket_arn: str, aws_credentials_dict: dict, policy: dict, project: str, site: str
+    bucket_arn: str,
+    aws_credentials_dict: dict,
+    policy: dict,
+    project: str,
+    site: str | None,
 ) -> bool:
     """Put a policy on a bucket
 
@@ -396,7 +402,7 @@ def put_project_policy(
     s3 = get_s3_client(credentials)
 
     if isinstance(policy, dict):
-        policy = json.dumps(policy, separators=(",", ":"))
+        policy = json.dumps(policy, separators=(",", ":"))  # type: ignore
 
     try:
         # Retrieve waiter instance that will wait till a specified bucket exists
@@ -807,7 +813,7 @@ def audit_bucket_policy(
     to_test = [x for x in config_map[project]["sites"].keys()]
     to_test.append("admin")
 
-    policy_audit = {
+    policy_audit: dict = {
         x: {
             "list": None,
             "get": None,
@@ -1078,14 +1084,14 @@ def test_policies(audit_dict: dict, config_dict: dict) -> dict:
                             continue
                         else:
                             print(
-                                f"Incorrect policy for bucket {bucket} detected\nSite: {site}, Audit site: {audit_site}, Permission: {permission}, Result: {result}, Correct perms: {correct_perms}",
+                                f"Incorrect policy for bucket {bucket} detected\nAudit site: {audit_site}, Permission: {permission}, Result: {result}, Correct perms: {correct_perms}",
                                 file=sys.stdout,
                             )
                             to_fix["project_buckets"].add((bucket, bucket_arn, project))
                     else:
                         if permission in correct_perms or audit_site == "admin":
                             print(
-                                f"Missing policy for bucket {bucket} detected\nSite: {site}, Audit site: {audit_site}, Permission: {permission}, Result: {result}, Correct perms: {correct_perms}",
+                                f"Missing policy for bucket {bucket} detected\nAudit site: {audit_site}, Permission: {permission}, Result: {result}, Correct perms: {correct_perms}",
                                 file=sys.stdout,
                             )
                             to_fix["project_buckets"].add((bucket, bucket_arn, project))
@@ -1101,7 +1107,7 @@ def apply_policies(
     config_dict: dict,
     dry_run: bool,
     force: bool,
-) -> list:
+) -> None:
     """Apply the correct policies to all buckets that need to be fixed
 
     Args:
@@ -1535,13 +1541,13 @@ def run(args):
 
     # for project, project_config in config_dict["configs"].items():
     if not args.dry_run and args.setup_messaging:
-        if not to_setup_messaging:
+        if not to_setup_messaging:  # type: ignore
             print("All buckets have correct messaging configuration", file=sys.stdout)
         else:
             for bucket, bucket_arn, project, site in to_setup_messaging:
-                amqp_host = os.getenv("AMQP_HOST")
-                amqp_user = os.getenv("AMQP_USER")
-                amqp_pass = os.getenv("AMQP_PASS")
+                amqp_host = os.environ["AMQP_HOST"]
+                amqp_user = os.environ["AMQP_USER"]
+                amqp_pass = os.environ["AMQP_PASS"]
                 amqp_ca_location = os.getenv("AMQP_CA_LOCATION")
                 notification_bucket_config = config_dict["configs"][project][
                     "notification_bucket_configs"
