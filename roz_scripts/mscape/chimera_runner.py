@@ -659,6 +659,7 @@ def process_record(
             stdout_path=os.path.join(record_outdir, "chimera_stdout.log"),
             stderr_path=os.path.join(record_outdir, "chimera_stderr.log"),
             workingdir=record_outdir,
+            resume=True,
             progress_cb=lambda stage: job_heartbeat.beat(stage),
         )
 

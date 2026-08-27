@@ -472,6 +472,7 @@ def execute_assembly_pipeline(
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         workingdir=log_path,
+        resume=True,
         progress_cb=progress_cb,
     )
 
