@@ -11,6 +11,7 @@ import sys
 from io import StringIO
 import logging
 from pathlib import Path
+import shutil
 import time
 import csv
 import regex as re
@@ -496,6 +497,12 @@ class pipeline:
                     "spec": {
                         "hostname": job_name,
                         "subdomain": namespace,
+                        # Give nextflow's shutdown hook time to close its
+                        # LevelDB resume cache cleanly when the pod is
+                        # deleted on timeout/backoff, rather than being
+                        # SIGKILLed mid-write and corrupting it (see
+                        # _clean_corrupt_cache below).
+                        "terminationGracePeriodSeconds": 120,
                         "securityContext": {
                             "runAsNonRoot": True,
                             "runAsUser": 1000,
@@ -679,7 +686,36 @@ class pipeline:
                 stderr_fh.write(f"Failed to execute pipeline due to exception: {e}")
             returncode = 1
 
+        if returncode != 0:
+            self._clean_corrupt_cache(logdir, stderr_path)
+
         return returncode  # type: ignore
+
+    @staticmethod
+    def _clean_corrupt_cache(logdir: Path, stderr_path: str) -> None:
+        """
+        If this run failed because nextflow's LevelDB resume cache was
+        corrupt, remove it so the next -resume attempt for this job starts
+        clean instead of hitting the same corruption forever.
+
+        Corruption here is a known hazard of storing the cache on a network
+        filesystem (e.g. CephFS) rather than local disk, and is most often
+        triggered by the pod being hard-killed (job timeout/backoff) while
+        the cache DB is mid-write.
+
+        Args:
+            logdir (Path): The nextflow launch directory, whose `.nextflow`
+                subdirectory holds the resume cache
+            stderr_path (str): Path to the job's captured stderr
+        """
+        try:
+            with open(stderr_path) as stderr_fh:
+                stderr_content = stderr_fh.read()
+        except OSError:
+            return
+
+        if "Can't open cache DB" in stderr_content or "Corruption:" in stderr_content:
+            shutil.rmtree(Path(logdir) / ".nextflow", ignore_errors=True)
 
 
 def init_logger(name, log_path, log_level):
