@@ -484,7 +484,7 @@ class pipeline:
         pod_env_vars = [{"name": k, "value": v} for k, v in env_vars.items()]
 
         job_name = f"roz-{self.job_prefix}-{job_id}"
-        backoff_limit = 5
+        backoff_limit = 0
 
         job_manifest = {
             "apiVersion": "batch/v1",
