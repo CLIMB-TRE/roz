@@ -687,12 +687,12 @@ class pipeline:
             returncode = 1
 
         if returncode != 0:
-            self._clean_corrupt_cache(logdir, stderr_path)
+            self._clean_corrupt_cache(logdir, stdout_path, stderr_path)
 
         return returncode  # type: ignore
 
     @staticmethod
-    def _clean_corrupt_cache(logdir: Path, stderr_path: str) -> None:
+    def _clean_corrupt_cache(logdir: Path, stdout_path: str, stderr_path: str) -> None:
         """
         If this run failed because nextflow's LevelDB resume cache was
         corrupt, remove it so the next -resume attempt for this job starts
@@ -706,15 +706,21 @@ class pipeline:
         Args:
             logdir (Path): The nextflow launch directory, whose `.nextflow`
                 subdirectory holds the resume cache
+            stdout_path (str): Path to the job's captured stdout - the
+                Launcher's fatal error banner can land here rather than
+                stderr (k8s/`kubectl logs` merges the two streams, but our
+                own shell redirect splits them, so both need checking)
             stderr_path (str): Path to the job's captured stderr
         """
-        try:
-            with open(stderr_path) as stderr_fh:
-                stderr_content = stderr_fh.read()
-        except OSError:
-            return
+        content = ""
+        for path in (stdout_path, stderr_path):
+            try:
+                with open(path) as fh:
+                    content += fh.read()
+            except OSError:
+                continue
 
-        if "Can't open cache DB" in stderr_content or "Corruption:" in stderr_content:
+        if "Can't open cache DB" in content or "Corruption:" in content:
             shutil.rmtree(Path(logdir) / ".nextflow", ignore_errors=True)
 
 
