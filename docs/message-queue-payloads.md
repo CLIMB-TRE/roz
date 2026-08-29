@@ -33,7 +33,7 @@ Emitted once all required files for an artifact have been seen.
 | Field | Type | Description |
 |-------|------|-------------|
 | `uuid` | string (UUID4) | Unique identifier for this match event |
-| `site` | string | Submitting site name (short form, e.g. `"bham"`) |
+| `site` | string | Submitting site name (short form, e.g. `"birm"`) |
 | `raw_site` | string | Submitting site as parsed from the bucket name (may include domain prefix) |
 | `uploaders` | array[string] | Deduplicated list of uploader IDs that contributed files |
 | `match_timestamp` | integer | Unix timestamp in nanoseconds when the match was made |
