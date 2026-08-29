@@ -30,7 +30,7 @@ from roz_scripts.mscape.chimera_runner import (
     ret_0_parser,
     run,
 )
-from roz_scripts.utils.utils import PodResources
+from roz_scripts.utils.utils import PodResources, S3_TRANSFER_CONFIG
 
 
 def setUpModule():
@@ -585,6 +585,7 @@ class TestPushBamFile(unittest.TestCase):
             "/tmp/CLIMB001.bam",
             "mscape-fake-chimera-bams",
             "CLIMB001.chimera.bam",
+            Config=S3_TRANSFER_CONFIG,
         )
 
     @patch("roz_scripts.mscape.chimera_runner.boto3.client")
@@ -636,11 +637,13 @@ class TestPushChimeraReport(unittest.TestCase):
             "/tmp/CLIMB001.alignment_report.tsv",
             "mscape-fake-chimera-reports",
             "CLIMB001.alignment_report.tsv",
+            Config=S3_TRANSFER_CONFIG,
         )
         mock_s3.upload_file.assert_any_call(
             "/tmp/CLIMB001.alignment_report.tsv",
             "mscape-fake-chimera-reports",
             "CLIMB001.v1.0.alignment_report.tsv",
+            Config=S3_TRANSFER_CONFIG,
         )
         self.assertEqual(mock_s3.upload_file.call_count, 2)
 
