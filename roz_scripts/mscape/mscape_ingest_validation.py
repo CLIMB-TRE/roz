@@ -21,6 +21,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
     get_s3_client,
+    S3_TRANSFER_CONFIG,
     csv_create,
     onyx_update,
     ensure_file_unseen,
@@ -586,6 +587,7 @@ def add_taxon_records(
                         fastq_path,
                         s3_bucket,
                         s3_key,
+                        Config=S3_TRANSFER_CONFIG,
                     )
 
                     taxon_dict[f"fastq_{i}"] = s3_uri
@@ -616,6 +618,7 @@ def add_taxon_records(
                     fastq_path,
                     s3_bucket,
                     s3_key,
+                    Config=S3_TRANSFER_CONFIG,
                 )
 
                 taxon_dict["fastq_1"] = s3_uri
@@ -711,6 +714,7 @@ def push_taxon_reports(
                 report_local_path,
                 s3_bucket,
                 s3_key,
+                Config=S3_TRANSFER_CONFIG,
             )
 
             stem, suffix = os.path.splitext(report)
@@ -719,6 +723,7 @@ def push_taxon_reports(
                 report_local_path,
                 s3_bucket,
                 s3_key_versioned,
+                Config=S3_TRANSFER_CONFIG,
             )
 
     except Exception as push_taxon_report_exception:
@@ -873,6 +878,7 @@ def push_report_file(
             report_path,
             s3_bucket,
             s3_key,
+            Config=S3_TRANSFER_CONFIG,
         )
     except (ClientError, FileNotFoundError) as push_report_file_exception:
         log.error(
@@ -939,6 +945,7 @@ def add_reads_record(
                     fastq_path,
                     s3_bucket,
                     s3_key,
+                    Config=S3_TRANSFER_CONFIG,
                 )
 
             except (ClientError, FileNotFoundError) as add_reads_record_exception:
@@ -981,6 +988,7 @@ def add_reads_record(
                 fastq_path,
                 s3_bucket,
                 s3_key,
+                Config=S3_TRANSFER_CONFIG,
             )
 
         except (ClientError, FileNotFoundError) as add_reads_record_exception:
@@ -1058,6 +1066,7 @@ def read_fraction_upload(
                     fastq_path,
                     s3_bucket,
                     s3_key,
+                    Config=S3_TRANSFER_CONFIG,
                 )
 
             except ClientError as add_read_fraction_exception:
@@ -1115,6 +1124,7 @@ def read_fraction_upload(
                 fastq_path,
                 s3_bucket,
                 s3_key,
+                Config=S3_TRANSFER_CONFIG,
             )
 
         except (ClientError, FileNotFoundError) as add_read_fraction_exception:
@@ -1318,6 +1328,7 @@ def handle_hcid(
                     full_path,
                     s3_bucket,
                     s3_key,
+                    Config=S3_TRANSFER_CONFIG,
                 )
 
             except (ClientError, FileNotFoundError) as upload_hcid_exception:

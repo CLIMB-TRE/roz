@@ -1,5 +1,6 @@
 import argparse
 import boto3
+from boto3.s3.transfer import TransferConfig
 from botocore.client import BaseClient
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -1841,6 +1842,15 @@ S3_CLIENT_CONFIG = Config(
     connect_timeout=10,
     read_timeout=60,
     retries={"max_attempts": 3, "mode": "standard"},
+)
+
+# Fixed multipart chunksize/concurrency so upload memory use stays bounded.
+# Without this, s3transfer's default 8MB chunksize is auto-scaled up once a
+# file needs more than 10,000 parts (~78GiB), which can balloon per-upload
+# memory use for very large files.
+S3_TRANSFER_CONFIG = TransferConfig(
+    multipart_chunksize=64 * 1024 * 1024,
+    max_concurrency=4,
 )
 
 
