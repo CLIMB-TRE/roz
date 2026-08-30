@@ -1876,6 +1876,42 @@ def get_s3_client(s3_credentials: __s3_creds) -> BaseClient:
     )
 
 
+def s3_upload_file(
+    s3_client: BaseClient, local_path: str, bucket: str, key: str
+) -> None:
+    """
+    Upload a file to S3 and drop its page cache afterwards.
+
+    Reading a multi-GB FASTQ/BAM for upload can leave that data pinned in
+    page cache long after the upload finishes, with no natural pressure to
+    evict it - confirmed empirically (see scripts/memory_diagnostics) to
+    leave a pod sitting near its cgroup memory limit indefinitely, starving
+    headroom for whatever runs next in the same pod. Dropping the cache
+    for this file immediately after upload prevents that accumulation.
+
+    Args:
+        s3_client (BaseClient): Boto3 S3 client to upload with
+        local_path (str): Path to the local file to upload
+        bucket (str): Destination S3 bucket
+        key (str): Destination S3 object key
+    """
+
+    s3_client.upload_file(local_path, bucket, key, Config=S3_TRANSFER_CONFIG)
+
+    if hasattr(os, "posix_fadvise"):
+        try:
+            fd = os.open(local_path, os.O_RDONLY)
+        except OSError:
+            return
+
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+
+
 def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:
     """
     Take file from S3 URI and return a file handle-like object using StringIO

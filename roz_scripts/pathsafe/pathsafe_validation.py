@@ -20,7 +20,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
     get_s3_client,
-    S3_TRANSFER_CONFIG,
+    s3_upload_file,
     put_result_json,
     put_linkage_json,
     get_onyx_credentials,
@@ -226,11 +226,11 @@ def assembly_to_s3(
     )
 
     try:
-        s3_client.upload_file(
+        s3_upload_file(
+            s3_client,
             assembly_path,
             assembly_bucket,
             f"{payload['climb_id']}.assembly.fasta",
-            Config=S3_TRANSFER_CONFIG,
         )
 
         payload["assembly_presigned_url"] = s3_client.generate_presigned_url(

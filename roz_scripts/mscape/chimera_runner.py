@@ -33,7 +33,7 @@ from roz_scripts.utils.utils import (
     onyx_update,
     get_pod_namespace,
     S3_CLIENT_CONFIG,
-    S3_TRANSFER_CONFIG,
+    s3_upload_file,
     send_admin_alert,
     add_nxf_pod_resource_args,
     pod_resources_from_args,
@@ -500,11 +500,11 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger, config: dic
 
     try:
         # Add handling for Db in name etc
-        s3_client.upload_file(
+        s3_upload_file(
+            s3_client,
             bam_path,
             s3_bucket,
             s3_key,
-            Config=S3_TRANSFER_CONFIG,
         )
     except Exception:
         log.exception(
@@ -541,18 +541,18 @@ def push_chimera_report(
                 f"No DB version supplied for {report_suffix}, cannot upload db-version-tagged report"
             )
 
-        s3_client.upload_file(
+        s3_upload_file(
+            s3_client,
             report_path,
             s3_bucket,
             s3_key,
-            Config=S3_TRANSFER_CONFIG,
         )
 
-        s3_client.upload_file(
+        s3_upload_file(
+            s3_client,
             report_path,
             s3_bucket,
             f"{payload['climb_id']}.{db_version}.{report_suffix}",
-            Config=S3_TRANSFER_CONFIG,
         )
     except Exception:
         log.exception(

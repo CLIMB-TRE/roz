@@ -21,7 +21,7 @@ from roz_scripts.utils.utils import (
     init_logger,
     get_s3_credentials,
     get_s3_client,
-    S3_TRANSFER_CONFIG,
+    s3_upload_file,
     csv_create,
     onyx_update,
     ensure_file_unseen,
@@ -583,11 +583,11 @@ def add_taxon_records(
                     s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon_id']}_{i}.fastq.gz"
                     s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
-                    s3_client.upload_file(
+                    s3_upload_file(
+                        s3_client,
                         fastq_path,
                         s3_bucket,
                         s3_key,
-                        Config=S3_TRANSFER_CONFIG,
                     )
 
                     taxon_dict[f"fastq_{i}"] = s3_uri
@@ -614,11 +614,11 @@ def add_taxon_records(
                 s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{taxa['taxon_id']}.fastq.gz"
                 s3_uri = f"s3://{s3_bucket}/{s3_key}"
 
-                s3_client.upload_file(
+                s3_upload_file(
+                    s3_client,
                     fastq_path,
                     s3_bucket,
                     s3_key,
-                    Config=S3_TRANSFER_CONFIG,
                 )
 
                 taxon_dict["fastq_1"] = s3_uri
@@ -710,20 +710,20 @@ def push_taxon_reports(
             report_local_path = os.path.join(taxon_report_path, report)
 
             s3_key = f"{payload['climb_id']}/{payload['climb_id']}_{report}"
-            s3_client.upload_file(
+            s3_upload_file(
+                s3_client,
                 report_local_path,
                 s3_bucket,
                 s3_key,
-                Config=S3_TRANSFER_CONFIG,
             )
 
             stem, suffix = os.path.splitext(report)
             s3_key_versioned = f"{payload['climb_id']}/{payload['climb_id']}_{stem}.{db_version}{suffix}"
-            s3_client.upload_file(
+            s3_upload_file(
+                s3_client,
                 report_local_path,
                 s3_bucket,
                 s3_key_versioned,
-                Config=S3_TRANSFER_CONFIG,
             )
 
     except Exception as push_taxon_report_exception:
@@ -874,11 +874,11 @@ def push_report_file(
 
     try:
         # Add handling for Db in name etc
-        s3_client.upload_file(
+        s3_upload_file(
+            s3_client,
             report_path,
             s3_bucket,
             s3_key,
-            Config=S3_TRANSFER_CONFIG,
         )
     except (ClientError, FileNotFoundError) as push_report_file_exception:
         log.error(
@@ -941,11 +941,11 @@ def add_reads_record(
             try:
                 s3_key = f"{payload['climb_id']}_{i}.fastq.gz"
 
-                s3_client.upload_file(
+                s3_upload_file(
+                    s3_client,
                     fastq_path,
                     s3_bucket,
                     s3_key,
-                    Config=S3_TRANSFER_CONFIG,
                 )
 
             except (ClientError, FileNotFoundError) as add_reads_record_exception:
@@ -984,11 +984,11 @@ def add_reads_record(
         s3_key = f"{payload['climb_id']}.fastq.gz"
 
         try:
-            s3_client.upload_file(
+            s3_upload_file(
+                s3_client,
                 fastq_path,
                 s3_bucket,
                 s3_key,
-                Config=S3_TRANSFER_CONFIG,
             )
 
         except (ClientError, FileNotFoundError) as add_reads_record_exception:
@@ -1062,11 +1062,11 @@ def read_fraction_upload(
             try:
                 s3_key = f"{payload['climb_id']}/{payload['climb_id']}.{fraction_prefix}_{i}.fastq.gz"
 
-                s3_client.upload_file(
+                s3_upload_file(
+                    s3_client,
                     fastq_path,
                     s3_bucket,
                     s3_key,
-                    Config=S3_TRANSFER_CONFIG,
                 )
 
             except ClientError as add_read_fraction_exception:
@@ -1120,11 +1120,11 @@ def read_fraction_upload(
         )
 
         try:
-            s3_client.upload_file(
+            s3_upload_file(
+                s3_client,
                 fastq_path,
                 s3_bucket,
                 s3_key,
-                Config=S3_TRANSFER_CONFIG,
             )
 
         except (ClientError, FileNotFoundError) as add_read_fraction_exception:
@@ -1324,11 +1324,11 @@ def handle_hcid(
             s3_key = f"{payload['climb_id']}/{payload['climb_id']}.{path}"
 
             try:
-                s3_client.upload_file(
+                s3_upload_file(
+                    s3_client,
                     full_path,
                     s3_bucket,
                     s3_key,
-                    Config=S3_TRANSFER_CONFIG,
                 )
 
             except (ClientError, FileNotFoundError) as upload_hcid_exception:
