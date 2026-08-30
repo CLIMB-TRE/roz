@@ -22,6 +22,7 @@ from roz_scripts.utils.utils import (
     get_s3_credentials,
     get_s3_client,
     s3_upload_file,
+    throttled_progress,
     csv_create,
     onyx_update,
     ensure_file_unseen,
@@ -496,6 +497,7 @@ def add_taxon_records(
     log: logging.Logger,
     s3_client: BaseClient,
     config: dict,
+    progress_cb=None,
 ) -> tuple[bool, bool, dict]:
     """Function to add nested taxon records to an existing Onyx record from a Scylla reads_summary.json file
 
@@ -588,6 +590,7 @@ def add_taxon_records(
                         fastq_path,
                         s3_bucket,
                         s3_key,
+                        progress_cb=progress_cb,
                     )
 
                     taxon_dict[f"fastq_{i}"] = s3_uri
@@ -619,6 +622,7 @@ def add_taxon_records(
                     fastq_path,
                     s3_bucket,
                     s3_key,
+                    progress_cb=progress_cb,
                 )
 
                 taxon_dict["fastq_1"] = s3_uri
@@ -669,6 +673,7 @@ def push_taxon_reports(
     log: logging.Logger,
     s3_client: BaseClient,
     config: dict,
+    progress_cb=None,
 ) -> tuple[bool, bool, dict]:
     """Push taxa reports to long-term storage bucket and update the Onyx record with the S3 directory URI
 
@@ -715,6 +720,7 @@ def push_taxon_reports(
                 report_local_path,
                 s3_bucket,
                 s3_key,
+                progress_cb=progress_cb,
             )
 
             stem, suffix = os.path.splitext(report)
@@ -724,6 +730,7 @@ def push_taxon_reports(
                 report_local_path,
                 s3_bucket,
                 s3_key_versioned,
+                progress_cb=progress_cb,
             )
 
     except Exception as push_taxon_report_exception:
@@ -847,6 +854,7 @@ def push_report_file(
     log: logging.Logger,
     s3_client: BaseClient,
     config: dict,
+    progress_cb=None,
 ) -> tuple[bool, bool, dict]:
     """Push report file to long-term storage bucket and update the Onyx record with the report URI
 
@@ -879,6 +887,7 @@ def push_report_file(
             report_path,
             s3_bucket,
             s3_key,
+            progress_cb=progress_cb,
         )
     except (ClientError, FileNotFoundError) as push_report_file_exception:
         log.error(
@@ -913,6 +922,7 @@ def add_reads_record(
     result_path: str,
     log: logging.Logger,
     config: dict,
+    progress_cb=None,
 ) -> tuple[bool, bool, dict]:
     """Function to upload raw reads to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
@@ -946,6 +956,7 @@ def add_reads_record(
                     fastq_path,
                     s3_bucket,
                     s3_key,
+                    progress_cb=progress_cb,
                 )
 
             except (ClientError, FileNotFoundError) as add_reads_record_exception:
@@ -989,6 +1000,7 @@ def add_reads_record(
                 fastq_path,
                 s3_bucket,
                 s3_key,
+                progress_cb=progress_cb,
             )
 
         except (ClientError, FileNotFoundError) as add_reads_record_exception:
@@ -1031,6 +1043,7 @@ def read_fraction_upload(
     log: logging.Logger,
     fraction_prefix: str,
     config: dict,
+    progress_cb=None,
 ) -> tuple[bool, bool, dict]:
     """Function to upload read fractions to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
 
@@ -1067,6 +1080,7 @@ def read_fraction_upload(
                     fastq_path,
                     s3_bucket,
                     s3_key,
+                    progress_cb=progress_cb,
                 )
 
             except ClientError as add_read_fraction_exception:
@@ -1125,6 +1139,7 @@ def read_fraction_upload(
                 fastq_path,
                 s3_bucket,
                 s3_key,
+                progress_cb=progress_cb,
             )
 
         except (ClientError, FileNotFoundError) as add_read_fraction_exception:
@@ -1278,6 +1293,7 @@ def handle_hcid(
     result_path: str,
     s3_client: BaseClient,
     config: dict,
+    progress_cb=None,
 ) -> tuple[bool, list, bool, dict]:
     """Function to handle the parsing of HCID warnings output by the Scylla pipeline
 
@@ -1329,6 +1345,7 @@ def handle_hcid(
                     full_path,
                     s3_bucket,
                     s3_key,
+                    progress_cb=progress_cb,
                 )
 
             except (ClientError, FileNotFoundError) as upload_hcid_exception:
@@ -1609,6 +1626,15 @@ def validate(
         stage="post_pipeline_processing", budget_s=args.retry_delay + 1600
     )
 
+    # Post-processing uploads hundreds of GB in a handful of blocking calls,
+    # any one of which can outlast JOB_HEARTBEAT_STALE_S on its own. Refresh
+    # the heartbeat from inside each transfer, and re-beat with a fresh
+    # budget at every stage boundary below so the hard stage deadline is
+    # per-stage rather than cumulative across the whole of post-processing.
+    upload_progress_cb = throttled_progress(
+        lambda: job_heartbeat.beat(stage="post_pipeline_uploads")
+    )
+
     log.info(
         f"Execution of pipeline for UUID: {payload['uuid']} complete. Command was: {' '.join(str(x) for x in ingest_pipe.cmd)}"
     )
@@ -1766,13 +1792,18 @@ def validate(
         f"Uploading files to long-term storage buckets for CID: {payload['climb_id']} after sucessful Onyx submission"
     )
 
+    job_heartbeat.beat(stage="uploading_raw_reads", budget_s=3600)
+
     raw_read_fail, reads_alert, payload = add_reads_record(
         payload=payload,
         s3_client=s3_client,
         result_path=result_path,
         log=log,
         config=args.config,
+        progress_cb=upload_progress_cb,
     )
+
+    job_heartbeat.beat(stage="uploading_taxon_records", budget_s=3600)
 
     binned_read_fail, taxa_alert, payload = add_taxon_records(
         payload=payload,
@@ -1780,6 +1811,7 @@ def validate(
         log=log,
         s3_client=s3_client,
         config=args.config,
+        progress_cb=upload_progress_cb,
     )
 
     classifier_calls_fail, classifier_alert, payload = add_classifier_calls(
@@ -1806,7 +1838,7 @@ def validate(
 
     fraction_fail_outer = False
 
-    job_heartbeat.beat(stage="uploading_read_fractions")
+    job_heartbeat.beat(stage="uploading_read_fractions", budget_s=3600)
 
     for fraction in (
         "human_filtered",
@@ -1821,6 +1853,7 @@ def validate(
             log=log,
             fraction_prefix=fraction,
             config=args.config,
+            progress_cb=upload_progress_cb,
         )
 
         if fraction_alert:
@@ -1835,6 +1868,7 @@ def validate(
         log=log,
         s3_client=s3_client,
         config=args.config,
+        progress_cb=upload_progress_cb,
     )
 
     taxon_report_fail, taxa_reports_alert, payload = push_taxon_reports(
@@ -1843,6 +1877,7 @@ def validate(
         log=log,
         s3_client=s3_client,
         config=args.config,
+        progress_cb=upload_progress_cb,
     )
 
     hcid_fail, hcid_alerts, hcid_alert, payload = handle_hcid(
@@ -1851,6 +1886,7 @@ def validate(
         result_path=result_path,
         s3_client=s3_client,
         config=args.config,
+        progress_cb=upload_progress_cb,
     )
 
     spike_in_fail, spike_in_alert, payload = handle_spike_ins(

@@ -586,6 +586,7 @@ class TestPushBamFile(unittest.TestCase):
             "mscape-fake-chimera-bams",
             "CLIMB001.chimera.bam",
             Config=S3_TRANSFER_CONFIG,
+            Callback=None,
         )
 
     @patch("roz_scripts.mscape.chimera_runner.boto3.client")
@@ -638,12 +639,14 @@ class TestPushChimeraReport(unittest.TestCase):
             "mscape-fake-chimera-reports",
             "CLIMB001.alignment_report.tsv",
             Config=S3_TRANSFER_CONFIG,
+            Callback=None,
         )
         mock_s3.upload_file.assert_any_call(
             "/tmp/CLIMB001.alignment_report.tsv",
             "mscape-fake-chimera-reports",
             "CLIMB001.v1.0.alignment_report.tsv",
             Config=S3_TRANSFER_CONFIG,
+            Callback=None,
         )
         self.assertEqual(mock_s3.upload_file.call_count, 2)
 

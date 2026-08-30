@@ -13,6 +13,7 @@ from io import StringIO
 import logging
 from pathlib import Path
 import shutil
+import threading
 import time
 import csv
 import regex as re
@@ -1876,27 +1877,68 @@ def get_s3_client(s3_credentials: __s3_creds) -> BaseClient:
     )
 
 
+class throttled_progress:
+    """
+    Boto3 upload `Callback` that runs `callback_fn` at most once every
+    `min_interval_s`, no matter how often boto3 reports progress.
+
+    Uploading a single multi-GB file is one blocking call that can run for
+    many minutes, during which nothing else in the worker gets to run. Any
+    liveness heartbeat that isn't refreshed from inside the transfer will go
+    stale and the pod gets killed mid-upload. Boto3 invokes the callback per
+    transferred chunk and from several transfer threads at once, so this
+    both rate-limits it (heartbeats land on shared storage) and serialises
+    it behind a lock.
+    """
+
+    def __init__(self, callback_fn, min_interval_s: float = 30.0):
+        self._callback_fn = callback_fn
+        self._min_interval_s = min_interval_s
+        self._lock = threading.Lock()
+        self._last_run = 0.0
+
+    def __call__(self, bytes_transferred: int) -> None:
+        now = time.monotonic()
+
+        with self._lock:
+            if now - self._last_run < self._min_interval_s:
+                return
+            self._last_run = now
+
+        self._callback_fn()
+
+
 def s3_upload_file(
-    s3_client: BaseClient, local_path: str, bucket: str, key: str
+    s3_client: BaseClient,
+    local_path: str,
+    bucket: str,
+    key: str,
+    progress_cb=None,
 ) -> None:
     """
     Upload a file to S3 and drop its page cache afterwards.
 
     Reading a multi-GB FASTQ/BAM for upload can leave that data pinned in
     page cache long after the upload finishes, with no natural pressure to
-    evict it - confirmed empirically (see scripts/memory_diagnostics) to
-    leave a pod sitting near its cgroup memory limit indefinitely, starving
-    headroom for whatever runs next in the same pod. Dropping the cache
-    for this file immediately after upload prevents that accumulation.
+    evict it. Dropping the cache for this file immediately after upload
+    keeps a pod that streams >100GB per job from sitting at its cgroup
+    memory limit indefinitely.
 
     Args:
         s3_client (BaseClient): Boto3 S3 client to upload with
         local_path (str): Path to the local file to upload
         bucket (str): Destination S3 bucket
         key (str): Destination S3 object key
+        progress_cb: Optional callable invoked with the number of bytes
+            transferred as the upload proceeds, for keeping a liveness
+            heartbeat fresh across a long transfer. Wrap it in
+            throttled_progress() unless it's already cheap enough to run
+            on every chunk.
     """
 
-    s3_client.upload_file(local_path, bucket, key, Config=S3_TRANSFER_CONFIG)
+    s3_client.upload_file(
+        local_path, bucket, key, Config=S3_TRANSFER_CONFIG, Callback=progress_cb
+    )
 
     if hasattr(os, "posix_fadvise"):
         try:
