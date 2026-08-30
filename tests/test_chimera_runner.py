@@ -488,6 +488,62 @@ class TestHandleAlignmentReport(unittest.TestCase):
         # clear + 3 batches of 100 (100 + 100 + 50)
         self.assertEqual(mock_onyx_update.call_count, 4)
 
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_update_failure_logs_accession_not_index(self, mock_client_cls):
+        """Regression test for the reported bug: lets the real onyx_update
+        run (rather than mocking it out) so a per-item Onyx error on
+        alignment_results is logged with the failing row's unique_accession,
+        not a bare index string."""
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+        # onyx_update's clear step passes fields=None, which short-circuits
+        # before ever calling client.update() - so only the actual batch
+        # update below results in a call to client.update().
+        mock_client.update.side_effect = OnyxRequestError(
+            "bad request",
+            MagicMock(
+                json=MagicMock(
+                    return_value={
+                        "messages": {
+                            "alignment_results": {
+                                "1": {
+                                    "uniquely_mapped_reads": [
+                                        "A valid integer is required."
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                )
+            ),
+        )
+
+        path = os.path.join(self.tmpdir.name, "alignment_report.tsv")
+        with open(path, "w") as fh:
+            writer = csv.DictWriter(
+                fh,
+                fieldnames=["reference", "mapped_reads", "unique_accession"],
+                delimiter="\t",
+            )
+            writer.writeheader()
+            for i in range(3):
+                writer.writerow(
+                    {
+                        "reference": f"ref{i}",
+                        "mapped_reads": str(i),
+                        "unique_accession": f"ACC{i}",
+                    }
+                )
+
+        result = handle_alignment_report(path, self.payload, self.log)
+
+        self.assertFalse(result)
+        logged = " ".join(
+            str(call_args) for call_args in self.log.error.call_args_list
+        )
+        self.assertIn("ACC1", logged)
+        self.assertIn("A valid integer is required.", logged)
+        self.assertNotIn("'alignment_results': ['1']", logged)
+
 
 # ---------------------------------------------------------------------------
 # handle_sylph_report

@@ -868,6 +868,127 @@ def do_uris_exist(*s3_uris: str) -> bool:
     return True
 
 
+ONYX_ITEM_IDENTIFIER_FIELDS = (
+    "unique_accession",
+    "gtdb_assembly_id",
+    "reference_header",
+    "taxon_id",
+    "climb_id",
+    "run_index",
+    "run_id",
+    "biosample_id",
+)
+
+MAX_ONYX_ERRORS_PER_FIELD = 25
+_MAX_ONYX_ERROR_DEPTH = 5
+
+
+def _describe_onyx_item(submitted, key: str) -> str:
+    """Label one key of a per-item Onyx error dict, using the matching
+    submitted row's identifier where the key is a numeric index and the
+    originally submitted row data is available."""
+    if not key.isdigit():
+        return key
+
+    try:
+        if submitted is not None:
+            item = submitted[int(key)]
+            if isinstance(item, dict):
+                for id_field in ONYX_ITEM_IDENTIFIER_FIELDS:
+                    value = item.get(id_field)
+                    if value:
+                        return f"item {key} ({id_field}={value})"
+    except (TypeError, IndexError, KeyError, ValueError):
+        pass
+
+    return f"item {key}"
+
+
+def _flatten_onyx_messages(value, prefix: str = "", submitted=None, depth: int = 0) -> list[str]:
+    """Recursively flatten one Onyx error value (string, list, or dict keyed
+    by field name / item index / 'non_field_errors') into a flat list of
+    human-readable strings."""
+    if depth > _MAX_ONYX_ERROR_DEPTH:
+        return [f"{prefix}{value}"]
+
+    if isinstance(value, dict):
+        flattened = []
+        for key in sorted(
+            value.keys(),
+            key=lambda k: (0, int(k)) if str(k).isdigit() else (1, str(k)),
+        ):
+            label = _describe_onyx_item(submitted, str(key)) if depth == 0 else str(key)
+            flattened.extend(
+                _flatten_onyx_messages(
+                    value[key],
+                    prefix=f"{prefix}{label}: ",
+                    submitted=None,
+                    depth=depth + 1,
+                )
+            )
+        return flattened
+
+    if isinstance(value, (list, tuple)):
+        flattened = []
+        for item in value:
+            flattened.extend(
+                _flatten_onyx_messages(
+                    item, prefix=prefix, submitted=submitted, depth=depth + 1
+                )
+            )
+        return flattened
+
+    return [f"{prefix}{value}"]
+
+
+def merge_onyx_error_messages(
+    errors: dict,
+    messages,
+    submitted_fields: dict | None = None,
+    max_per_field: int = MAX_ONYX_ERRORS_PER_FIELD,
+) -> dict:
+    """Merge the 'messages' body of an Onyx error response into `errors` in
+    place. Every field's value is left as a flat list of strings so the
+    result stays JSON-serialisable and legible in logs.
+
+    Onyx reports whole-field errors as a flat list of strings, but reports
+    per-item errors for list/relation fields (e.g. alignment_results) as a
+    dict keyed by stringified item index, e.g. {"0": {"sub_field": [...]}}.
+    Naively extending a list with such a dict iterates its keys, discarding
+    the real error content - this function flattens either shape correctly.
+
+    `submitted_fields` is the `fields` dict that was sent to Onyx, used to
+    label per-item errors with the failing row's identifier instead of a
+    bare batch-local index.
+    """
+    if not isinstance(messages, dict):
+        errors.setdefault("onyx_errors", []).append(str(messages))
+        return errors
+
+    for field, value in messages.items():
+        submitted = (submitted_fields or {}).get(field)
+        flattened = _flatten_onyx_messages(value, submitted=submitted)
+
+        if max_per_field and len(flattened) > max_per_field:
+            dropped = len(flattened) - max_per_field
+            flattened = flattened[:max_per_field]
+            flattened.append(f"... and {dropped} more error(s) for '{field}'")
+
+        errors.setdefault(field, []).extend(flattened)
+
+    return errors
+
+
+def _get_onyx_error_messages(e: OnyxRequestError) -> dict:
+    """Safely extract the 'messages' body from an OnyxRequestError's
+    response, falling back to str(e) if the response body isn't the
+    expected JSON shape (e.g. an upstream proxy/gateway error page)."""
+    try:
+        return e.response.json()["messages"]
+    except (ValueError, KeyError):
+        return {"onyx_errors": [str(e)]}
+
+
 def csv_create(
     payload: dict,
     log: logging.Logger,
@@ -1007,7 +1128,7 @@ def csv_create(
                     f"Onyx csv create failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}"
                 )
 
-                error_messages = e.response.json()["messages"]
+                error_messages = _get_onyx_error_messages(e)
 
                 if error_messages.get("non_field_errors"):
                     if (
@@ -1024,17 +1145,17 @@ def csv_create(
 
                 if test_submission:
                     payload.setdefault("onyx_test_create_errors", {})
-                    for field, messages in e.response.json()["messages"].items():
-                        payload["onyx_test_create_errors"].setdefault(field, [])
-                        payload["onyx_test_create_errors"][field].extend(messages)
+                    merge_onyx_error_messages(
+                        payload["onyx_test_create_errors"], error_messages
+                    )
 
                     return (False, False, payload)
 
                 else:
                     payload.setdefault("onyx_create_errors", {})
-                    for field, messages in e.response.json()["messages"].items():
-                        payload["onyx_create_errors"].setdefault(field, [])
-                        payload["onyx_create_errors"][field].extend(messages)
+                    merge_onyx_error_messages(
+                        payload["onyx_create_errors"], error_messages
+                    )
 
                     return (False, False, payload)
 
@@ -1395,16 +1516,16 @@ def onyx_reconcile(
 
             except (OnyxServerError, OnyxConfigError) as e:
                 log.error(f"Unhandled Onyx error: {e}")
-                payload.setdefault("onyx_reconcile_errors", {})
+                payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
-                payload["onyx_errors"]["onyx_errors"].append(e)
+                payload["onyx_errors"]["onyx_errors"].append(str(e))
                 return (False, True, payload)
 
             except OnyxClientError as e:
                 log.error(
                     f"Onyx reconcile failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
-                payload.setdefault("onyx_reconcile_errors", {})
+                payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
                 payload["onyx_errors"]["onyx_errors"].append(str(e))
                 return (False, True, payload)
@@ -1423,9 +1544,9 @@ def onyx_reconcile(
                     f"Onyx reconcile failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
-                for field, messages in e.response.json()["messages"].items():
-                    payload["onyx_errors"].setdefault(field, [])
-                    payload["onyx_errors"][field].extend(messages)
+                merge_onyx_error_messages(
+                    payload["onyx_errors"], _get_onyx_error_messages(e)
+                )
                 return (False, True, payload)
 
             except Exception as e:
@@ -1501,7 +1622,7 @@ def ensure_file_unseen(
                 log.error(f"Unhandled Onyx error: {e}")
                 payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
-                payload["onyx_errors"]["onyx_errors"].append(e)
+                payload["onyx_errors"]["onyx_errors"].append(str(e))
                 return (True, True, True, payload)
 
             except OnyxClientError as e:
@@ -1522,9 +1643,9 @@ def ensure_file_unseen(
                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
-                for field, messages in e.response.json()["messages"].items():
-                    payload["onyx_errors"].setdefault(field, [])
-                    payload["onyx_errors"][field].extend(messages)
+                merge_onyx_error_messages(
+                    payload["onyx_errors"], _get_onyx_error_messages(e)
+                )
                 return (True, True, True, payload)
 
             except Exception as e:
@@ -1617,7 +1738,7 @@ def check_artifact_published(
                 log.error(f"Unhandled Onyx error: {e}")
                 payload.setdefault("onyx_errors", {})
                 payload["onyx_errors"].setdefault("onyx_errors", [])
-                payload["onyx_errors"]["onyx_errors"].append(e)
+                payload["onyx_errors"]["onyx_errors"].append(str(e))
                 return (False, True, payload)
 
             except OnyxClientError as e:
@@ -1634,9 +1755,9 @@ def check_artifact_published(
                     f"Onyx filter failed for artifact: {payload['artifact']}, UUID: {payload['uuid']}. Error: {e}"
                 )
                 payload.setdefault("onyx_errors", {})
-                for field, messages in e.response.json()["messages"].items():
-                    payload["onyx_errors"].setdefault(field, [])
-                    payload["onyx_errors"][field].extend(messages)
+                merge_onyx_error_messages(
+                    payload["onyx_errors"], _get_onyx_error_messages(e)
+                )
                 return (False, True, payload)
 
             except Exception as e:
@@ -1708,7 +1829,7 @@ def onyx_update(
 
                     payload.setdefault("onyx_errors", {})
                     payload["onyx_errors"].setdefault("onyx_errors", [])
-                    payload["onyx_errors"]["onyx_errors"].append(e)
+                    payload["onyx_errors"]["onyx_errors"].append(str(e))
 
                     return (True, True, payload)
 
@@ -1716,7 +1837,7 @@ def onyx_update(
                 log.error(f"Unhandled Onyx error: {e}")
                 payload.setdefault("onyx_update_errors", {})
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
-                payload["onyx_update_errors"]["onyx_errors"].append(e)
+                payload["onyx_update_errors"]["onyx_errors"].append(str(e))
 
                 return (True, True, payload)
 
@@ -1726,7 +1847,7 @@ def onyx_update(
                 )
                 payload.setdefault("onyx_update_errors", {})
                 payload["onyx_update_errors"].setdefault("onyx_errors", [])
-                payload["onyx_update_errors"]["onyx_errors"].append(e)
+                payload["onyx_update_errors"]["onyx_errors"].append(str(e))
 
                 return (True, False, payload)
 
@@ -1736,9 +1857,11 @@ def onyx_update(
                 )
 
                 payload.setdefault("onyx_update_errors", {})
-                for field, messages in e.response.json()["messages"].items():
-                    payload["onyx_update_errors"].setdefault(field, [])
-                    payload["onyx_update_errors"][field].extend(messages)
+                merge_onyx_error_messages(
+                    payload["onyx_update_errors"],
+                    _get_onyx_error_messages(e),
+                    submitted_fields=fields,
+                )
 
                 return (True, False, payload)
 

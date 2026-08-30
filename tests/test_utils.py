@@ -22,6 +22,8 @@ from roz_scripts.utils.utils import (
     PodResourceError,
     parse_cpu_quantity,
     parse_memory_quantity,
+    merge_onyx_error_messages,
+    MAX_ONYX_ERRORS_PER_FIELD,
 )
 
 from kubernetes.client.exceptions import ApiException
@@ -32,6 +34,7 @@ import unittest
 from unittest.mock import patch, Mock
 import os
 import copy
+import json
 import tempfile
 from pathlib import Path
 
@@ -367,6 +370,44 @@ class test_utils(unittest.TestCase):
                     for msg in payload["onyx_test_create_errors"]["onyx_errors"]
                 )
             )
+
+    def test_csv_create_relation_field_errors(self):
+        """Regression test: per-item errors on a relation field (e.g. a
+        nested classifier_calls-style field) submitted via csv_create must
+        not be flattened down to bare index strings."""
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client, patch(
+            "roz_scripts.utils.utils.check_artifact_published"
+        ) as mock_published_check:
+            mock_client.return_value.__enter__.return_value.csv_create = Mock(
+                side_effect=OnyxRequestError(
+                    message="test csv_create relation field error handling",
+                    response=MockResponse(
+                        status_code=400,
+                        json_data={
+                            "data": [],
+                            "messages": {
+                                "classifier_calls": {
+                                    "0": {"taxon_id": ["This field is required."]}
+                                }
+                            },
+                        },
+                    ),
+                )
+            )
+
+            mock_published_check.return_value = (False, False, self.example_match)
+
+            success, alert, payload = csv_create(
+                payload=self.example_match,
+                log=self.log,
+                test_submission=True,
+            )
+
+            self.assertFalse(success)
+            self.assertFalse(alert)
+            errors = payload["onyx_test_create_errors"]["classifier_calls"]
+            self.assertNotEqual(errors, ["0"])
+            self.assertIn("This field is required.", " ".join(errors))
 
     def test_csv_field_check_success(self):
         success, alert, payload = csv_field_checks(payload=self.example_match)
@@ -967,6 +1008,38 @@ class test_onyx_update_payload_key_errors(unittest.TestCase):
         self.assertEqual(payload["onyx_update_errors"]["foo"], ["bad value"])
 
     @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_request_error_with_relation_field_errors_is_labelled(self, mock_client_cls):
+        """Regression test for the reported bug: per-item errors on a
+        list/relation field (e.g. alignment_results) must not be flattened
+        down to their bare index strings."""
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+        mock_response = MockResponse(
+            400,
+            json_data={
+                "messages": {
+                    "alignment_results": {
+                        "0": {"uniquely_mapped_reads": ["A valid integer is required."]}
+                    }
+                }
+            },
+        )
+        mock_client.update.side_effect = OnyxRequestError("bad request", mock_response)
+
+        fail, alert, payload = onyx_update(
+            payload=self.chimera_payload,
+            fields={"alignment_results": [{"unique_accession": "ACC0"}]},
+            log=self.log,
+        )
+
+        self.assertTrue(fail)
+        self.assertFalse(alert)
+        errors = payload["onyx_update_errors"]["alignment_results"]
+        self.assertNotEqual(errors, ["0"])
+        joined = " ".join(errors)
+        self.assertIn("ACC0", joined)
+        self.assertIn("A valid integer is required.", joined)
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
     def test_unhandled_exception_does_not_raise_keyerror(self, mock_client_cls):
         mock_client = mock_client_cls.return_value.__enter__.return_value
         mock_client.update.side_effect = ValueError("something unexpected")
@@ -981,3 +1054,132 @@ class test_onyx_update_payload_key_errors(unittest.TestCase):
         self.assertIn(
             "Unhandled onyx_update error", payload["onyx_update_errors"]["onyx_errors"][0]
         )
+
+
+class test_merge_onyx_error_messages(unittest.TestCase):
+    """Unit tests for the Onyx error-message flattening helper. These cover
+    every error shape the Onyx server can actually produce (verified against
+    onyx/onyx/data/serializers.py and onyx/onyx/utils/fieldserializers.py),
+    since a naive parser easily mishandles the per-item dict shape used for
+    list/relation fields."""
+
+    def test_flat_list_unchanged(self):
+        errors = {}
+        merge_onyx_error_messages(errors, {"site": ["Select a valid choice."]})
+        self.assertEqual(errors, {"site": ["Select a valid choice."]})
+
+    def test_per_item_errors_preserve_content(self):
+        messages = {
+            "alignment_results": {
+                "0": {"uniquely_mapped_reads": ["A valid integer is required."]},
+                "3": {"total_score": ["A valid number is required."]},
+            }
+        }
+        submitted_fields = {
+            "alignment_results": [
+                {"unique_accession": f"ACC{i}"} for i in range(4)
+            ]
+        }
+        errors = {}
+        merge_onyx_error_messages(errors, messages, submitted_fields=submitted_fields)
+
+        result = errors["alignment_results"]
+        joined = " ".join(result)
+        self.assertIn("uniquely_mapped_reads", joined)
+        self.assertIn("A valid integer is required.", joined)
+        self.assertIn("ACC0", joined)
+        self.assertIn("ACC3", joined)
+        self.assertNotIn("0", [entry.strip() for entry in result])
+        self.assertNotIn("3", [entry.strip() for entry in result])
+
+    def test_missing_submitted_fields_falls_back_to_index(self):
+        messages = {"alignment_results": {"0": {"field": ["bad"]}}}
+        errors = {}
+        merge_onyx_error_messages(errors, messages, submitted_fields=None)
+        self.assertTrue(errors["alignment_results"][0].startswith("item 0: "))
+
+    def test_row_without_known_identifier_falls_back(self):
+        messages = {"alignment_results": {"0": {"field": ["bad"]}}}
+        submitted_fields = {"alignment_results": [{"reference": "ref1"}]}
+        errors = {}
+        merge_onyx_error_messages(errors, messages, submitted_fields=submitted_fields)
+        self.assertTrue(errors["alignment_results"][0].startswith("item 0: "))
+
+    def test_non_field_errors_key_not_treated_as_index(self):
+        messages = {
+            "alignment_results": {
+                "non_field_errors": [
+                    "Each unique_accession in this set of alignment_results must be unique."
+                ]
+            }
+        }
+        errors = {}
+        # Must not raise from attempting int("non_field_errors")
+        merge_onyx_error_messages(errors, messages)
+        self.assertIn(
+            "Each unique_accession in this set of alignment_results must be unique.",
+            " ".join(errors["alignment_results"]),
+        )
+
+    def test_relation_field_flat_list(self):
+        errors = {}
+        merge_onyx_error_messages(errors, {"alignment_results": ["Expected a list."]})
+        self.assertEqual(errors["alignment_results"], ["Expected a list."])
+
+    def test_scalar_array_field_index_keyed_lists(self):
+        messages = {"spiked_ids": {"0": ["A valid integer is required."]}}
+        errors = {}
+        merge_onyx_error_messages(errors, messages)
+        self.assertIn("A valid integer is required.", " ".join(errors["spiked_ids"]))
+
+    def test_bare_string_value(self):
+        errors = {}
+        merge_onyx_error_messages(errors, {"detail": "Not found."})
+        self.assertEqual(errors["detail"], ["Not found."])
+
+    def test_two_level_nesting_terminates(self):
+        messages = {"a": {"0": {"b": {"1": {"c": ["boom"]}}}}}
+        errors = {}
+        merge_onyx_error_messages(errors, messages)
+        joined = " ".join(errors["a"])
+        self.assertIn("boom", joined)
+        self.assertIn("item 0", joined)
+
+    def test_numeric_key_ordering(self):
+        messages = {"field": {str(i): [f"error {i}"] for i in range(12)}}
+        errors = {}
+        merge_onyx_error_messages(errors, messages, max_per_field=None)
+        result = errors["field"]
+        index_9 = next(i for i, entry in enumerate(result) if "item 9" in entry)
+        index_10 = next(i for i, entry in enumerate(result) if "item 10" in entry)
+        self.assertLess(index_9, index_10)
+
+    def test_cap_applied(self):
+        messages = {"field": {str(i): [f"error {i}"] for i in range(100)}}
+        errors = {}
+        merge_onyx_error_messages(errors, messages)
+        result = errors["field"]
+        self.assertEqual(len(result), MAX_ONYX_ERRORS_PER_FIELD + 1)
+        self.assertIn("more error(s)", result[-1])
+
+    def test_merges_into_existing_entries(self):
+        errors = {"alignment_results": ["earlier"]}
+        merge_onyx_error_messages(errors, {"alignment_results": ["new"]})
+        self.assertEqual(errors["alignment_results"], ["earlier", "new"])
+
+    def test_result_is_json_serialisable(self):
+        cases = [
+            {"site": ["Select a valid choice."]},
+            {"alignment_results": {"0": {"field": ["bad"]}}},
+            {"alignment_results": {"non_field_errors": ["dup"]}},
+            {"detail": "Not found."},
+        ]
+        for messages in cases:
+            errors = {}
+            merge_onyx_error_messages(errors, messages)
+            json.dumps(errors)
+
+    def test_non_dict_messages(self):
+        errors = {}
+        merge_onyx_error_messages(errors, ["weird"])
+        self.assertEqual(errors["onyx_errors"], ["['weird']"])
