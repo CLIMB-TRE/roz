@@ -11,6 +11,7 @@ from roz_scripts.utils.utils import (
     csv_create,
     csv_field_checks,
     check_artifact_published,
+    onyx_get_record,
     onyx_identify,
     onyx_reconcile,
     onyx_update,
@@ -711,6 +712,77 @@ class test_utils(unittest.TestCase):
             "run_id contains invalid characters, must be alphanumeric and contain only hyphens and underscores",
             payload["onyx_test_create_errors"]["run_id"],
         )
+
+
+class test_onyx_get_record(unittest.TestCase):
+    def setUp(self):
+        os.environ["ONYX_DOMAIN"] = "testing"
+        os.environ["ONYX_TOKEN"] = "testing"
+        self.log = init_logger("test", TEST_UTILS_LOG_FILENAME, "DEBUG")
+
+    def test_found(self):
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.return_value = {
+                "climb_id": "test_id",
+                "is_published": True,
+            }
+
+            alert, record = onyx_get_record(
+                project="mscape", climb_id="test_id", log=self.log
+            )
+
+            self.assertFalse(alert)
+            self.assertEqual(record, {"climb_id": "test_id", "is_published": True})
+
+    def test_not_found(self):
+        mock_response = Mock()
+        mock_response.status_code = 404
+
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.side_effect = (
+                OnyxRequestError("not found", response=mock_response)
+            )
+
+            alert, record = onyx_get_record(
+                project="mscape", climb_id="missing_id", log=self.log
+            )
+
+            self.assertFalse(alert)
+            self.assertIsNone(record)
+
+    def test_request_error_non_404(self):
+        mock_response = Mock()
+        mock_response.status_code = 500
+
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.side_effect = (
+                OnyxRequestError("server error", response=mock_response)
+            )
+
+            alert, record = onyx_get_record(
+                project="mscape", climb_id="test_id", log=self.log
+            )
+
+            self.assertTrue(alert)
+            self.assertIsNone(record)
+
+    def test_connection_error_retries_then_alerts(self):
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client, patch(
+            "roz_scripts.utils.utils.time.sleep"
+        ):
+            mock_client.return_value.__enter__.return_value.get.side_effect = (
+                OnyxConnectionError("no connection")
+            )
+
+            alert, record = onyx_get_record(
+                project="mscape", climb_id="test_id", log=self.log
+            )
+
+            self.assertTrue(alert)
+            self.assertIsNone(record)
+            self.assertEqual(
+                mock_client.return_value.__enter__.return_value.get.call_count, 4
+            )
 
 
 class test_send_admin_alert(unittest.TestCase):

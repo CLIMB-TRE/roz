@@ -1778,6 +1778,71 @@ def check_artifact_published(
     return (False, True, payload)
 
 
+def onyx_get_record(
+    project: str, climb_id: str, log: logging.Logger
+) -> tuple[bool, dict | None]:
+    """Fetch a single Onyx record by climb_id, without needing a payload dict.
+
+    Args:
+        project (str): Onyx project name
+        climb_id (str): CLIMB ID of the record to fetch
+        log (logging.Logger): Logger object
+
+    Returns:
+        tuple[bool, dict | None]: A bool indicating whether a transient/
+        unexpected Onyx failure occurred (the caller should treat this as
+        retryable), and the record dict, or None if no such record exists.
+    """
+    with OnyxClient(config=get_onyx_credentials()) as client:
+        reconnect_count = 0
+        while reconnect_count <= 3:
+            try:
+                record = client.get(project=project, climb_id=climb_id)
+                return (False, record)
+
+            except OnyxConnectionError as e:
+                if reconnect_count < 3:
+                    reconnect_count += 1
+                    log.error(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 3 seconds"
+                    )
+                    time.sleep(3)
+                    continue
+
+                else:
+                    log.error(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}"
+                    )
+                    return (True, None)
+
+            except (OnyxServerError, OnyxConfigError) as e:
+                log.error(f"Unhandled Onyx error: {e}")
+                return (True, None)
+
+            except OnyxClientError as e:
+                log.error(
+                    f"Onyx get failed for project: {project}, climb_id: {climb_id}. Error: {e}"
+                )
+                return (True, None)
+
+            except OnyxRequestError as e:
+                if e.response.status_code == 404:
+                    return (False, None)
+
+                log.error(
+                    f"Onyx get failed for project: {project}, climb_id: {climb_id}. Error: {e}"
+                )
+                return (True, None)
+
+            except Exception as e:
+                log.error(f"Unhandled onyx_get_record error: {e}")
+                return (True, None)
+
+    # This should never be reached
+    log.error("End of onyx_get_record func reached, this should never happen!")
+    return (True, None)
+
+
 def onyx_update(
     payload: dict,
     fields: dict | None,

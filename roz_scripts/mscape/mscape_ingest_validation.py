@@ -25,6 +25,7 @@ from roz_scripts.utils.utils import (
     throttled_progress,
     csv_create,
     onyx_update,
+    onyx_get_record,
     ensure_file_unseen,
     onyx_reconcile,
     put_result_json,
@@ -114,13 +115,16 @@ class worker_pool_handler:
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
             )
 
-            self._varys_client.send(
-                message=payload,
-                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                queue_suffix="validator",
-            )
+            if not payload.get("rerun_of_published"):
+                # A rerun of a published artifact is admin-triggered, not a
+                # site submission - there is no site-facing result to file.
+                self._varys_client.send(
+                    message=payload,
+                    exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                    queue_suffix="validator",
+                )
 
-            put_result_json(payload, self._log, self._config)
+                put_result_json(payload, self._log, self._config)
 
             if not payload["test_flag"]:
                 new_artifact_payload = {
@@ -196,13 +200,14 @@ class worker_pool_handler:
             else:
                 self._varys_client.acknowledge_message(message)
 
-                self._varys_client.send(
-                    message=payload,
-                    exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                    queue_suffix="validator",
-                )
+                if not payload.get("rerun_of_published"):
+                    self._varys_client.send(
+                        message=payload,
+                        exchange=f"inbound-results-{payload['project']}-{payload['site']}",
+                        queue_suffix="validator",
+                    )
 
-                put_result_json(payload, self._log, self._config)
+                    put_result_json(payload, self._log, self._config)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
@@ -229,6 +234,7 @@ def execute_validation_pipeline(
     args: argparse.Namespace,
     ingest_pipe: pipeline,
     spike_in: str,
+    read_uris: tuple[str, ...],
     job_heartbeat: JobHeartbeat | None = None,
 ) -> int:
     """Execute the validation pipeline for a given artifact
@@ -238,6 +244,8 @@ def execute_validation_pipeline(
         args (argparse.Namespace): The command line arguments object
         log (logging.Logger): The logger object
         ingest_pipe (pipeline): The instance of the ingest pipeline (see pipeline class)
+        read_uris (tuple[str, ...]): S3 URI(s) of the fastq(s) to run through the
+            pipeline - one URI for ont/illumina.se, two for illumina
         job_heartbeat (JobHeartbeat | None): Heartbeat handle for this job, so a
             liveness probe can tell this stage is still progressing rather than
             stuck, and so the deadline check tracks the pipeline's own timeout
@@ -268,17 +276,13 @@ def execute_validation_pipeline(
         parameters["spike_ins"] = spike_in
 
     if payload["platform"] in ("ont", "illumina.se"):
-        parameters["fastq"] = payload["files"][".fastq.gz"]["uri"]
-        timeout = dynamic_timeout(payload["files"][".fastq.gz"]["uri"])
+        parameters["fastq"] = read_uris[0]
+        timeout = dynamic_timeout(read_uris[0])
 
     elif payload["platform"] == "illumina":
-        parameters["fastq1"] = payload["files"][".1.fastq.gz"]["uri"]
-        parameters["fastq2"] = payload["files"][".2.fastq.gz"]["uri"]
+        parameters["fastq1"], parameters["fastq2"] = read_uris
         parameters["paired"] = ""
-        timeout = dynamic_timeout(
-            payload["files"][".1.fastq.gz"]["uri"],
-            payload["files"][".2.fastq.gz"]["uri"],
-        )
+        timeout = dynamic_timeout(*read_uris)
 
     else:
         raise ValueError(f"Unrecognised platform: {payload['platform']}")
@@ -1372,6 +1376,146 @@ def handle_hcid(
     return (hcid_fail, hcid_alerts, alert, payload)
 
 
+def prepare_published_rerun(
+    payload: dict,
+    log: logging.Logger,
+    job_heartbeat: JobHeartbeat | None = None,
+) -> tuple[bool, bool, bool, dict, tuple[str, ...], dict]:
+    """Resolve a rerun request against its already-published Onyx record.
+
+    A rerun requests re-processing of an artifact that has already completed
+    first-time ingest (e.g. to regenerate outputs against a new classifier
+    database version), so it sources its metadata and reads from the
+    existing Onyx record instead of a metadata CSV / inbound fastqs, which
+    may no longer exist by the time a rerun is requested.
+
+    Args:
+        payload (dict): Payload dict for the current rerun message
+        log (logging.Logger): Logger object
+        job_heartbeat (JobHeartbeat | None): Heartbeat handle for this job
+
+    Returns:
+        tuple[bool, bool, bool, dict, tuple[str, ...], dict]: A bool
+        indicating success, a bool indicating whether a failure is
+        retryable, a bool indicating whether to squawk in the alert
+        channel, the Onyx record (used in place of the CSV-derived
+        artifact_metadata), the read URI(s) to run through the pipeline,
+        and the updated payload dict
+    """
+    if job_heartbeat is not None:
+        job_heartbeat.beat(stage="rerun_record_lookup")
+
+    record_alert, record = onyx_get_record(
+        project=payload["project"], climb_id=payload["climb_id"], log=log
+    )
+
+    if record_alert:
+        log.error(
+            f"Failed to fetch Onyx record for rerun of climb_id: {payload['climb_id']}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "Could not fetch Onyx record for rerun, this is likely a transient Onyx error"
+        )
+        return (False, True, True, {}, (), payload)
+
+    if record is None:
+        log.error(f"No Onyx record found for climb_id: {payload['climb_id']}")
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"No Onyx record found for climb_id: {payload['climb_id']}"
+        )
+        return (False, False, True, {}, (), payload)
+
+    if not record.get("is_published"):
+        log.error(
+            f"Artifact with climb_id: {payload['climb_id']} is not published, reruns only apply to already-published artifacts"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Artifact {payload['climb_id']} is not published, reruns only apply to artifacts that have already completed first-time ingest"
+        )
+        return (False, False, True, record, (), payload)
+
+    platform = record.get("platform")
+
+    if platform in ("ont", "illumina.se"):
+        read_uris = (record.get("fastq_1"),)
+    elif platform == "illumina":
+        read_uris = (record.get("fastq_1"), record.get("fastq_2"))
+    else:
+        log.error(
+            f"Unrecognised platform: {platform} on record for climb_id: {payload['climb_id']}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(f"Unrecognised platform: {platform}")
+        return (False, False, True, record, (), payload)
+
+    if not all(read_uris):
+        log.error(
+            f"Published record for climb_id: {payload['climb_id']} is missing a fastq URI"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Published record {payload['climb_id']} has no recorded fastq_1/fastq_2 URI to rerun against"
+        )
+        return (False, False, True, record, (), payload)
+
+    if not do_uris_exist(*read_uris):
+        log.error(
+            f"Published reads for climb_id: {payload['climb_id']} no longer exist"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Published reads for {payload['climb_id']} no longer exist in the published reads bucket"
+        )
+        return (False, False, True, record, read_uris, payload)
+
+    if are_files_empty(*read_uris):
+        log.error(f"Published reads for climb_id: {payload['climb_id']} are empty")
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            f"Published reads for {payload['climb_id']} appear to be empty"
+        )
+        return (False, False, True, record, read_uris, payload)
+
+    payload["platform"] = platform
+    payload["site"] = record.get("site")
+    payload["anonymised_run_index"] = record.get("run_index")
+    payload["anonymised_run_id"] = record.get("run_id")
+    payload["anonymised_biosample_id"] = record.get("biosample_id")
+
+    if record.get("biosample_source_id"):
+        payload["anonymised_biosample_source_id"] = record["biosample_source_id"]
+
+    payload["onyx_create_status"] = True
+    payload["created"] = True
+    payload["rerun_of_published"] = True
+    payload.setdefault("test_flag", False)
+    payload.setdefault("match_timestamp", time.time_ns())
+
+    required = (
+        payload["climb_id"],
+        payload["anonymised_run_index"],
+        payload["anonymised_run_id"],
+        payload["anonymised_biosample_id"],
+        payload["site"],
+        payload["platform"],
+    )
+
+    if not all(required):
+        log.error(
+            f"Incomplete identifiers resolved from Onyx record for climb_id: {payload['climb_id']}, cannot proceed with rerun"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "Incomplete identifiers resolved from Onyx record, cannot proceed with rerun"
+        )
+        return (False, False, True, record, read_uris, payload)
+
+    return (True, False, False, record, read_uris, payload)
+
+
 def validate(
     message: varys_message,
     args: argparse.Namespace,
@@ -1413,51 +1557,6 @@ def validate(
     alert = False
     hcid_alerts = False
 
-    try:
-        with s3_to_fh(
-            s3_uri=payload["files"][".csv"]["uri"],
-            eTag=payload["files"][".csv"]["etag"],
-        ) as fh:
-            reader = csv.DictReader(fh)
-
-            artifact_metadata = next(reader)
-
-    except EtagMismatchError:
-        log.error(f"ETag mismatch for UUID: {payload['uuid']}")
-        payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append(
-            "CSV file appears to have been modified during validation, this is likely due to a resubmission which will be processed later."
-        )
-        return (False, alert, hcid_alerts, payload, message)
-
-    except ClientError as ce:
-        if ce.response["Error"]["Code"] == "NoSuchKey":
-            log.error(f"Could not find CSV file for UUID: {payload['uuid']}")
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                "Could not find CSV file in ingest bucket, this probably means that the file has been deleted/renamed."
-            )
-            return (False, alert, hcid_alerts, payload, message)
-        else:
-            log.error(
-                f"Could not open CSV file for UUID: {payload['uuid']} due to client error: {ce}"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append("Could not open CSV file")
-            payload["rerun"] = True
-            time.sleep(args.retry_delay)
-            return (False, alert, hcid_alerts, payload, message)
-
-    except Exception as e:
-        log.error(
-            f"Could not open CSV file for UUID: {payload['uuid']} due to error: {e}"
-        )
-        payload.setdefault("ingest_errors", [])
-        payload["ingest_errors"].append("Could not open CSV file")
-        payload["rerun"] = True
-        time.sleep(args.retry_delay)
-        return (False, alert, hcid_alerts, payload, message)
-
     # This client is purely for Mscape/synthscape, ignore all other messages
     if to_validate["project"] != args.project:
         log.info(
@@ -1465,160 +1564,239 @@ def validate(
         )
         return (False, alert, hcid_alerts, payload, message)
 
-    if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
-        return (False, alert, hcid_alerts, payload, message)
+    # A rerun of an already-published artifact sources its metadata and
+    # reads from the existing Onyx record instead of the metadata CSV /
+    # inbound fastqs, which may no longer exist by the time a rerun is
+    # requested - see prepare_published_rerun().
+    rerun_of_published = bool(low_priority and to_validate.get("climb_id"))
 
-    if to_validate["platform"] in ("ont", "illumina.se"):
-        unseen_check_fail, fastq_unseen, alert, payload = ensure_file_unseen(
-            etag_field="fastq_1_etag",
-            etag=to_validate["files"][".fastq.gz"]["etag"],
-            log=log,
-            payload=payload,
+    if rerun_of_published:
+        (
+            rerun_ok,
+            rerun_retryable,
+            rerun_alert,
+            artifact_metadata,
+            read_uris,
+            payload,
+        ) = prepare_published_rerun(
+            payload=payload, log=log, job_heartbeat=job_heartbeat
         )
 
-        if unseen_check_fail:
-            log.error(
-                f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
-            )
+        if not rerun_ok:
+            alert = rerun_alert
+            if rerun_retryable:
+                payload["rerun"] = True
+                time.sleep(args.retry_delay)
+            return (False, alert, hcid_alerts, payload, message)
+
+    else:
+        try:
+            with s3_to_fh(
+                s3_uri=payload["files"][".csv"]["uri"],
+                eTag=payload["files"][".csv"]["etag"],
+            ) as fh:
+                reader = csv.DictReader(fh)
+
+                artifact_metadata = next(reader)
+
+        except EtagMismatchError:
+            log.error(f"ETag mismatch for UUID: {payload['uuid']}")
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
-                f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
+                "CSV file appears to have been modified during validation, this is likely due to a resubmission which will be processed later."
             )
+            return (False, alert, hcid_alerts, payload, message)
+
+        except ClientError as ce:
+            if ce.response["Error"]["Code"] == "NoSuchKey":
+                log.error(f"Could not find CSV file for UUID: {payload['uuid']}")
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    "Could not find CSV file in ingest bucket, this probably means that the file has been deleted/renamed."
+                )
+                return (False, alert, hcid_alerts, payload, message)
+            else:
+                log.error(
+                    f"Could not open CSV file for UUID: {payload['uuid']} due to client error: {ce}"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append("Could not open CSV file")
+                payload["rerun"] = True
+                time.sleep(args.retry_delay)
+                return (False, alert, hcid_alerts, payload, message)
+
+        except Exception as e:
+            log.error(
+                f"Could not open CSV file for UUID: {payload['uuid']} due to error: {e}"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append("Could not open CSV file")
             payload["rerun"] = True
-
+            time.sleep(args.retry_delay)
             return (False, alert, hcid_alerts, payload, message)
 
-        if not fastq_unseen:
-            log.info(
-                f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the {payload['project']} admin team if you believe this to be in error."
-            )
+        if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
             return (False, alert, hcid_alerts, payload, message)
 
-        fastq_exists = do_uris_exist(
-            to_validate["files"][".fastq.gz"]["uri"],
-        )
-
-        if not fastq_exists:
-            log.error(
-                f"Fastq file for UUID: {payload['uuid']} does not exist, skipping validation"
+        if to_validate["platform"] in ("ont", "illumina.se"):
+            unseen_check_fail, fastq_unseen, alert, payload = ensure_file_unseen(
+                etag_field="fastq_1_etag",
+                etag=to_validate["files"][".fastq.gz"]["etag"],
+                log=log,
+                payload=payload,
             )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"Fastq file does not exist, this probably means that the file has been deleted/renamed in the ingest bucket. Please contact the {payload['project']} admin team if you believe this to be in error."
-            )
-            return (False, alert, hcid_alerts, payload, message)
 
-        file_empty = are_files_empty(to_validate["files"][".fastq.gz"]["uri"])
+            if unseen_check_fail:
+                log.error(
+                    f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
+                )
+                payload["rerun"] = True
 
-        if file_empty:
-            log.info(
-                f"Fastq file for UUID: {payload['uuid']} is empty, skipping validation"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"Fastq file appears to be empty, please ensure that the submission is correct. Please contact the {payload['project']} admin team if you believe this to be in error."
-            )
-            return (False, alert, hcid_alerts, payload, message)
+                return (False, alert, hcid_alerts, payload, message)
 
-    elif to_validate["platform"] == "illumina":
+            if not fastq_unseen:
+                log.info(
+                    f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the {payload['project']} admin team if you believe this to be in error."
+                )
+                return (False, alert, hcid_alerts, payload, message)
 
-        if (
-            to_validate["files"][".1.fastq.gz"]["etag"]
-            == to_validate["files"][".2.fastq.gz"]["etag"]
-        ):
-            payload.setdefault("ingest_errors", [])
-            log.info(f"Identical fastq files detected for UUID: {payload['uuid']}")
-            payload["ingest_errors"].append(
-                f"Identical fastq files detected, please ensure that the submitted paired fastqs are correct. Please contact the {payload['project']} admin team if you believe this to be in error."
+            fastq_exists = do_uris_exist(
+                to_validate["files"][".fastq.gz"]["uri"],
             )
-            return (False, alert, hcid_alerts, payload, message)
 
-        unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
-            etag_field="fastq_1_etag",
-            etag=to_validate["files"][".1.fastq.gz"]["etag"],
-            log=log,
-            payload=payload,
-        )
-        if unseen_check_fail:
-            log.error(
-                f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
-            )
-            payload["rerun"] = True
+            if not fastq_exists:
+                log.error(
+                    f"Fastq file for UUID: {payload['uuid']} does not exist, skipping validation"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Fastq file does not exist, this probably means that the file has been deleted/renamed in the ingest bucket. Please contact the {payload['project']} admin team if you believe this to be in error."
+                )
+                return (False, alert, hcid_alerts, payload, message)
 
-            return (False, alert, hcid_alerts, payload, message)
+            file_empty = are_files_empty(to_validate["files"][".fastq.gz"]["uri"])
 
-        unseen_check_fail, fastq_2_unseen, alert, payload = ensure_file_unseen(
-            etag_field="fastq_2_etag",
-            etag=to_validate["files"][".2.fastq.gz"]["etag"],
-            log=log,
-            payload=payload,
-        )
+            if file_empty:
+                log.info(
+                    f"Fastq file for UUID: {payload['uuid']} is empty, skipping validation"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Fastq file appears to be empty, please ensure that the submission is correct. Please contact the {payload['project']} admin team if you believe this to be in error."
+                )
+                return (False, alert, hcid_alerts, payload, message)
 
-        if unseen_check_fail:
-            log.error(
-                f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
-            )
-            payload["rerun"] = True
+            read_uris = (to_validate["files"][".fastq.gz"]["uri"],)
 
-            return (False, alert, hcid_alerts, payload, message)
+        elif to_validate["platform"] == "illumina":
 
-        if not fastq_1_unseen or not fastq_2_unseen:
-            log.info(
-                f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the {payload['project']} admin team if you believe this to be in error."
-            )
-            return (False, alert, hcid_alerts, payload, message)
+            if (
+                to_validate["files"][".1.fastq.gz"]["etag"]
+                == to_validate["files"][".2.fastq.gz"]["etag"]
+            ):
+                payload.setdefault("ingest_errors", [])
+                log.info(f"Identical fastq files detected for UUID: {payload['uuid']}")
+                payload["ingest_errors"].append(
+                    f"Identical fastq files detected, please ensure that the submitted paired fastqs are correct. Please contact the {payload['project']} admin team if you believe this to be in error."
+                )
+                return (False, alert, hcid_alerts, payload, message)
 
-        fastqs_exist = do_uris_exist(
-            to_validate["files"][".1.fastq.gz"]["uri"],
-            to_validate["files"][".2.fastq.gz"]["uri"],
-        )
+            unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
+                etag_field="fastq_1_etag",
+                etag=to_validate["files"][".1.fastq.gz"]["etag"],
+                log=log,
+                payload=payload,
+            )
+            if unseen_check_fail:
+                log.error(
+                    f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
+                )
+                payload["rerun"] = True
 
-        if not fastqs_exist:
-            log.error(
-                f"At least one Fastq file for UUID: {payload['uuid']} does not exist, skipping validation"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"At least one Fastq file does not exist, this probably means that the file has been deleted/renamed in the ingest bucket. Please contact the {payload['project']} admin team if you believe this to be in error."
-            )
-            return (False, alert, hcid_alerts, payload, message)
+                return (False, alert, hcid_alerts, payload, message)
 
-        file_empty = are_files_empty(
-            to_validate["files"][".1.fastq.gz"]["uri"],
-            to_validate["files"][".2.fastq.gz"]["uri"],
-        )
+            unseen_check_fail, fastq_2_unseen, alert, payload = ensure_file_unseen(
+                etag_field="fastq_2_etag",
+                etag=to_validate["files"][".2.fastq.gz"]["etag"],
+                log=log,
+                payload=payload,
+            )
 
-        if file_empty:
-            log.info(
-                f"Fastq file(s) for UUID: {payload['uuid']} is empty, skipping validation"
+            if unseen_check_fail:
+                log.error(
+                    f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Failed to check if fastq file is unseen, please contact the {payload['project']} admin team"
+                )
+                payload["rerun"] = True
+
+                return (False, alert, hcid_alerts, payload, message)
+
+            if not fastq_1_unseen or not fastq_2_unseen:
+                log.info(
+                    f"Fastq file for UUID: {payload['uuid']} has already been ingested into the {payload['project']} project, skipping validation"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"At least one submitted fastq file appears identical to a previously ingested file, please ensure that the submission is not a duplicate. Please contact the {payload['project']} admin team if you believe this to be in error."
+                )
+                return (False, alert, hcid_alerts, payload, message)
+
+            fastqs_exist = do_uris_exist(
+                to_validate["files"][".1.fastq.gz"]["uri"],
+                to_validate["files"][".2.fastq.gz"]["uri"],
             )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append(
-                f"Fastq file(s) appear to be empty, please ensure that the submission is correct. Please contact the {payload['project']} admin team if you believe this to be in error."
+
+            if not fastqs_exist:
+                log.error(
+                    f"At least one Fastq file for UUID: {payload['uuid']} does not exist, skipping validation"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"At least one Fastq file does not exist, this probably means that the file has been deleted/renamed in the ingest bucket. Please contact the {payload['project']} admin team if you believe this to be in error."
+                )
+                return (False, alert, hcid_alerts, payload, message)
+
+            file_empty = are_files_empty(
+                to_validate["files"][".1.fastq.gz"]["uri"],
+                to_validate["files"][".2.fastq.gz"]["uri"],
             )
-            return (False, alert, hcid_alerts, payload, message)
+
+            if file_empty:
+                log.info(
+                    f"Fastq file(s) for UUID: {payload['uuid']} is empty, skipping validation"
+                )
+                payload.setdefault("ingest_errors", [])
+                payload["ingest_errors"].append(
+                    f"Fastq file(s) appear to be empty, please ensure that the submission is correct. Please contact the {payload['project']} admin team if you believe this to be in error."
+                )
+                return (False, alert, hcid_alerts, payload, message)
+
+            read_uris = (
+                to_validate["files"][".1.fastq.gz"]["uri"],
+                to_validate["files"][".2.fastq.gz"]["uri"],
+            )
 
     rc = execute_validation_pipeline(
         payload=payload,
         args=args,
         ingest_pipe=ingest_pipe,
         spike_in=artifact_metadata.get("spike_in", "none"),
+        read_uris=read_uris,
         job_heartbeat=job_heartbeat,
     )
 
@@ -1668,63 +1846,64 @@ def validate(
         payload["test_ingest_result"] = True
         return (True, alert, hcid_alerts, payload, message)
 
-    # Spot if metadata disagrees anywhere, don't act on it yet though
-    source_reconcile_success, alert, payload = onyx_reconcile(
-        payload=payload,
-        identifier="biosample_id",
-        fields_to_reconcile=[
-            "iso_country",
-            "iso_region",
-            "study_centre_id",
-            "input_type",
-            "specimen_type_details",
-            "biosample_source_id",
-            "is_approximate_date",
-            "is_public_dataset",
-            "received_date",
-            "sample_source",
-            "sample_type",
-            "sequence_purpose",
-        ],
-        log=log,
-    )
-
-    run_reconcile_success, alert, payload = onyx_reconcile(
-        payload=payload,
-        identifier="run_id",
-        fields_to_reconcile=[
-            "batch_id",
-            "bioinformatics_protocol",
-            "dehumanisation_protocol",
-            "extraction_enrichment_protocol",
-            "library_protocol",
-            "sequencing_protocol",
-            "study_centre_id",
-            "platform",
-        ],
-        log=log,
-    )
-
-    create_success, alert, payload = csv_create(
-        payload=payload,
-        log=log,
-        test_submission=False,
-    )
-
-    if alert:
-        log.error(
-            f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
+    if not rerun_of_published:
+        # Spot if metadata disagrees anywhere, don't act on it yet though
+        source_reconcile_success, alert, payload = onyx_reconcile(
+            payload=payload,
+            identifier="biosample_id",
+            fields_to_reconcile=[
+                "iso_country",
+                "iso_region",
+                "study_centre_id",
+                "input_type",
+                "specimen_type_details",
+                "biosample_source_id",
+                "is_approximate_date",
+                "is_public_dataset",
+                "received_date",
+                "sample_source",
+                "sample_type",
+                "sequence_purpose",
+            ],
+            log=log,
         )
-        payload["rerun"] = True
-        time.sleep(args.retry_delay)
-        return (False, alert, hcid_alerts, payload, message)
 
-    if not create_success:
-        log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
-        return (False, alert, hcid_alerts, payload, message)
+        run_reconcile_success, alert, payload = onyx_reconcile(
+            payload=payload,
+            identifier="run_id",
+            fields_to_reconcile=[
+                "batch_id",
+                "bioinformatics_protocol",
+                "dehumanisation_protocol",
+                "extraction_enrichment_protocol",
+                "library_protocol",
+                "sequencing_protocol",
+                "study_centre_id",
+                "platform",
+            ],
+            log=log,
+        )
 
-    payload["onyx_create_status"] = True
-    payload["created"] = True
+        create_success, alert, payload = csv_create(
+            payload=payload,
+            log=log,
+            test_submission=False,
+        )
+
+        if alert:
+            log.error(
+                f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
+            )
+            payload["rerun"] = True
+            time.sleep(args.retry_delay)
+            return (False, alert, hcid_alerts, payload, message)
+
+        if not create_success:
+            log.info(f"Failed to submit to Onyx for UUID: {payload['uuid']}")
+            return (False, alert, hcid_alerts, payload, message)
+
+        payload["onyx_create_status"] = True
+        payload["created"] = True
 
     total_length_path = os.path.join(result_path, "qc", "total_length.json")
 
@@ -1764,7 +1943,12 @@ def validate(
         log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
         return (False, alert, hcid_alerts, payload, message)
 
-    if payload["platform"] == "illumina":
+    if rerun_of_published:
+        # The inbound submission's etags are unchanged on a rerun and
+        # already recorded on the Onyx record from first-time ingest.
+        etag_fail = False
+
+    elif payload["platform"] == "illumina":
         etag_fail, alert, payload = onyx_update(
             payload=payload,
             log=log,
@@ -1794,14 +1978,20 @@ def validate(
 
     job_heartbeat.beat(stage="uploading_raw_reads", budget_s=3600)
 
-    raw_read_fail, reads_alert, payload = add_reads_record(
-        payload=payload,
-        s3_client=s3_client,
-        result_path=result_path,
-        log=log,
-        config=args.config,
-        progress_cb=upload_progress_cb,
-    )
+    if rerun_of_published:
+        # add_reads_record() would overwrite the published_reads bucket
+        # objects with a double-fastp'd derivative - the exact objects a
+        # rerun reads as its own pipeline input - so it must not run here.
+        raw_read_fail, reads_alert = False, False
+    else:
+        raw_read_fail, reads_alert, payload = add_reads_record(
+            payload=payload,
+            s3_client=s3_client,
+            result_path=result_path,
+            log=log,
+            config=args.config,
+            progress_cb=upload_progress_cb,
+        )
 
     job_heartbeat.beat(stage="uploading_taxon_records", budget_s=3600)
 

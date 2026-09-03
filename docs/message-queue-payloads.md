@@ -104,17 +104,32 @@ The payload from §2.2 (all fields from §1.2 plus `validate`, `onyx_test_create
 
 ### 3.2 Rerun input — `inbound-to_validate_rerun-mscape` / `validator`
 
-Identical payload structure to §3.1. Used for lower-priority re-validation of previously submitted artifacts (e.g. triggered externally by an admin tool). Not populated by any component within this codebase.
+Used for lower-priority re-processing of artifacts, triggered externally by an admin tool (e.g. to regenerate Scylla outputs against a new classifier database version). Not populated by any component within this codebase. Two distinct message shapes are accepted:
+
+- **Rerun of a published artifact** — a minimal message identifying an existing, already-published record by `climb_id`:
+
+  | Field | Required | Description |
+  |-------|----------|-------------|
+  | `uuid` | yes | Freshly minted per rerun request — **must not** reuse the original artifact's uuid. It keys the per-job result directory, the Nextflow job id, and becomes `match_uuid` downstream |
+  | `project` | yes | Must match the validator's `--project` |
+  | `climb_id` | yes | Identifies the published Onyx record to rerun against; a truthy `climb_id` on this queue is what selects this path |
+  | `spike_in` | no | Spike-in code override, if not resolvable from the Onyx record |
+  | `test_flag` | no | Defaults to `false` |
+
+  The validator fetches the full Onyx record by `climb_id` and, if it is published, sources everything from it instead of from a metadata CSV: `platform`, `site`, run/biosample identifiers, and the reads to run through the pipeline (the record's `fastq_1`/`fastq_2` — already-preprocessed, human-depleted reads in the published-reads bucket, not the original inbound submission). It skips duplicate-file detection, metadata reconciliation, Onyx record (re-)creation, the fastq-etag update, and re-uploading raw reads (which would overwrite the very files being read as pipeline input). `is_published` is left `true` throughout. No site-facing result is filed (§3.3 is not sent, no result JSON is written); failures are reported only via §3.6/§3.10. If the `climb_id` does not identify a published record, the rerun fails terminally (non-retryable).
+
+- **Full re-validation** — a complete §1.2/§2.2-shaped payload with no truthy `climb_id` (or `low_priority` effectively unset). Processed identically to §3.1 except at lower priority — the full CSV-based validation path runs unchanged, including Onyx record creation.
 
 **Priority selection logic**: on each loop iteration the validator polls both queues. If messages are available on both simultaneously, the priority message (§3.1) is processed and the rerun message is **nack'd** (returned to the queue for a later iteration). If only one queue has a message it is processed regardless of which queue it came from. The `low_priority` field in the result payload (§3.3) reflects which input queue the message arrived on: `true` for §3.2, `false` for §3.1. This in turn determines whether the new-artifact notification goes to the standard or rerun downstream queue (§3.4 vs §3.5).
 
 ### 3.3 Output (result) — `inbound-results-mscape-{site}` / `validator`
 
-Sent on both success and non-rerunnable failure. Contains the full accumulated payload. Additional fields set during validation:
+Sent on both success and non-rerunnable failure, **except** for a rerun of a published artifact (§3.2), which is admin-triggered rather than a site submission and so sends no result here and writes no result JSON. Contains the full accumulated payload. Additional fields set during validation:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `low_priority` | boolean | `true` if the message was received from the rerun input queue (§3.2) |
+| `rerun_of_published` | boolean | `true` if this was a rerun-of-published-artifact request (§3.2) that sourced its metadata and reads from Onyx instead of the CSV. Absent otherwise |
 | `rerun` | boolean | `true` if the failure is considered transient and eligible for retry |
 | `ingest_errors` | array[string] | Human-readable validation error messages (absent if no errors) |
 | `ingest_warnings` | array[string] | Human-readable warning messages (absent if no warnings) |

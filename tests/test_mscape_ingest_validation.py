@@ -12,6 +12,7 @@ import pytest
 from roz_scripts.mscape.mscape_ingest_validation import (
     validate,
     worker_pool_handler,
+    prepare_published_rerun,
     run,
 )
 from roz_scripts.utils.health import HealthState
@@ -241,6 +242,44 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
 
         mock_put_linkage.assert_not_called()
 
+    # --- Success path: rerun_of_published ---
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_success_rerun_of_published_skips_result_and_json(
+        self, mock_put_result, mock_put_linkage
+    ):
+        payload = base_payload(low_priority=True)
+        payload["rerun_of_published"] = True
+        self.handler.callback((True, False, [], payload, self.message))
+
+        send_calls = self.handler._varys_client.send.call_args_list
+        result_exchanges = [
+            c.kwargs["exchange"]
+            for c in send_calls
+            if c.kwargs.get("exchange", "").startswith("inbound-results-")
+        ]
+        self.assertEqual(result_exchanges, [])
+        mock_put_result.assert_not_called()
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_success_rerun_of_published_still_sends_rerun_new_artifact(
+        self, mock_put_result, mock_put_linkage
+    ):
+        payload = base_payload(low_priority=True)
+        payload["rerun_of_published"] = True
+        self.handler.callback((True, False, [], payload, self.message))
+
+        send_calls = self.handler._varys_client.send.call_args_list
+        new_artifact_exchanges = [
+            c.kwargs["exchange"]
+            for c in send_calls
+            if "new_artifact" in c.kwargs.get("exchange", "")
+        ]
+        self.assertIn("inbound-new_artifact_rerun-mscape", new_artifact_exchanges)
+        self.handler._varys_client.acknowledge_message.assert_called_once_with(self.message)
+
     # --- Success path: test_flag ---
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
@@ -425,6 +464,24 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
 
         self.handler._varys_client.nack_message.assert_not_called()
 
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_failure_rerun_of_published_no_retry_skips_result_and_acknowledges(
+        self, mock_put_result
+    ):
+        payload = base_payload(rerun=False, low_priority=True)
+        payload["rerun_of_published"] = True
+        self.handler.callback((False, False, False, payload, self.message))
+
+        self.handler._varys_client.acknowledge_message.assert_called_once_with(self.message)
+        send_calls = self.handler._varys_client.send.call_args_list
+        result_exchanges = [
+            c.kwargs["exchange"]
+            for c in send_calls
+            if c.kwargs.get("exchange", "").startswith("inbound-results-")
+        ]
+        self.assertEqual(result_exchanges, [])
+        mock_put_result.assert_not_called()
+
     # --- Failure path: rerun ---
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
@@ -534,6 +591,199 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
         fatal_path = Path(self._tmp_dir.name) / "fatal"
         self.assertTrue(fatal_path.exists())
         self.assertIn("boom", fatal_path.read_text())
+
+
+# ---------------------------------------------------------------------------
+# prepare_published_rerun()
+# ---------------------------------------------------------------------------
+
+def published_record(**overrides):
+    record = {
+        "climb_id": "CLIMB001",
+        "is_published": True,
+        "platform": "ont",
+        "site": "birm",
+        "run_index": "anon-idx-001",
+        "run_id": "anon-run-001",
+        "biosample_id": "anon-sample-001",
+        "biosample_source_id": None,
+        "fastq_1": "s3://mscape-published-reads/CLIMB001.fastq.gz",
+    }
+    record.update(overrides)
+    return record
+
+
+def rerun_payload(**overrides):
+    payload = {
+        "uuid": "rerun-uuid-1234",
+        "project": "mscape",
+        "climb_id": "CLIMB001",
+        "low_priority": True,
+        "rerun": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+class TestPreparePublishedRerun(unittest.TestCase):
+    def setUp(self):
+        self.log = MagicMock()
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.are_files_empty", return_value=False)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.do_uris_exist", return_value=True)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_ont_happy_path(self, mock_get_record, mock_exist, mock_empty):
+        mock_get_record.return_value = (False, published_record())
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertTrue(ok)
+        self.assertFalse(retryable)
+        self.assertFalse(alert)
+        self.assertEqual(read_uris, ("s3://mscape-published-reads/CLIMB001.fastq.gz",))
+        self.assertEqual(payload["platform"], "ont")
+        self.assertEqual(payload["site"], "birm")
+        self.assertEqual(payload["anonymised_run_index"], "anon-idx-001")
+        self.assertEqual(payload["anonymised_run_id"], "anon-run-001")
+        self.assertEqual(payload["anonymised_biosample_id"], "anon-sample-001")
+        self.assertNotIn("anonymised_biosample_source_id", payload)
+        self.assertTrue(payload["onyx_create_status"])
+        self.assertTrue(payload["created"])
+        self.assertTrue(payload["rerun_of_published"])
+        self.assertFalse(payload["test_flag"])
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.are_files_empty", return_value=False)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.do_uris_exist", return_value=True)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_illumina_happy_path_read_uri_order(self, mock_get_record, mock_exist, mock_empty):
+        mock_get_record.return_value = (
+            False,
+            published_record(
+                platform="illumina",
+                fastq_1="s3://mscape-published-reads/CLIMB001_1.fastq.gz",
+                fastq_2="s3://mscape-published-reads/CLIMB001_2.fastq.gz",
+            ),
+        )
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(
+            read_uris,
+            (
+                "s3://mscape-published-reads/CLIMB001_1.fastq.gz",
+                "s3://mscape-published-reads/CLIMB001_2.fastq.gz",
+            ),
+        )
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_record_alert_is_retryable(self, mock_get_record):
+        mock_get_record.return_value = (True, None)
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertFalse(ok)
+        self.assertTrue(retryable)
+        self.assertTrue(alert)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_no_record_found_is_not_retryable(self, mock_get_record):
+        mock_get_record.return_value = (False, None)
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(retryable)
+        self.assertTrue(alert)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_unpublished_record_is_not_retryable(self, mock_get_record):
+        mock_get_record.return_value = (False, published_record(is_published=False))
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(retryable)
+        self.assertTrue(alert)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_unrecognised_platform_is_not_retryable(self, mock_get_record):
+        mock_get_record.return_value = (False, published_record(platform="pacbio"))
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(retryable)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_illumina_missing_fastq_2_is_not_retryable(self, mock_get_record):
+        mock_get_record.return_value = (
+            False,
+            published_record(
+                platform="illumina",
+                fastq_1="s3://mscape-published-reads/CLIMB001_1.fastq.gz",
+                fastq_2=None,
+            ),
+        )
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(retryable)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.do_uris_exist", return_value=False)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_missing_published_reads_is_not_retryable(self, mock_get_record, mock_exist):
+        mock_get_record.return_value = (False, published_record())
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(retryable)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.are_files_empty", return_value=True)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.do_uris_exist", return_value=True)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_empty_published_reads_is_not_retryable(self, mock_get_record, mock_exist, mock_empty):
+        mock_get_record.return_value = (False, published_record())
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(retryable)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.are_files_empty", return_value=False)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.do_uris_exist", return_value=True)
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_get_record")
+    def test_biosample_source_id_included_when_present(self, mock_get_record, mock_exist, mock_empty):
+        mock_get_record.return_value = (
+            False, published_record(biosample_source_id="anon-source-001")
+        )
+
+        ok, retryable, alert, record, read_uris, payload = prepare_published_rerun(
+            payload=rerun_payload(), log=self.log
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["anonymised_biosample_source_id"], "anon-source-001")
 
 
 # ---------------------------------------------------------------------------
