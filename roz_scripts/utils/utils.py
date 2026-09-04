@@ -39,6 +39,7 @@ from kubernetes import config as k8s_config
 from kubernetes.client import ApiClient
 from kubernetes.client.exceptions import ApiException
 from kubernetes.client.api import BatchV1Api
+from kubernetes.client.api import CoreV1Api
 
 
 def get_pod_namespace() -> str:
@@ -647,6 +648,9 @@ class pipeline:
 
                 if resp.status.failed:  # type: ignore
                     if resp.status.failed >= backoff_limit:  # type: ignore
+                        self._log_pod_termination(
+                            job_name, namespace, k8s_request_timeout, stderr_path
+                        )
                         api_instance.delete_namespaced_job(
                             name=job_name,
                             namespace=namespace,
@@ -667,6 +671,9 @@ class pipeline:
                     job_age = time.time() - job_loop_start
 
                 if job_age > timeout:
+                    self._log_pod_termination(
+                        job_name, namespace, k8s_request_timeout, stderr_path
+                    )
                     api_instance.delete_namespaced_job(
                         name=job_name,
                         namespace=namespace,
@@ -692,6 +699,53 @@ class pipeline:
             self._clean_corrupt_cache(logdir, stdout_path, stderr_path)
 
         return returncode  # type: ignore
+
+    @staticmethod
+    def _log_pod_termination(
+        job_name: str, namespace: str, k8s_request_timeout: tuple, stderr_path: str
+    ) -> None:
+        """
+        Record why this job's pod(s) actually died before the caller deletes
+        the Job. `delete_namespaced_job` below runs with
+        `propagation_policy="Foreground"`, which removes the pod along with
+        it - so without this, a real OOMKill of the nextflow pod is
+        permanently invisible: roz only ever sees "job failed" (rc 1) or
+        "job timed out" (rc 124), never the container's terminated reason.
+
+        Best-effort only: any failure here must not affect the returncode
+        this method reports.
+        """
+        try:
+            core_v1 = CoreV1Api(ApiClient())
+            pods = core_v1.list_namespaced_pod(
+                namespace=namespace,
+                label_selector=f"job-name={job_name}",
+                _request_timeout=k8s_request_timeout,
+            )
+            lines = []
+            for pod in pods.items:
+                statuses = (pod.status.container_statuses or []) + (
+                    pod.status.init_container_statuses or []
+                )
+                for status in statuses:
+                    terminated = status.state.terminated
+                    if terminated is None:
+                        continue
+                    lines.append(
+                        f"pod {pod.metadata.name} container {status.name}: "
+                        f"reason={terminated.reason} exit_code={terminated.exit_code} "
+                        f"message={terminated.message}"
+                    )
+
+            if lines:
+                with open(stderr_path, "a") as stderr_fh:
+                    stderr_fh.write(
+                        "\n--- pod termination status before job deletion ---\n"
+                        + "\n".join(lines)
+                        + "\n"
+                    )
+        except Exception:
+            pass
 
     @staticmethod
     def _clean_corrupt_cache(logdir: Path, stdout_path: str, stderr_path: str) -> None:

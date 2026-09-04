@@ -914,6 +914,94 @@ class test_pipeline_execute(unittest.TestCase):
         api_instance.delete_namespaced_job.assert_not_called()
 
     @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_job_failure_logs_pod_termination_reason_before_deletion(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """A failed/timed-out Job's pod is deleted with propagation_policy
+        Foreground, which removes evidence of *why* the pod died along with
+        it - without logging the terminated reason first, a real OOMKill of
+        the nextflow pod is permanently invisible to roz."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(failed=1),
+        ]
+
+        pod = Mock()
+        pod.metadata.name = "roz-test-test-job-id-abcde"
+        container_status = Mock()
+        container_status.name = "roz-test-test-job-id"
+        container_status.state.terminated.reason = "OOMKilled"
+        container_status.state.terminated.exit_code = 137
+        container_status.state.terminated.message = None
+        pod.status.container_statuses = [container_status]
+        pod.status.init_container_statuses = None
+        mock_core_cls.return_value.list_namespaced_pod.return_value = Mock(items=[pod])
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        api_instance.delete_namespaced_job.assert_called_once()
+        with open(self.execute_kwargs["stderr_path"]) as fh:
+            self.assertIn("OOMKilled", fh.read())
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_job_timeout_logs_pod_termination_reason_before_deletion(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.return_value = self.make_status(
+            succeeded=None, failed=None, start_time=None
+        )
+
+        pod = Mock()
+        pod.metadata.name = "roz-test-test-job-id-abcde"
+        container_status = Mock()
+        container_status.name = "roz-test-test-job-id"
+        container_status.state.terminated.reason = "Error"
+        container_status.state.terminated.exit_code = 137
+        container_status.state.terminated.message = "job was still running"
+        pod.status.container_statuses = [container_status]
+        pod.status.init_container_statuses = None
+        mock_core_cls.return_value.list_namespaced_pod.return_value = Mock(items=[pod])
+
+        kwargs = {**self.execute_kwargs, "timeout": -1}
+        returncode = self.pipe.execute(**kwargs)
+
+        self.assertEqual(returncode, 124)
+        with open(self.execute_kwargs["stderr_path"]) as fh:
+            self.assertIn("Error", fh.read())
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_pod_termination_logging_failure_does_not_affect_returncode(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """Diagnostic logging is best-effort - a k8s API error while
+        fetching pod status must not change what the caller sees."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(failed=1),
+        ]
+        mock_core_cls.return_value.list_namespaced_pod.side_effect = Exception(
+            "API server unreachable"
+        )
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        api_instance.delete_namespaced_job.assert_called_once()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
     @patch("roz_scripts.utils.utils.BatchV1Api")
     @patch("roz_scripts.utils.utils.k8s_config")
     def test_default_pod_resources_in_manifest(

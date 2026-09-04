@@ -38,8 +38,14 @@ from roz_scripts.utils.utils import (
     add_nxf_pod_resource_args,
     pod_resources_from_args,
     PodResourceError,
+    throttled_progress,
 )
-from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
+from roz_scripts.utils.health import (
+    HealthState,
+    JobHeartbeat,
+    get_health_dir,
+    JOB_HEARTBEAT_STALE_S,
+)
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
 from varys import Varys
 
@@ -64,6 +70,16 @@ class chimera_worker_pool_handler:
         self._varys_lock = threading.Lock()
         self._in_flight_lock = threading.Lock()
         self._in_flight = 0
+
+        # mp.Pool never surfaces a worker being killed outright (e.g. an
+        # OOM-killed child) as a task failure - apply_async's result simply
+        # never arrives, so neither callback() nor error_callback() ever
+        # runs. Tracking submissions here lets reap_dead_workers() notice
+        # that case independently and reclaim the slot, instead of the
+        # orphaned job heartbeat silently going stale and taking the whole
+        # pod down via the liveness probe ~JOB_HEARTBEAT_STALE_S later.
+        self._pending_lock = threading.Lock()
+        self._pending = {}
 
         # Failures here are never dead-lettered - every message at this
         # stage represents a record that must eventually be published, and
@@ -114,7 +130,7 @@ class chimera_worker_pool_handler:
         with self._in_flight_lock:
             self._in_flight += 1
 
-        self.worker_pool.apply_async(
+        async_result = self.worker_pool.apply_async(
             func=process_record,
             kwds={
                 "message": message,
@@ -127,10 +143,15 @@ class chimera_worker_pool_handler:
             error_callback=functools.partial(self.error_callback, message),
         )
 
+        with self._pending_lock:
+            self._pending[match_uuid] = (time.monotonic(), async_result, message)
+
     def callback(self, result):
         success, timed_out, payload, match_uuid, is_rerun, message = result
 
         self._health.clear_job(match_uuid)
+        with self._pending_lock:
+            self._pending.pop(match_uuid, None)
         self._consecutive_worker_errors = 0
 
         if success:
@@ -201,6 +222,8 @@ class chimera_worker_pool_handler:
             match_uuid = "unknown"
 
         self._health.clear_job(match_uuid)
+        with self._pending_lock:
+            self._pending.pop(match_uuid, None)
 
         with self._varys_lock:
             self._varys_client.nack_message(message)
@@ -230,6 +253,77 @@ class chimera_worker_pool_handler:
                     self._varys_client, source=self._project, description=r
                 ),
             )
+
+    def reap_dead_workers(self, stale_s: float = JOB_HEARTBEAT_STALE_S) -> None:
+        """
+        Notice a worker process that was killed outright (e.g. OOM-killed by
+        the kernel) rather than one that failed or raised - see the note on
+        `self._pending` in __init__. A pending job whose result isn't ready,
+        whose heartbeat file has gone stale, and whose recorded pid is no
+        longer alive can only mean its worker died mid-task; reclaim the
+        slot instead of waiting for the pod's liveness probe to notice via
+        JOB_HEARTBEAT_STALE_S and restart the whole pod, taking every other
+        in-flight job down with it.
+
+        A worker that is merely slow (pid still alive) is left alone - its
+        own stage deadline/heartbeat staleness governs it, same as always.
+        """
+        jobs_dir = Path(get_health_dir()) / "jobs"
+
+        with self._pending_lock:
+            pending_snapshot = list(self._pending.items())
+
+        for match_uuid, (submit_time, async_result, message) in pending_snapshot:
+            if async_result.ready():
+                # A result did arrive - callback()/error_callback() will
+                # clear this entry themselves; nothing to do here.
+                continue
+
+            job_file = jobs_dir / f"{match_uuid}.json"
+            try:
+                job = json.loads(job_file.read_text())
+            except (OSError, json.JSONDecodeError):
+                # No heartbeat file yet - only a concern if the job has
+                # never started beating in an unreasonable amount of time.
+                if time.monotonic() - submit_time <= stale_s:
+                    continue
+                pid = None
+            else:
+                stage_ns = job.get("stage_ns", 0)
+                if (time.time_ns() - stage_ns) / 1e9 <= stale_s:
+                    continue
+                pid = job.get("pid")
+
+            if pid is not None:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    # pid exists and we can't signal it - don't reap
+                    # something that might still be running.
+                    continue
+                else:
+                    continue
+
+            self._log.error(
+                f"Chimera worker for UUID: {match_uuid} appears to have died "
+                f"without reporting (pid {pid}, no heartbeat for >{stale_s}s) "
+                "- reclaiming slot and re-queueing message"
+            )
+            self._send_remote_alert(
+                match_uuid,
+                "Chimera worker process died without reporting (likely OOM-killed)",
+            )
+
+            self._health.clear_job(match_uuid)
+            with self._pending_lock:
+                self._pending.pop(match_uuid, None)
+
+            with self._varys_lock:
+                self._varys_client.nack_message(message)
+
+            self._job_finished()
 
     def close(self):
         self.worker_pool.close()
@@ -397,7 +491,10 @@ def create_samplesheet(metadata: list, out_path: Path):
 
 
 def handle_alignment_report(
-    alignment_report_path: str, payload: dict, log: logging.Logger
+    alignment_report_path: str,
+    payload: dict,
+    log: logging.Logger,
+    progress_cb=None,
 ):
 
     with open(alignment_report_path) as report_fh:
@@ -426,10 +523,21 @@ def handle_alignment_report(
             )
             return False
 
+        if progress_cb:
+            # progress_cb is throttled_progress()-wrapped, built for boto3's
+            # Callback(bytes_transferred) signature - the argument itself is
+            # unused, this just keeps the call shape consistent.
+            progress_cb(0)
+
     return True
 
 
-def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logger):
+def handle_sylph_report(
+    sylph_report_path: str,
+    payload: dict,
+    log: logging.Logger,
+    progress_cb=None,
+):
     with open(sylph_report_path) as report_fh:
         reader = csv.DictReader(report_fh, delimiter="\t")
 
@@ -481,10 +589,19 @@ def handle_sylph_report(sylph_report_path: str, payload: dict, log: logging.Logg
             )
             return False
 
+        if progress_cb:
+            progress_cb(0)
+
     return True
 
 
-def push_bam_file(bam_path: str, payload: dict, log: logging.Logger, config: dict):
+def push_bam_file(
+    bam_path: str,
+    payload: dict,
+    log: logging.Logger,
+    config: dict,
+    progress_cb=None,
+):
 
     s3_client = boto3.client(
         "s3",
@@ -505,6 +622,7 @@ def push_bam_file(bam_path: str, payload: dict, log: logging.Logger, config: dic
             bam_path,
             s3_bucket,
             s3_key,
+            progress_cb=progress_cb,
         )
     except Exception:
         log.exception(
@@ -522,11 +640,13 @@ def push_chimera_report(
     payload: dict,
     log: logging.Logger,
     config: dict,
+    progress_cb=None,
 ) -> str:
 
     s3_client = boto3.client(
         "s3",
         endpoint_url="https://s3.climb.ac.uk",
+        config=S3_CLIENT_CONFIG,
     )
 
     s3_bucket = project_bucket(config, payload["project"], "chimera_reports")
@@ -546,13 +666,17 @@ def push_chimera_report(
             report_path,
             s3_bucket,
             s3_key,
+            progress_cb=progress_cb,
         )
 
-        s3_upload_file(
-            s3_client,
-            report_path,
-            s3_bucket,
-            f"{payload['climb_id']}.{db_version}.{report_suffix}",
+        # A server-side copy for the db-version-tagged key instead of a
+        # second local-file upload - halves transfer time for this report
+        # and removes a second blocking call from the (already tight)
+        # post_pipeline budget.
+        s3_client.copy_object(
+            Bucket=s3_bucket,
+            CopySource={"Bucket": s3_bucket, "Key": s3_key},
+            Key=f"{payload['climb_id']}.{db_version}.{report_suffix}",
         )
     except Exception:
         log.exception(
@@ -679,7 +803,20 @@ def process_record(
 
         log.info(f"Chimera pipeline completed with exit code {rc} for {match_uuid}")
 
-        job_heartbeat.beat(stage="post_pipeline", budget_s=600)
+        # post_pipeline used to be a single 600s budget covering everything
+        # below (trace parsing, two rounds of batched Onyx updates, three
+        # report/BAM uploads, and a final Onyx update) with no beat()
+        # anywhere inside it - a slow S3 upload or Onyx call could exceed
+        # the deadline, or just go >900s (JOB_HEARTBEAT_STALE_S) without a
+        # single heartbeat, and take the whole pod down via the liveness
+        # probe. Each stage now gets its own budget and re-beats, and a
+        # throttled callback threaded through every upload/batch keeps the
+        # heartbeat fresh for the duration of that stage.
+        upload_progress_cb = throttled_progress(
+            lambda: job_heartbeat.beat(stage="post_pipeline_uploads")
+        )
+
+        job_heartbeat.beat(stage="parsing_trace", budget_s=300)
 
         ingest_fail, payload = ret_0_parser(
             log=log,
@@ -706,14 +843,19 @@ def process_record(
                 f"Alignment report not found for {match_uuid} at expected path {alignment_report_path}"
             )
 
+        job_heartbeat.beat(stage="alignment_onyx_updates", budget_s=1800)
+
         alignment_success = handle_alignment_report(
             alignment_report_path=alignment_report_path,
             payload=payload,
             log=log,
+            progress_cb=upload_progress_cb,
         )
 
         if not alignment_success:
             return fail(f"Failed to process alignment report for {match_uuid}")
+
+        job_heartbeat.beat(stage="uploading_alignment_report", budget_s=900)
 
         try:
             push_chimera_report(
@@ -723,6 +865,7 @@ def process_record(
                 payload=payload,
                 log=log,
                 config=args.config,
+                progress_cb=upload_progress_cb,
             )
         except Exception:
             return fail(f"Failed to push alignment report for {match_uuid}")
@@ -753,14 +896,19 @@ def process_record(
                     )
 
         else:
+            job_heartbeat.beat(stage="sylph_onyx_updates", budget_s=1800)
+
             sylph_success = handle_sylph_report(
                 sylph_report_path=sylph_report_path,
                 payload=payload,
                 log=log,
+                progress_cb=upload_progress_cb,
             )
 
             if not sylph_success:
                 return fail(f"Failed to process Sylph report for {match_uuid}")
+
+            job_heartbeat.beat(stage="uploading_sylph_report", budget_s=900)
 
             try:
                 push_chimera_report(
@@ -770,6 +918,7 @@ def process_record(
                     payload=payload,
                     log=log,
                     config=args.config,
+                    progress_cb=upload_progress_cb,
                 )
             except Exception:
                 return fail(f"Failed to push Sylph report for {match_uuid}")
@@ -789,12 +938,17 @@ def process_record(
                 f"BAM file not found for {match_uuid} at expected path {bam_path}"
             )
 
+        job_heartbeat.beat(stage="uploading_bam", budget_s=3600)
+
         bam_uri = push_bam_file(
             bam_path=bam_path,
             payload=payload,
             log=log,
             config=args.config,
+            progress_cb=upload_progress_cb,
         )
+
+        job_heartbeat.beat(stage="final_onyx_update", budget_s=600)
 
         update_fail, update_alert, payload = onyx_update(
             payload=payload,
@@ -859,6 +1013,8 @@ def run(args):
         )
 
         while True:
+            handler.reap_dead_workers()
+
             if handler.in_flight() >= args.n_workers:
                 health.heartbeat()
                 time.sleep(5)

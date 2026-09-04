@@ -690,21 +690,23 @@ class TestPushChimeraReport(unittest.TestCase):
         self.assertEqual(
             uri, "s3://mscape-fake-chimera-reports/CLIMB001.alignment_report.tsv"
         )
-        mock_s3.upload_file.assert_any_call(
+        mock_s3.upload_file.assert_called_once_with(
             "/tmp/CLIMB001.alignment_report.tsv",
             "mscape-fake-chimera-reports",
             "CLIMB001.alignment_report.tsv",
             Config=S3_TRANSFER_CONFIG,
             Callback=None,
         )
-        mock_s3.upload_file.assert_any_call(
-            "/tmp/CLIMB001.alignment_report.tsv",
-            "mscape-fake-chimera-reports",
-            "CLIMB001.v1.0.alignment_report.tsv",
-            Config=S3_TRANSFER_CONFIG,
-            Callback=None,
+        # The db-version-tagged copy is now a server-side copy, not a
+        # second local-file upload - see push_chimera_report.
+        mock_s3.copy_object.assert_called_once_with(
+            Bucket="mscape-fake-chimera-reports",
+            CopySource={
+                "Bucket": "mscape-fake-chimera-reports",
+                "Key": "CLIMB001.alignment_report.tsv",
+            },
+            Key="CLIMB001.v1.0.alignment_report.tsv",
         )
-        self.assertEqual(mock_s3.upload_file.call_count, 2)
 
     @patch("roz_scripts.mscape.chimera_runner.boto3.client")
     def test_no_db_version_raises_and_uploads_nothing(self, mock_boto_client):
@@ -979,6 +981,64 @@ class TestProcessRecord(unittest.TestCase):
         self.assertEqual(match_uuid, payload["match_uuid"])
         self.assertTrue(is_rerun)
         self.assertIs(out_msg, msg)
+
+    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
+    @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
+    @patch("roz_scripts.mscape.chimera_runner.push_chimera_report")
+    @patch("os.path.exists")
+    @patch("roz_scripts.mscape.chimera_runner.JobHeartbeat")
+    @patch("roz_scripts.mscape.chimera_runner.handle_sylph_report")
+    @patch("roz_scripts.mscape.chimera_runner.handle_alignment_report")
+    @patch("roz_scripts.mscape.chimera_runner.ret_0_parser")
+    @patch("roz_scripts.mscape.chimera_runner.create_samplesheet")
+    @patch("roz_scripts.mscape.chimera_runner.onyx_get_metadata")
+    def test_post_pipeline_beats_per_stage_budget_and_threads_progress_cb(
+        self, mock_get_metadata, mock_create_ss, mock_ret_0, mock_handle_align, mock_handle_sylph,
+        mock_heartbeat_cls, mock_exists, mock_push_report, mock_push_bam, mock_onyx_update
+    ):
+        """Regression test: post_pipeline used to be a single 600s budget
+        with zero beats anywhere inside it (Onyx updates + three uploads),
+        which could exceed the deadline or go heartbeat-stale on a slow S3
+        upload and kill the whole pod. Every post-pipeline stage must now
+        beat with its own budget, and every upload/batched-update call site
+        must get a live progress_cb rather than None."""
+        payload = make_payload()
+        msg = make_message(payload)
+        pipe = MagicMock()
+        pipe.execute.return_value = 0
+        mock_get_metadata.return_value = make_metadata()
+        mock_ret_0.return_value = (False, payload)
+        mock_exists.return_value = True
+        mock_handle_align.return_value = True
+        mock_handle_sylph.return_value = True
+        mock_push_bam.return_value = "s3://mscape-chimera-bams/CLIMB001.chimera.bam"
+        mock_onyx_update.return_value = (False, False, payload)
+
+        process_record(message=msg, args=make_args(), chimera_pipe=pipe, namespace="ns")
+
+        beat_calls = mock_heartbeat_cls.return_value.beat.call_args_list
+        beat_budgets = {
+            c.kwargs.get("stage"): c.kwargs.get("budget_s") for c in beat_calls
+        }
+
+        self.assertNotIn("post_pipeline", beat_budgets)
+        for stage in (
+            "parsing_trace",
+            "alignment_onyx_updates",
+            "uploading_alignment_report",
+            "sylph_onyx_updates",
+            "uploading_sylph_report",
+            "uploading_bam",
+            "final_onyx_update",
+        ):
+            self.assertIn(stage, beat_budgets)
+            self.assertIsNotNone(beat_budgets[stage], f"{stage} beat missing budget_s")
+
+        self.assertIsNotNone(mock_handle_align.call_args.kwargs["progress_cb"])
+        self.assertIsNotNone(mock_handle_sylph.call_args.kwargs["progress_cb"])
+        self.assertIsNotNone(mock_push_bam.call_args.kwargs["progress_cb"])
+        for report_call in mock_push_report.call_args_list:
+            self.assertIsNotNone(report_call.kwargs["progress_cb"])
 
     @patch("roz_scripts.mscape.chimera_runner.onyx_update")
     @patch("roz_scripts.mscape.chimera_runner.push_bam_file")
@@ -1293,6 +1353,133 @@ class TestChimeraWorkerPoolHandlerErrorCallback(unittest.TestCase):
         # Only 2 consecutive since the intervening success reset the counter
         fatal_path = Path(self._tmp_dir.name) / "fatal"
         self.assertFalse(fatal_path.exists())
+
+
+class TestChimeraWorkerPoolHandlerReapDeadWorkers(unittest.TestCase):
+    """mp.Pool never surfaces a worker being killed outright (e.g. OOM-
+    killed by the kernel) as a task failure - apply_async's result just
+    never arrives, so neither callback() nor error_callback() runs. Left
+    alone, the orphaned heartbeat file goes stale and takes the whole pod
+    down via the liveness probe. reap_dead_workers() must notice this
+    itself: a pending job whose result isn't ready, whose heartbeat is
+    stale, and whose recorded pid is confirmed dead gets reclaimed; a job
+    that is merely slow (pid still alive) must be left alone."""
+
+    def setUp(self):
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp_dir.cleanup)
+
+        with patch("roz_scripts.mscape.chimera_runner.mp.get_context"):
+            self.handler = chimera_worker_pool_handler(
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=MagicMock(),
+            )
+        self.message = make_message()
+        self.handler._in_flight = 1
+
+        self._get_health_dir_patch = patch(
+            "roz_scripts.mscape.chimera_runner.get_health_dir",
+            return_value=self._tmp_dir.name,
+        )
+        self._get_health_dir_patch.start()
+        self.addCleanup(self._get_health_dir_patch.stop)
+
+        self.jobs_dir = Path(self._tmp_dir.name) / "jobs"
+        self.jobs_dir.mkdir(parents=True, exist_ok=True)
+
+    def _write_job_file(self, uuid: str, pid: int, stale_by_s: float):
+        stage_ns = time.time_ns() - int(stale_by_s * 1e9)
+        (self.jobs_dir / f"{uuid}.json").write_text(
+            json.dumps(
+                {
+                    "uuid": uuid,
+                    "pid": pid,
+                    "stage": "uploading_bam",
+                    "stage_ns": stage_ns,
+                    "stage_start_ns": stage_ns,
+                    "stage_budget_s": 3600,
+                }
+            )
+        )
+
+    def _pend(self, uuid: str, async_result=None, submit_time=None):
+        async_result = async_result if async_result is not None else MagicMock(ready=lambda: False)
+        self.handler._pending[uuid] = (
+            submit_time if submit_time is not None else time.monotonic(),
+            async_result,
+            self.message,
+        )
+        return async_result
+
+    def test_result_already_ready_is_left_for_callback(self):
+        async_result = self._pend("uuid-1", async_result=MagicMock(ready=lambda: True))
+
+        self.handler.reap_dead_workers(stale_s=1)
+
+        self.handler._varys_client.nack_message.assert_not_called()
+        self.assertIn("uuid-1", self.handler._pending)
+
+    def test_alive_pid_with_stale_heartbeat_is_left_alone(self):
+        """The job may just be slow (e.g. mid multi-GB upload) - only a
+        confirmed-dead pid means the worker itself died."""
+        self._pend("uuid-2")
+        self._write_job_file("uuid-2", pid=os.getpid(), stale_by_s=5)
+
+        self.handler.reap_dead_workers(stale_s=1)
+
+        self.handler._varys_client.nack_message.assert_not_called()
+        self.assertIn("uuid-2", self.handler._pending)
+        self.assertEqual(self.handler.in_flight(), 1)
+
+    def test_fresh_heartbeat_with_dead_pid_is_left_alone(self):
+        """A stale-but-not-yet-past-threshold heartbeat must not be reaped
+        even if the pid check would otherwise say dead - the staleness
+        window is what makes this safe to reclaim at all."""
+        self._pend("uuid-3")
+        self._write_job_file("uuid-3", pid=999999, stale_by_s=0.1)
+
+        with patch("roz_scripts.mscape.chimera_runner.os.kill", side_effect=ProcessLookupError):
+            self.handler.reap_dead_workers(stale_s=60)
+
+        self.handler._varys_client.nack_message.assert_not_called()
+        self.assertIn("uuid-3", self.handler._pending)
+
+    def test_dead_pid_with_stale_heartbeat_is_reaped(self):
+        self._pend("uuid-4")
+        self._write_job_file("uuid-4", pid=999999, stale_by_s=5)
+
+        with patch("roz_scripts.mscape.chimera_runner.os.kill", side_effect=ProcessLookupError):
+            self.handler.reap_dead_workers(stale_s=1)
+
+        self.handler._varys_client.nack_message.assert_called_once_with(self.message)
+        self.handler._health.clear_job.assert_called_once_with("uuid-4")
+        self.assertNotIn("uuid-4", self.handler._pending)
+        self.assertEqual(self.handler.in_flight(), 0)
+
+    def test_no_heartbeat_file_within_grace_is_left_alone(self):
+        """Nothing has written a heartbeat yet - fine immediately after
+        submission, before the worker has had a chance to beat."""
+        self._pend("uuid-5", submit_time=time.monotonic())
+
+        self.handler.reap_dead_workers(stale_s=60)
+
+        self.handler._varys_client.nack_message.assert_not_called()
+        self.assertIn("uuid-5", self.handler._pending)
+
+    def test_no_heartbeat_file_past_grace_is_reaped(self):
+        """A worker that died before ever writing a heartbeat file (e.g.
+        killed during onyx_get_metadata, before the first beat) must still
+        be reclaimed eventually."""
+        self._pend("uuid-6", submit_time=time.monotonic() - 120)
+
+        self.handler.reap_dead_workers(stale_s=1)
+
+        self.handler._varys_client.nack_message.assert_called_once_with(self.message)
+        self.assertNotIn("uuid-6", self.handler._pending)
+        self.assertEqual(self.handler.in_flight(), 0)
 
 
 # ---------------------------------------------------------------------------
