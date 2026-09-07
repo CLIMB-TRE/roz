@@ -17,6 +17,12 @@ from roz_scripts.utils.utils import (
 )
 from roz_scripts.general.s3_matcher import parse_object_key
 from roz_scripts.utils.health import HealthState, get_health_dir
+from roz_scripts.utils.config import (
+    load_config,
+    parse_ingest_bucket_name,
+    site_bucket,
+    ConfigError,
+)
 from varys import Varys
 
 from onyx import (
@@ -182,18 +188,13 @@ def csv_update(parsed_message, config_dict, log):
     record = parsed_message["Records"][0]
     bucket_name = record["s3"]["bucket"]["name"]
 
-    parsed_bucket_name = {
-        x: y
-        for x, y in zip(
-            ("project", "site_str", "platform", "test_flag"),
-            bucket_name.split("-"),
-        )
-    }
+    try:
+        parsed_bucket_name = parse_ingest_bucket_name(config_dict, bucket_name)
+    except ConfigError as e:
+        log.error(f"Skipping unresolvable bucket {bucket_name!r}: {e}")
+        return (True, False)
 
-    if "." in parsed_bucket_name["site_str"]:
-        site = parsed_bucket_name["site_str"].split(".")[-2]
-    else:
-        site = parsed_bucket_name["site_str"]
+    site = parsed_bucket_name["site"]
 
     # ignore files from test buckets
     if parsed_bucket_name["test_flag"] == "test":
@@ -283,7 +284,7 @@ def csv_update(parsed_message, config_dict, log):
         "run_index": parsed_object_key["run_index"],
         "run_id": parsed_object_key["run_id"],
         "site": site,
-        "site_str": parsed_bucket_name["site_str"],
+        "site_str": parsed_bucket_name["raw_site"],
         "files": {
             ".csv": {
                 "uri": f"s3://{bucket_name}/{record['s3']['object']['key']}",
@@ -314,7 +315,7 @@ def csv_update(parsed_message, config_dict, log):
         payload["update_status"] = "failed"
 
         s3_client.put_object(
-            Bucket=f"{parsed_bucket_name['project']}-{parsed_bucket_name['site_str']}-results",
+            Bucket=site_bucket(config_dict, parsed_bucket_name["project"], parsed_bucket_name["raw_site"], "results"),
             Key=f"{payload['artifact']}.update.json",
             Body=json.dumps(payload),
         )
@@ -358,7 +359,7 @@ def csv_update(parsed_message, config_dict, log):
     payload["update_status"] = "failed" if update_failure else "success"
 
     s3_client.put_object(
-        Bucket=f"{parsed_bucket_name['project']}-{parsed_bucket_name['site_str']}-results",
+        Bucket=site_bucket(config_dict, parsed_bucket_name["project"], parsed_bucket_name["raw_site"], "results"),
         Key=f"{payload['artifact']}.update.json",
         Body=json.dumps(payload),
     )
@@ -378,8 +379,7 @@ def run(args):
             auto_acknowledge=False,
         )
 
-        with open(os.environ["ROZ_CONFIG_JSON"], "r") as f:
-            config_dict = json.load(f)
+        config_dict = load_config()
 
         health = HealthState(get_health_dir())
 

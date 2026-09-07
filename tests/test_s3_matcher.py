@@ -19,7 +19,7 @@ fake_roz_cfg_dict = {
         "project1": {
             "artifact_layout": "project|run_index|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["subsite1.site1.project1", "site2.project1"],
+            "sites": ["subsite1.site1.project1", "site2.project1", "site1"],
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],
@@ -75,7 +75,7 @@ fake_roz_cfg_dict = {
         "project2": {
             "artifact_layout": "project|run_index|run_id",
             "files": [".1.fastq.gz", ".2.fastq.gz", ".csv"],
-            "sites": ["subsite1.site1.project2", "site2.project2"],
+            "sites": ["subsite1.site1.project2", "site2.project2", "site1"],
             "bucket_policies": {
                 "site_ingest": ["get", "put", "list", "delete"],
                 "site_read": ["get", "list"],

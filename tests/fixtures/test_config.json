@@ -6,6 +6,7 @@
       "artifact_layout": "project|run_index|run_id",
       "sites": {
         "birm.mscape": "analysis",
+        "subteam1.birm.mscape": "analysis",
         "site1.mscape": "analysis",
         "site2.mscape": "uploader",
         "site3.mscape": "uploader",
