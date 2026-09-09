@@ -1241,6 +1241,202 @@ class Test_mscape_validator(unittest.TestCase):
                 "test_climb_id/test_climb_id_286.fastq.gz",
             )
 
+    def test_rerun_does_not_write_to_publish_delay_log(self):
+        """publish_delay measures elapsed time since the artifact's original
+        match_timestamp - for a rerun (low_priority=True) that timestamp is
+        from whenever it was first submitted, so including reruns would
+        inject bogus, arbitrarily large delay values into what's meant to be
+        a first-time match-to-publish latency metric."""
+        with (
+            patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,
+            patch("roz_scripts.utils.utils.OnyxClient") as mock_client,
+        ):
+            mock_pipeline.return_value.execute.return_value = 0
+
+            mock_pipeline.return_value.cmd.return_value = "Hello pytest :)"
+
+            mock_client.return_value.__enter__.return_value.update.return_value = {}
+
+            mock_client.return_value.__enter__.return_value.csv_create.return_value = {
+                "climb_id": "test_climb_id",
+                "run_index": "sample-test",
+                "run_id": "run-test",
+                "biosample_id": "test_biosample_id",
+                "biosample_source_id": "test_biosample_source_id",
+            }
+
+            mock_client.return_value.__enter__.return_value.identify = Mock(
+                side_effect=OnyxRequestError(
+                    message="test identify exception",
+                    response=MockResponse(
+                        status_code=404,
+                        json_data={
+                            "data": [],
+                            "messages": {"run_index": "Test run_index error handling"},
+                        },
+                    ),
+                )
+            )
+
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(
+                ()
+            )
+
+            result_path = os.path.join(DIR, example_validator_message["uuid"])
+            preprocess_path = os.path.join(result_path, "preprocess")
+            classifications_path = os.path.join(result_path, "classifications")
+            pipeline_info_path = os.path.join(result_path, "pipeline_info")
+            binned_reads_path = os.path.join(result_path, "reads_by_taxa")
+            read_fraction_path = os.path.join(result_path, "read_fractions")
+            qc_path = os.path.join(result_path, "qc")
+
+            os.makedirs(preprocess_path, exist_ok=True)
+            os.makedirs(classifications_path, exist_ok=True)
+            os.makedirs(pipeline_info_path, exist_ok=True)
+            os.makedirs(binned_reads_path, exist_ok=True)
+            os.makedirs(read_fraction_path, exist_ok=True)
+            os.makedirs(qc_path, exist_ok=True)
+
+            open(
+                os.path.join(
+                    preprocess_path,
+                    f"{example_validator_message['uuid']}.fastp.fastq.gz",
+                ),
+                "w",
+            ).close()
+            open(
+                os.path.join(read_fraction_path, "human_filtered.fastq.gz"), "w"
+            ).close()
+            open(os.path.join(read_fraction_path, "viral.fastq.gz"), "w").close()
+            open(os.path.join(read_fraction_path, "unclassified.fastq.gz"), "w").close()
+            open(
+                os.path.join(read_fraction_path, "viral_and_unclassified.fastq.gz"), "w"
+            ).close()
+            open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.txt"), "w"
+            ).close()
+            open(os.path.join(binned_reads_path, "286.fastq.gz"), "w").close()
+            open(
+                os.path.join(
+                    result_path, f"{example_validator_message['uuid']}_report.html"
+                ),
+                "w",
+            ).close()
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"execution_trace_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write(example_execution_trace)
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"workflow_version_{example_validator_message['uuid']}.txt",
+                ),
+                "w",
+            ) as f:
+                f.write("test_version")
+
+            with open(
+                os.path.join(
+                    pipeline_info_path,
+                    f"params_{example_validator_message['uuid']}.log",
+                ),
+                "w",
+            ) as f:
+                f.write(json.dumps(example_params))
+
+            with open(
+                os.path.join(classifications_path, "PlusPF.kraken_report.json"), "w"
+            ) as f:
+                f.write(json.dumps(example_k2_out))
+
+            with open(
+                os.path.join(binned_reads_path, "reads_summary_combined.json"), "w"
+            ) as f:
+                json.dump(example_reads_summary, f)
+
+            spike_count_summary = {
+                "zymo-mc_D6320": {
+                    "Allobacillus_halotolerans": {
+                        "taxid": "570278",
+                        "human_readable": "Allobacillus halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                    "Imtechella_halotolerans": {
+                        "taxid": "1165090",
+                        "human_readable": "Imtechella halotolerans",
+                        "mapped_count": 0,
+                        "mapped_percentage": 0.0,
+                    },
+                }
+            }
+
+            spike_summary = {
+                "zymo-mc_D6320": "pass",
+            }
+
+            with open(os.path.join(qc_path, "spike_count_summary.json"), "w") as f:
+                json.dump(spike_count_summary, f)
+
+            with open(os.path.join(qc_path, "spike_summary.json"), "w") as f:
+                json.dump(spike_summary, f)
+
+            with open(os.path.join(qc_path, "total_length.json"), "w") as f:
+                json.dump({"total_len": 69}, f)
+
+            args = SimpleNamespace(
+                logfile=MSCAPE_VALIDATION_LOG_FILENAME,
+                publish_delay_log=MSCAPE_PUBLISH_DELAY_LOG_FILENAME,
+                log_level="DEBUG",
+                nxf_executable="test",
+                config=_TEST_CONFIG,
+                k2_host="test",
+                result_dir=DIR,
+                n_workers=2,
+                retry_delay=2,
+                project="mscape",
+                max_human_reads=10000,
+                namespace="climb-gre-test",
+            )
+
+            pipeline = utils.pipeline(
+                pipe="test",
+                nxf_executable="test",
+                config="test",
+            )
+
+            test_message = copy.deepcopy(example_validator_message)
+
+            in_message = SimpleNamespace(body=json.dumps(test_message))
+
+            delay_log_lines_before = 0
+            if os.path.exists(MSCAPE_PUBLISH_DELAY_LOG_FILENAME):
+                with open(MSCAPE_PUBLISH_DELAY_LOG_FILENAME) as f:
+                    delay_log_lines_before = len(f.readlines())
+
+            Success, alert, hcid_alerts, payload, message = (
+                mscape_ingest_validation.validate(
+                    in_message, args, pipeline, low_priority=True
+                )
+            )
+
+            self.assertTrue(Success)
+            self.assertFalse(alert)
+            self.assertEqual(payload["published"], True)
+
+            delay_log_lines_after = 0
+            if os.path.exists(MSCAPE_PUBLISH_DELAY_LOG_FILENAME):
+                with open(MSCAPE_PUBLISH_DELAY_LOG_FILENAME) as f:
+                    delay_log_lines_after = len(f.readlines())
+
+            self.assertEqual(delay_log_lines_before, delay_log_lines_after)
+
     def test_too_much_human(self):
         with (
             patch("roz_scripts.utils.utils.pipeline") as mock_pipeline,

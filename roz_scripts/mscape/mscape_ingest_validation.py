@@ -1893,7 +1893,7 @@ def validate(
     if publish_fail:
         return (False, alert, hcid_alerts, payload, message)
 
-    if args.publish_delay_log:
+    if args.publish_delay_log and not payload["low_priority"]:
         try:
             with open(args.publish_delay_log, "a") as publish_delay_fh:
                 publish_delay_fh.write(
