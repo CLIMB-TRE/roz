@@ -4,6 +4,7 @@ from roz_scripts.general import s3_controller
 import os
 import boto3
 from botocore.exceptions import ClientError
+import copy
 import json
 from unittest.mock import patch, Mock
 from types import SimpleNamespace
@@ -346,6 +347,49 @@ class TestS3Controller(unittest.TestCase):
 
             self.assertFalse(bucket_does_not_exist)
 
+    def test_bryn_team_slug_uses_username_not_config_site_key(self):
+        # "subsite1.site2.project1" is a config site key whose actual bryn/RGW
+        # username ("bryn-site2.subsite1.project1") truncates to a completely
+        # different slug - the two must not be conflated, or existence checks and
+        # policy puts end up hitting the wrong team's bryn endpoint.
+        site = "subsite1.site2.project1"
+        username = fake_aws_cred_dict["project1"][site]["username"]
+
+        slug = s3_controller.bryn_team_slug(fake_aws_cred_dict, "project1", site)
+
+        self.assertEqual(slug, username[0:16].replace(".", "-"))
+        self.assertNotEqual(slug, site[0:16].replace(".", "-"))
+
+    def test_check_bucket_exist_and_create_uses_consistent_slug_for_existence_and_creation(
+        self,
+    ):
+        # Regression test: check_site_bucket_exists and create_site_bucket must be
+        # queried against the same bryn team slug for a given site, or the
+        # existence check can silently look at the wrong team's buckets.
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+
+        with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
+            mock_requests.get.return_value = mock_response(404, {})
+            mock_requests.post.return_value = mock_response(201, {})
+
+            s3_controller.check_bucket_exist_and_create(
+                fake_aws_cred_dict, config_map, fake_roz_cfg_dict
+            )
+
+            expected_slug = s3_controller.bryn_team_slug(
+                fake_aws_cred_dict, "project1", "subsite1.site2.project1"
+            )
+
+            get_urls = [call.args[0] for call in mock_requests.get.call_args_list]
+            post_urls = [call.args[0] for call in mock_requests.post.call_args_list]
+
+            self.assertTrue(
+                any(f"/teams/{expected_slug}/" in url for url in get_urls)
+            )
+            self.assertTrue(
+                any(f"/teams/{expected_slug}/" in url for url in post_urls)
+            )
+
     def test_create_site_bucket(self):
         with patch("roz_scripts.general.s3_controller.requests") as mock_requests:
             mock_requests.post = Mock(
@@ -556,6 +600,403 @@ class TestS3Controller(unittest.TestCase):
                             (bucket, bucket_arn, project, site),
                             policy_results["site_buckets"],
                         )
+
+    def _apply_expected_policies(self, config_map):
+        """Create every bucket in config_map and put the policy generate_*_policy
+        would produce for it, simulating a fleet that's already correctly applied.
+        """
+        for project, project_config in config_map.items():
+            for site, site_config in project_config["sites"].items():
+                for bucket, bucket_arn in site_config["site_buckets"]:
+                    self.s3_client.create_bucket(Bucket=bucket_arn)
+                    policy = s3_controller.generate_site_policy(
+                        bucket_name=bucket,
+                        bucket_arn=bucket_arn,
+                        project=project,
+                        site=site,
+                        aws_credentials_dict=fake_aws_cred_dict,
+                        config_dict=fake_roz_cfg_dict,
+                    )
+                    self.s3_client.put_bucket_policy(
+                        Bucket=bucket_arn, Policy=json.dumps(policy)
+                    )
+
+            for bucket, bucket_arn in project_config["project_buckets"]:
+                self.s3_client.create_bucket(Bucket=bucket_arn)
+                policy = s3_controller.generate_project_policy(
+                    bucket_name=bucket,
+                    bucket_arn=bucket_arn,
+                    project=project,
+                    config_dict=fake_roz_cfg_dict,
+                    aws_credentials_dict=fake_aws_cred_dict,
+                )
+                self.s3_client.put_bucket_policy(
+                    Bucket=bucket_arn, Policy=json.dumps(policy)
+                )
+
+    def test_audit_and_test_policies_clean_when_correctly_applied(self):
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+        self._apply_expected_policies(config_map)
+
+        _audit_report, to_fix = s3_controller.audit_and_test_policies(
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_map=config_map,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        self.assertEqual(to_fix, {"site_buckets": set(), "project_buckets": set()})
+
+    def test_audit_and_test_policies_flags_a_bucket_missing_its_policy(self):
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+        self._apply_expected_policies(config_map)
+
+        # "fake_files" has a non-empty policy (project_read) for its sites, unlike
+        # "fake_files_2" (policy: {}) which would show no drift when its policy
+        # document is deleted, since it has no expected non-admin grants at all.
+        bucket, bucket_arn = next(
+            pair
+            for pair in config_map["project1"]["project_buckets"]
+            if pair[0] == "fake_files"
+        )
+        self.s3_client.delete_bucket_policy(Bucket=bucket_arn)
+
+        _audit_report, to_fix = s3_controller.audit_and_test_policies(
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_map=config_map,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        self.assertIn((bucket, bucket_arn, "project1"), to_fix["project_buckets"])
+
+    def test_audit_bucket_acl_flags_public_grants(self):
+        self.s3_client.create_bucket(Bucket="fake-private-bucket")
+        self.assertEqual(
+            s3_controller.audit_bucket_acl("fake-private-bucket", fake_aws_cred_dict)[
+                "unexpected_grants"
+            ],
+            [],
+        )
+
+        self.s3_client.put_bucket_acl(Bucket="fake-private-bucket", ACL="public-read")
+        unexpected_grants = s3_controller.audit_bucket_acl(
+            "fake-private-bucket", fake_aws_cred_dict
+        )["unexpected_grants"]
+
+        self.assertTrue(
+            any(
+                grant["grantee"] == s3_controller.PUBLIC_ACL_URIS[0]
+                for grant in unexpected_grants
+            )
+        )
+
+    def test_retest_fixed_buckets_narrows_to_still_broken(self):
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+        self._apply_expected_policies(config_map)
+
+        # "fake_files" has a non-empty policy (project_read) for its sites, unlike
+        # "fake_files_2" (policy: {}) which would show no drift when its policy
+        # document is deleted, since it has no expected non-admin grants at all.
+        bucket, bucket_arn = next(
+            pair
+            for pair in config_map["project1"]["project_buckets"]
+            if pair[0] == "fake_files"
+        )
+        self.s3_client.delete_bucket_policy(Bucket=bucket_arn)
+
+        to_fix = {
+            "site_buckets": set(),
+            "project_buckets": {(bucket, bucket_arn, "project1")},
+        }
+
+        # Simulate apply_policies having fixed it in the meantime
+        policy = s3_controller.generate_project_policy(
+            bucket_name=bucket,
+            bucket_arn=bucket_arn,
+            project="project1",
+            config_dict=fake_roz_cfg_dict,
+            aws_credentials_dict=fake_aws_cred_dict,
+        )
+        self.s3_client.put_bucket_policy(Bucket=bucket_arn, Policy=json.dumps(policy))
+
+        retest_to_fix = s3_controller.retest_fixed_buckets(
+            to_fix=to_fix,
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        self.assertEqual(
+            retest_to_fix, {"site_buckets": set(), "project_buckets": set()}
+        )
+
+    def test_select_canary_targets_picks_an_owner_and_a_different_other_site(self):
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+
+        targets = s3_controller.select_canary_targets(config_map)
+
+        for project, (bucket, bucket_arn, owner_site, other_site) in targets.items():
+            self.assertIn(owner_site, config_map[project]["sites"])
+            self.assertIn((bucket, bucket_arn), config_map[project]["sites"][owner_site]["site_buckets"])
+            if other_site is not None:
+                self.assertNotEqual(other_site, owner_site)
+                self.assertIn(other_site, config_map[project]["sites"])
+
+    def test_policy_to_grants_ignores_deny_and_normalises_principal_shapes(self):
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "AllowSSLRequestsOnly",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": "s3:*",
+                    "Resource": ["arn:aws:s3:::bucket/*"],
+                },
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "arn:aws:iam:::user/single"},
+                    "Action": "s3:GetObject",
+                    "Resource": ["arn:aws:s3:::bucket/*"],
+                },
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": ["arn:aws:iam:::user/single"]},
+                    "Action": ["s3:PutObject"],
+                    "Resource": ["arn:aws:s3:::bucket/*"],
+                },
+            ],
+        }
+
+        grants = s3_controller.policy_to_grants(policy)
+
+        self.assertEqual(
+            grants,
+            {"arn:aws:iam:::user/single": {"s3:GetObject", "s3:PutObject"}},
+        )
+
+    def test_policy_to_grants_handles_no_policy(self):
+        self.assertEqual(s3_controller.policy_to_grants(None), {})
+
+    def test_diff_bucket_policy_grants_matches_generated_policy(self):
+        expected_policy = s3_controller.generate_site_policy(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            site="site1.project1",
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        self.s3_client.create_bucket(Bucket="fake-site-bucket")
+        self.s3_client.put_bucket_policy(
+            Bucket="fake-site-bucket", Policy=json.dumps(expected_policy)
+        )
+
+        diff = s3_controller.diff_bucket_policy_grants(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            config_dict=fake_roz_cfg_dict,
+            aws_credentials_dict=fake_aws_cred_dict,
+            site="site1.project1",
+        )
+
+        self.assertEqual(
+            diff,
+            {
+                "missing_principals": [],
+                "unexpected_principals": [],
+                "action_mismatches": {},
+            },
+        )
+
+    def test_diff_bucket_policy_grants_detects_missing_and_unexpected_principals(self):
+        expected_policy = s3_controller.generate_site_policy(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            site="site1.project1",
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        # Drop the site's own statements to simulate a missing grant, and add
+        # a statement for a principal that isn't part of the expected policy
+        # at all, to simulate a leak that a config-driven site enumeration
+        # would never surface.
+        site_slug = fake_aws_cred_dict["project1"]["site1.project1"]["username"][
+            0:16
+        ].replace(".", "-")
+        site_principal = [f"arn:aws:iam:::user/bryn-{site_slug}"]
+
+        def is_site_statement(statement):
+            principal = statement.get("Principal")
+            return isinstance(principal, dict) and principal.get("AWS") == site_principal
+
+        deployed_policy = copy.deepcopy(expected_policy)
+        deployed_policy["Statement"] = [
+            statement
+            for statement in deployed_policy["Statement"]
+            if not is_site_statement(statement)
+        ]
+        deployed_policy["Statement"].append(
+            {
+                "Effect": "Allow",
+                "Principal": {"AWS": ["arn:aws:iam:::user/mallory"]},
+                "Action": ["s3:GetObject"],
+                "Resource": ["arn:aws:s3:::fake-site-bucket/*"],
+            }
+        )
+
+        self.s3_client.create_bucket(Bucket="fake-site-bucket")
+        self.s3_client.put_bucket_policy(
+            Bucket="fake-site-bucket", Policy=json.dumps(deployed_policy)
+        )
+
+        diff = s3_controller.diff_bucket_policy_grants(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            config_dict=fake_roz_cfg_dict,
+            aws_credentials_dict=fake_aws_cred_dict,
+            site="site1.project1",
+        )
+
+        self.assertIn(site_principal[0], diff["missing_principals"])
+        self.assertIn("arn:aws:iam:::user/mallory", diff["unexpected_principals"])
+
+    def test_diff_bucket_policy_grants_detects_action_mismatch(self):
+        expected_policy = s3_controller.generate_site_policy(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            site="site1.project1",
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        site_slug = fake_aws_cred_dict["project1"]["site1.project1"]["username"][
+            0:16
+        ].replace(".", "-")
+        site_principal = [f"arn:aws:iam:::user/bryn-{site_slug}"]
+
+        deployed_policy = copy.deepcopy(expected_policy)
+        for statement in deployed_policy["Statement"]:
+            principal = statement.get("Principal")
+            if (
+                isinstance(principal, dict)
+                and principal.get("AWS") == site_principal
+                and "s3:GetObject" in statement.get("Action", [])
+            ):
+                statement["Action"] = [
+                    action
+                    for action in statement["Action"]
+                    if action != "s3:GetObject"
+                ]
+
+        self.s3_client.create_bucket(Bucket="fake-site-bucket")
+        self.s3_client.put_bucket_policy(
+            Bucket="fake-site-bucket", Policy=json.dumps(deployed_policy)
+        )
+
+        diff = s3_controller.diff_bucket_policy_grants(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            config_dict=fake_roz_cfg_dict,
+            aws_credentials_dict=fake_aws_cred_dict,
+            site="site1.project1",
+        )
+
+        principal = site_principal[0]
+        self.assertIn(principal, diff["action_mismatches"])
+        self.assertIn("s3:GetObject", diff["action_mismatches"][principal]["missing"])
+
+    def test_diff_bucket_policy_grants_ignores_missing_admin_statements(self):
+        # RGW grants the bucket-owning admin account implicit full access
+        # regardless of the policy document (the same reasoning test_policies
+        # already applies by never checking admin's probed permissions against
+        # correct_perms), so a deployed policy missing admin's explicit
+        # statements entirely should not be reported as drift.
+        expected_policy = s3_controller.generate_site_policy(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            site="site1.project1",
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_dict=fake_roz_cfg_dict,
+        )
+
+        admin_principal = [
+            f"arn:aws:iam:::user/{fake_aws_cred_dict['admin']['username']}"
+        ]
+
+        deployed_policy = copy.deepcopy(expected_policy)
+        deployed_policy["Statement"] = [
+            statement
+            for statement in deployed_policy["Statement"]
+            if not (
+                isinstance(statement.get("Principal"), dict)
+                and statement["Principal"].get("AWS") == admin_principal
+            )
+        ]
+
+        self.s3_client.create_bucket(Bucket="fake-site-bucket")
+        self.s3_client.put_bucket_policy(
+            Bucket="fake-site-bucket", Policy=json.dumps(deployed_policy)
+        )
+
+        diff = s3_controller.diff_bucket_policy_grants(
+            bucket_name="ingest",
+            bucket_arn="fake-site-bucket",
+            project="project1",
+            config_dict=fake_roz_cfg_dict,
+            aws_credentials_dict=fake_aws_cred_dict,
+            site="site1.project1",
+        )
+
+        self.assertEqual(
+            diff,
+            {
+                "missing_principals": [],
+                "unexpected_principals": [],
+                "action_mismatches": {},
+            },
+        )
+
+    def test_fetch_deployed_policy_returns_none_when_no_policy_attached(self):
+        self.s3_client.create_bucket(Bucket="fake-bucket-no-policy")
+
+        self.assertIsNone(
+            s3_controller.fetch_deployed_policy(
+                "fake-bucket-no-policy", fake_aws_cred_dict
+            )
+        )
+
+    def test_audit_policy_diff_report_dry_run_returns_empty_report(self):
+        config_map = s3_controller.create_config_map(fake_roz_cfg_dict)
+
+        report = s3_controller.audit_policy_diff_report(
+            aws_credentials_dict=fake_aws_cred_dict,
+            config_map=config_map,
+            config_dict=fake_roz_cfg_dict,
+            dry_run=True,
+        )
+
+        self.assertEqual(report, {"project_buckets": {}, "site_buckets": {}})
+
+    def test_json_safe_converts_sets_and_tuple_keys(self):
+        payload = {
+            "site_buckets": {("bucket", "arn", "project", "site")},
+            ("bucket", "arn"): {"nested": {"x", "y"}},
+        }
+
+        safe = s3_controller._json_safe(payload)
+
+        # Must round-trip through json.dumps without raising
+        json.dumps(safe)
+
+        self.assertEqual(safe["site_buckets"], [["bucket", "arn", "project", "site"]])
+        self.assertEqual(safe["bucket|arn"], {"nested": ["x", "y"]})
 
     def test_resolve_credentials(self):
         self.assertEqual(
