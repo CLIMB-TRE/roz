@@ -25,6 +25,9 @@ from roz_scripts.utils.utils import (
     parse_memory_quantity,
     merge_onyx_error_messages,
     MAX_ONYX_ERRORS_PER_FIELD,
+    JOB_CLEANUP_CONFIRM_FRACTION,
+    JOB_CLEANUP_CONFIRM_CAP,
+    JOB_CLEANUP_CONFIRM_FLOOR,
 )
 
 from kubernetes.client.exceptions import ApiException
@@ -928,6 +931,8 @@ class test_pipeline_execute(unittest.TestCase):
         api_instance.read_namespaced_job_status.side_effect = [
             ApiException(status=404),
             self.make_status(failed=1),
+            # the cleanup's deletion-confirming read
+            ApiException(status=404),
         ]
 
         pod = Mock()
@@ -956,9 +961,12 @@ class test_pipeline_execute(unittest.TestCase):
         self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
     ):
         api_instance = mock_batch_cls.return_value
-        api_instance.read_namespaced_job_status.return_value = self.make_status(
-            succeeded=None, failed=None, start_time=None
-        )
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(succeeded=None, failed=None, start_time=None),
+            # the cleanup's deletion-confirming read
+            ApiException(status=404),
+        ]
 
         pod = Mock()
         pod.metadata.name = "roz-test-test-job-id-abcde"
@@ -975,6 +983,7 @@ class test_pipeline_execute(unittest.TestCase):
         returncode = self.pipe.execute(**kwargs)
 
         self.assertEqual(returncode, 124)
+        api_instance.delete_namespaced_job.assert_called_once()
         with open(self.execute_kwargs["stderr_path"]) as fh:
             self.assertIn("Error", fh.read())
 
@@ -991,6 +1000,8 @@ class test_pipeline_execute(unittest.TestCase):
         api_instance.read_namespaced_job_status.side_effect = [
             ApiException(status=404),
             self.make_status(failed=1),
+            # the cleanup's deletion-confirming read
+            ApiException(status=404),
         ]
         mock_core_cls.return_value.list_namespaced_pod.side_effect = Exception(
             "API server unreachable"
@@ -1000,6 +1011,276 @@ class test_pipeline_execute(unittest.TestCase):
 
         self.assertEqual(returncode, 1)
         api_instance.delete_namespaced_job.assert_called_once()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_deletion_is_confirmed_before_returning_on_failure(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """Foreground deletion returns immediately and the pod gets a grace
+        period to exit, so returning before the job is really gone leaves the
+        caller's `-resume` retry sharing a work dir with the dying pod."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(failed=1),
+            self.make_status(failed=1),  # still terminating
+            ApiException(status=404),  # now really gone
+        ]
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        call_names = [c[0] for c in api_instance.mock_calls]
+        delete_idx = call_names.index("delete_namespaced_job")
+        self.assertIn(
+            "read_namespaced_job_status",
+            call_names[delete_idx + 1 :],
+            "job status was never re-read after deletion, so deletion was "
+            "never confirmed",
+        )
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_orphaned_job_is_cleaned_up_after_unexpected_exception(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """An error that isn't "job failed"/"job timed out" used to leave the
+        job - and a pod still writing the work dir - running forever."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = (
+            [ApiException(status=404)]
+            + [ApiException(status=500)] * 5  # exhausts the transient-error run
+            + [ApiException(status=404)]  # deletion confirmed
+        )
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        api_instance.delete_namespaced_job.assert_called_once()
+        self.assertEqual(
+            api_instance.delete_namespaced_job.call_args.kwargs["propagation_policy"],
+            "Foreground",
+        )
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_transient_poll_errors_do_not_kill_a_healthy_job(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """Concluding failure now tears the job down, so a blip talking to the
+        API server must not destroy an in-flight run."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            ApiException(status=500),
+            ApiException(status=500),
+            self.make_status(succeeded=1),
+        ]
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 0)
+        api_instance.delete_namespaced_job.assert_not_called()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_job_vanishing_mid_poll_does_not_trigger_deletion(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """A 404 mid-poll means the job is already gone (TTL reap, external
+        deletion) - there is nothing to tear down."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            ApiException(status=404),
+        ]
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        api_instance.delete_namespaced_job.assert_not_called()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_timeout_returncode_survives_a_failing_cleanup(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """rc 124 is how callers (e.g. chimera_runner) tell a timeout from any
+        other failure and alert on it separately - a cleanup that blows up must
+        not rewrite it to a generic rc 1."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(succeeded=None, failed=None, start_time=None),
+        ]
+        api_instance.delete_namespaced_job.side_effect = Exception(
+            "API server unreachable"
+        )
+
+        kwargs = {**self.execute_kwargs, "timeout": -1}
+        returncode = self.pipe.execute(**kwargs)
+
+        self.assertEqual(returncode, 124)
+        with open(self.execute_kwargs["stderr_path"]) as fh:
+            self.assertIn("Failed to delete job", fh.read())
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_already_deleted_job_is_not_an_error(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """Job names are deterministic and retries reuse them, so cleanup has
+        to be idempotent."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(failed=1),
+        ]
+        api_instance.delete_namespaced_job.side_effect = ApiException(status=404)
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        with open(self.execute_kwargs["stderr_path"]) as fh:
+            self.assertNotIn("Failed to delete job", fh.read())
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_progress_cb_is_pumped_while_awaiting_cleanup(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """The cleanup wait happens after the stage has spent its whole
+        heartbeat budget - without beating through it, a slow deletion gets the
+        worker liveness-killed (which surfaces as exit 137)."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(failed=1),
+            self.make_status(failed=1),  # still terminating
+            ApiException(status=404),
+        ]
+
+        stages = []
+        kwargs = {**self.execute_kwargs, "progress_cb": stages.append}
+        returncode = self.pipe.execute(**kwargs)
+
+        self.assertEqual(returncode, 1)
+        self.assertIn("awaiting_job_cleanup", stages)
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_progress_cb_failure_still_cleans_up_the_job(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """progress_cb writes the heartbeat file to CephFS, so an OSError from
+        it is a live failure mode - and one that used to orphan the job."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(succeeded=None, failed=None, start_time=None),
+            ApiException(status=404),  # deletion confirmed
+        ]
+
+        def exploding_cb(stage):
+            if stage == "awaiting_job_completion":
+                raise OSError("heartbeat write failed")
+
+        kwargs = {**self.execute_kwargs, "progress_cb": exploding_cb}
+        returncode = self.pipe.execute(**kwargs)
+
+        self.assertEqual(returncode, 1)
+        api_instance.delete_namespaced_job.assert_called_once()
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.CoreV1Api")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_pod_termination_reason_survives_the_exception_path(
+        self, mock_k8s_config, mock_batch_cls, mock_core_cls, mock_sleep
+    ):
+        """The catch-all used to open stderr with mode "w", truncating the
+        termination reason that had just been recorded."""
+        api_instance = mock_batch_cls.return_value
+        api_instance.read_namespaced_job_status.side_effect = [
+            ApiException(status=404),
+            self.make_status(failed=1),
+            Exception("API server unreachable"),  # cleanup's confirming read
+        ]
+
+        pod = Mock()
+        pod.metadata.name = "roz-test-test-job-id-abcde"
+        container_status = Mock()
+        container_status.name = "roz-test-test-job-id"
+        container_status.state.terminated.reason = "OOMKilled"
+        container_status.state.terminated.exit_code = 137
+        container_status.state.terminated.message = None
+        pod.status.container_statuses = [container_status]
+        pod.status.init_container_statuses = None
+        mock_core_cls.return_value.list_namespaced_pod.return_value = Mock(items=[pod])
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        with open(self.execute_kwargs["stderr_path"]) as fh:
+            stderr = fh.read()
+        self.assertIn("OOMKilled", stderr)
+        self.assertIn("was not confirmed", stderr)
+
+    @patch("roz_scripts.utils.utils.time.sleep")
+    @patch("roz_scripts.utils.utils.BatchV1Api")
+    @patch("roz_scripts.utils.utils.k8s_config")
+    def test_client_construction_failure_returns_rc_1_without_cleanup(
+        self, mock_k8s_config, mock_batch_cls, mock_sleep
+    ):
+        """Cleanup has to cope with there being no client to clean up with."""
+        mock_k8s_config.load_incluster_config.side_effect = Exception(
+            "not running in a pod"
+        )
+
+        returncode = self.pipe.execute(**self.execute_kwargs)
+
+        self.assertEqual(returncode, 1)
+        mock_batch_cls.return_value.delete_namespaced_job.assert_not_called()
+
+    def test_cleanup_wait_stays_inside_the_liveness_deadline(self):
+        """The cleanup wait is spent after the stage has already burned its
+        whole heartbeat budget, so it has to fit inside the
+        DEADLINE_MULTIPLIER headroom or it gets the worker killed."""
+        from roz_scripts.utils.health import DEADLINE_MULTIPLIER
+
+        headroom = DEADLINE_MULTIPLIER - 1.0
+        self.assertLess(JOB_CLEANUP_CONFIRM_FRACTION, headroom)
+        for timeout in (1200, 3600, 57600):
+            wait = min(
+                JOB_CLEANUP_CONFIRM_CAP,
+                max(
+                    JOB_CLEANUP_CONFIRM_FLOOR,
+                    int(JOB_CLEANUP_CONFIRM_FRACTION * timeout),
+                ),
+            )
+            self.assertLess(
+                wait,
+                headroom * timeout,
+                f"cleanup wait of {wait}s overruns the liveness deadline at a "
+                f"timeout of {timeout}s",
+            )
 
     @patch("roz_scripts.utils.utils.time.sleep")
     @patch("roz_scripts.utils.utils.BatchV1Api")

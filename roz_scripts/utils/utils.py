@@ -382,6 +382,37 @@ def pod_resources_from_args(args: argparse.Namespace) -> PodResources:
     return pod_resources
 
 
+# Upper bound on how long to wait for the deletion of a *pre-existing* failed
+# job to be confirmed before we recreate it. This one happens at the very start
+# of a stage, with the caller's full heartbeat budget ahead of it, so it is not
+# tied to the pipeline `timeout`.
+JOB_DELETE_CONFIRM_TIMEOUT = int(os.getenv("ROZ_JOB_DELETE_CONFIRM_TIMEOUT", "300"))
+
+# Bounds on how long the post-failure cleanup will wait for the job to actually
+# disappear. The wait itself is sized as JOB_CLEANUP_CONFIRM_FRACTION * the
+# pipeline timeout, clamped to [FLOOR, CAP].
+#
+# The fraction matters: this wait happens *after* the pipeline stage has already
+# consumed its whole heartbeat budget, and health.DEADLINE_MULTIPLIER (1.1) only
+# leaves 0.1 * budget of headroom before the liveness probe starts failing the
+# worker. Staying well under that tenth is what stops a cleanup wait from
+# getting the worker liveness-killed (which surfaces as exit 137, and is easily
+# mistaken for an OOM). Keep FRACTION < 0.1 if DEADLINE_MULTIPLIER changes.
+JOB_CLEANUP_CONFIRM_FRACTION = float(
+    os.getenv("ROZ_JOB_CLEANUP_CONFIRM_FRACTION", "0.08")
+)
+JOB_CLEANUP_CONFIRM_CAP = int(os.getenv("ROZ_JOB_CLEANUP_CONFIRM_CAP", "180"))
+JOB_CLEANUP_CONFIRM_FLOOR = int(os.getenv("ROZ_JOB_CLEANUP_CONFIRM_FLOOR", "30"))
+
+# How many *consecutive* failures of the job-status poll to absorb before
+# concluding the run has failed. Since a concluded failure now tears the job
+# down, a single transient k8s API blip must not be allowed to kill a healthy
+# in-flight run (a pathsafe assembly can be a 16-hour job).
+JOB_POLL_MAX_CONSECUTIVE_ERRORS = int(
+    os.getenv("ROZ_JOB_POLL_MAX_CONSECUTIVE_ERRORS", "5")
+)
+
+
 class pipeline:
     def __init__(
         self,
@@ -565,10 +596,25 @@ class pipeline:
         # (connect_timeout, read_timeout) for every k8s API call below, so a
         # dropped connection to the API server can't block this method forever.
         k8s_request_timeout = (10, 30)
-        # Upper bound on how long to wait for a job deletion to be confirmed
-        # before giving up - deletion is expected to be fast, so this is not
-        # tied to the caller-supplied pipeline `timeout`.
-        delete_confirm_timeout = 300
+
+        # How long the post-failure cleanup may spend waiting for the job to
+        # actually be gone. See JOB_CLEANUP_CONFIRM_FRACTION for why this is a
+        # fraction of the pipeline timeout rather than a flat value.
+        cleanup_confirm_timeout = min(
+            JOB_CLEANUP_CONFIRM_CAP,
+            max(JOB_CLEANUP_CONFIRM_FLOOR, int(JOB_CLEANUP_CONFIRM_FRACTION * timeout)),
+        )
+
+        # Set as soon as we have a usable client - the finally block below has
+        # to cope with load_incluster_config()/BatchV1Api() themselves raising.
+        api_instance = None
+        # None means "no outcome decided yet". Keeping this distinct from 1 is
+        # what stops the catch-all overwriting a timeout's rc 124 (which callers
+        # alert on separately) when it is the *cleanup* that raised.
+        returncode = None
+        # Whether this run ended in a state that leaves a job needing teardown.
+        cleanup_required = False
+        termination_logged = False
 
         try:
             self.cmd = cmd
@@ -599,32 +645,20 @@ class pipeline:
                 # previous invocation (e.g. the worker process was restarted and
                 # is reprocessing the same message) - delete it and start a fresh
                 # attempt rather than immediately reporting the old failure.
-                api_instance.delete_namespaced_job(
-                    name=job_name,
-                    namespace=namespace,
-                    propagation_policy="Foreground",
-                    _request_timeout=k8s_request_timeout,
+                self._delete_job(
+                    api_instance, job_name, namespace, k8s_request_timeout
                 )
-
-                delete_confirm_start = time.time()
-                while True:
-                    try:
-                        api_instance.read_namespaced_job_status(
-                            name=job_name,
-                            namespace=namespace,
-                            _request_timeout=k8s_request_timeout,
-                        )
-                    except ApiException as e:
-                        if e.status != 404:
-                            raise
-                        break
-                    if time.time() - delete_confirm_start > delete_confirm_timeout:
-                        raise TimeoutError(
-                            f"Timed out waiting for job {job_name} to be deleted"
-                        )
-                    if progress_cb:
-                        progress_cb("awaiting_job_deletion")
-                    time.sleep(random.uniform(2.0, 3.0))
+                # Recreating over a job that is still terminating would collide
+                # on the name, so a failure to confirm here stays fatal - but it
+                # now also trips cleanup via the finally block below.
+                self._await_job_deleted(
+                    api_instance,
+                    job_name,
+                    namespace,
+                    k8s_request_timeout,
+                    JOB_DELETE_CONFIRM_TIMEOUT,
+                    progress_cb=progress_cb,
+                )
 
                 api_instance.create_namespaced_job(
                     body=job_manifest,
@@ -635,11 +669,30 @@ class pipeline:
             job_loop_start = time.time()
             job_completed = False
             while not job_completed:
-                resp = api_instance.read_namespaced_job_status(
-                    name=job_name,
-                    namespace=namespace,
-                    _request_timeout=k8s_request_timeout,
-                )
+                try:
+                    resp = self._poll_job_status(
+                        api_instance,
+                        job_name,
+                        namespace,
+                        k8s_request_timeout,
+                        progress_cb=progress_cb,
+                    )
+                except ApiException as e:
+                    if e.status != 404:
+                        raise
+                    # The job vanished from under us - reaped by
+                    # ttlSecondsAfterFinished, or deleted by something outside
+                    # roz. There is no status left to interpret and nothing left
+                    # to tear down, so report a generic failure without asking
+                    # for a cleanup of something that is already gone.
+                    self._append_stderr(
+                        stderr_path,
+                        f"Job {job_name} disappeared while being polled - "
+                        "treating as a failed run",
+                    )
+                    returncode = 1
+                    break
+
                 if resp.status.succeeded:  # type: ignore
                     if resp.status.succeeded >= 1:  # type: ignore
                         returncode = 0
@@ -651,13 +704,11 @@ class pipeline:
                         self._log_pod_termination(
                             job_name, namespace, k8s_request_timeout, stderr_path
                         )
-                        api_instance.delete_namespaced_job(
-                            name=job_name,
-                            namespace=namespace,
-                            propagation_policy="Foreground",
-                            _request_timeout=k8s_request_timeout,
-                        )
+                        termination_logged = True
+                        # Decide the outcome *before* anything that can raise,
+                        # so a cleanup failure can't rewrite why we failed.
                         returncode = 1
+                        cleanup_required = True
                         job_completed = True
                         break
 
@@ -674,13 +725,9 @@ class pipeline:
                     self._log_pod_termination(
                         job_name, namespace, k8s_request_timeout, stderr_path
                     )
-                    api_instance.delete_namespaced_job(
-                        name=job_name,
-                        namespace=namespace,
-                        propagation_policy="Foreground",
-                        _request_timeout=k8s_request_timeout,
-                    )
+                    termination_logged = True
                     returncode = 124
+                    cleanup_required = True
                     job_completed = True
                     break
 
@@ -689,31 +736,275 @@ class pipeline:
                 time.sleep(random.uniform(2.0, 3.0))
 
         except Exception as e:
-            # proc = SimpleNamespace(returncode=1, stdout=str(k8s_exception), stderr="")
-            # print(f"Failed to execute pipeline due to exception: {e}")
-            with open(stderr_path, "w") as stderr_fh:
-                stderr_fh.write(f"Failed to execute pipeline due to exception: {e}")
+            self._append_stderr(
+                stderr_path, f"Failed to execute pipeline due to exception: {e}"
+            )
+            if returncode is None:
+                returncode = 1
+            # Any failure that isn't one of the two decided outcomes above -
+            # a k8s API error, a progress_cb blowing up, a delete that wouldn't
+            # confirm - leaves a job behind whose pod is very likely still
+            # running and still writing the work directory. Tear it down.
+            cleanup_required = True
+
+        finally:
+            if cleanup_required and api_instance is not None:
+                if not termination_logged:
+                    # Best-effort: on the exception path the pod is usually
+                    # still running, so there will often be no terminated state
+                    # to record. Absence of a block here no longer means we
+                    # failed to look.
+                    self._log_pod_termination(
+                        job_name, namespace, k8s_request_timeout, stderr_path
+                    )
+                self._best_effort_cleanup(
+                    api_instance,
+                    job_name,
+                    namespace,
+                    k8s_request_timeout,
+                    cleanup_confirm_timeout,
+                    stderr_path,
+                    progress_cb=progress_cb,
+                )
+
+        if returncode is None:
             returncode = 1
 
         if returncode != 0:
+            # Deliberately outside the finally: this has to run after the
+            # deletion has been confirmed, or a pod still inside its
+            # terminationGracePeriod can re-dirty .nextflow behind the rmtree.
             self._clean_corrupt_cache(logdir, stdout_path, stderr_path)
 
-        return returncode  # type: ignore
+        return returncode
+
+    @staticmethod
+    def _append_stderr(stderr_path: str, message: str) -> None:
+        """Append a line to the job's captured stderr, never raising
+
+        Always appends: the catch-all in `execute` used to open this with mode
+        "w", which truncated whatever `_log_pod_termination` had just written
+        and so destroyed the record of *why* the pod died.
+
+        Args:
+            stderr_path (str): Path to the job's captured stderr
+            message (str): The message to append
+        """
+        try:
+            with open(stderr_path, "a") as stderr_fh:
+                stderr_fh.write(f"{message}\n")
+        except OSError:
+            pass
+
+    @staticmethod
+    def _poll_job_status(
+        api_instance: BatchV1Api,
+        job_name: str,
+        namespace: str,
+        k8s_request_timeout: tuple,
+        progress_cb=None,
+        max_consecutive_errors: int | None = None,
+    ):
+        """Read a job's status, absorbing a run of transient API failures
+
+        Concluding that a run has failed now tears the job down, so a single
+        blip talking to the API server must not be allowed to kill a healthy
+        in-flight pipeline (a pathsafe assembly can run for the better part of
+        a day). Only once `max_consecutive_errors` reads in a row have failed
+        do we let the exception out and treat the run as failed.
+
+        A 404 is never retried - it is a definitive answer that the job is gone,
+        and the caller handles it separately.
+
+        Args:
+            api_instance (BatchV1Api): The batch API client
+            job_name (str): Name of the job to read
+            namespace (str): Namespace the job lives in
+            k8s_request_timeout (tuple): (connect, read) timeout per API call
+            progress_cb (Callable[[str], None] | None): Called between retries
+                so the caller's liveness probe can see we're still working
+            max_consecutive_errors (int | None): Overrides
+                JOB_POLL_MAX_CONSECUTIVE_ERRORS for this call
+
+        Returns:
+            The job status response
+
+        Raises:
+            ApiException: On a 404, or once the error run is exhausted
+            Exception: Whatever the last read raised, once the run is exhausted
+        """
+        if max_consecutive_errors is None:
+            max_consecutive_errors = JOB_POLL_MAX_CONSECUTIVE_ERRORS
+
+        attempt = 0
+        while True:
+            try:
+                return api_instance.read_namespaced_job_status(
+                    name=job_name,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
+                )
+            except Exception as e:
+                if isinstance(e, ApiException) and e.status == 404:
+                    raise
+                attempt += 1
+                if attempt >= max_consecutive_errors:
+                    raise
+                if progress_cb:
+                    progress_cb("retrying_job_status_poll")
+                time.sleep(random.uniform(2.0, 3.0))
+
+    @staticmethod
+    def _delete_job(
+        api_instance: BatchV1Api,
+        job_name: str,
+        namespace: str,
+        k8s_request_timeout: tuple,
+    ) -> None:
+        """Delete a job with Foreground propagation, so its pod goes with it
+
+        A 404 means the job is already gone, which is the state we wanted, so
+        it is treated as success - job names are deterministic and retries
+        target the same name, so this has to be idempotent.
+
+        Args:
+            api_instance (BatchV1Api): The batch API client
+            job_name (str): Name of the job to delete
+            namespace (str): Namespace the job lives in
+            k8s_request_timeout (tuple): (connect, read) timeout per API call
+        """
+        try:
+            api_instance.delete_namespaced_job(
+                name=job_name,
+                namespace=namespace,
+                propagation_policy="Foreground",
+                _request_timeout=k8s_request_timeout,
+            )
+        except ApiException as e:
+            if e.status != 404:
+                raise
+
+    @staticmethod
+    def _await_job_deleted(
+        api_instance: BatchV1Api,
+        job_name: str,
+        namespace: str,
+        k8s_request_timeout: tuple,
+        confirm_timeout: float,
+        progress_cb=None,
+        stage: str = "awaiting_job_deletion",
+    ) -> None:
+        """Block until a deleted job is actually gone
+
+        Foreground deletion returns immediately and the job object lingers,
+        held by its foregroundDeletion finalizer, until the pod is really gone
+        - and the pod gets terminationGracePeriodSeconds to exit. Callers retry
+        the same job id with `-resume` against the same work directory, so
+        returning before the old pod has stopped is what puts two nextflow
+        processes on one LevelDB cache.
+
+        Args:
+            api_instance (BatchV1Api): The batch API client
+            job_name (str): Name of the job being deleted
+            namespace (str): Namespace the job lives in
+            k8s_request_timeout (tuple): (connect, read) timeout per API call
+            confirm_timeout (float): Give up after this many seconds
+            progress_cb (Callable[[str], None] | None): Called on every poll,
+                so a long wait can't get the worker liveness-killed
+            stage (str): Stage name reported to progress_cb
+
+        Raises:
+            TimeoutError: If the job is still there after confirm_timeout
+        """
+        delete_confirm_start = time.time()
+        while True:
+            try:
+                api_instance.read_namespaced_job_status(
+                    name=job_name,
+                    namespace=namespace,
+                    _request_timeout=k8s_request_timeout,
+                )
+            except ApiException as e:
+                if e.status != 404:
+                    raise
+                return
+            if time.time() - delete_confirm_start > confirm_timeout:
+                raise TimeoutError(f"Timed out waiting for job {job_name} to be deleted")
+            if progress_cb:
+                progress_cb(stage)
+            time.sleep(random.uniform(2.0, 3.0))
+
+    @classmethod
+    def _best_effort_cleanup(
+        cls,
+        api_instance: BatchV1Api,
+        job_name: str,
+        namespace: str,
+        k8s_request_timeout: tuple,
+        confirm_timeout: float,
+        stderr_path: str,
+        progress_cb=None,
+    ) -> None:
+        """Tear down a failed job, never raising and never changing the outcome
+
+        This runs from `execute`'s finally block on every route that ends in
+        failure, so it must not be able to turn a timeout (rc 124, which
+        callers alert on separately) into a generic failure. Anything that goes
+        wrong is recorded in the job's stderr and otherwise swallowed.
+
+        Args:
+            api_instance (BatchV1Api): The batch API client
+            job_name (str): Name of the job to tear down
+            namespace (str): Namespace the job lives in
+            k8s_request_timeout (tuple): (connect, read) timeout per API call
+            confirm_timeout (float): How long to wait for the job to be gone
+            stderr_path (str): Path to the job's captured stderr
+            progress_cb (Callable[[str], None] | None): Called while waiting
+        """
+        try:
+            cls._delete_job(api_instance, job_name, namespace, k8s_request_timeout)
+        except Exception as e:
+            cls._append_stderr(
+                stderr_path, f"Failed to delete job {job_name} after failure: {e}"
+            )
+            return
+
+        try:
+            cls._await_job_deleted(
+                api_instance,
+                job_name,
+                namespace,
+                k8s_request_timeout,
+                confirm_timeout,
+                progress_cb=progress_cb,
+                stage="awaiting_job_cleanup",
+            )
+        except Exception as e:
+            # Server-side foreground deletion carries on without us; the
+            # pre-existing-job handling at the top of execute() is the backstop
+            # for a retry that arrives before it finishes.
+            cls._append_stderr(
+                stderr_path,
+                f"Deletion of job {job_name} was not confirmed: {e}",
+            )
 
     @staticmethod
     def _log_pod_termination(
         job_name: str, namespace: str, k8s_request_timeout: tuple, stderr_path: str
     ) -> None:
         """
-        Record why this job's pod(s) actually died before the caller deletes
-        the Job. `delete_namespaced_job` below runs with
-        `propagation_policy="Foreground"`, which removes the pod along with
-        it - so without this, a real OOMKill of the nextflow pod is
-        permanently invisible: roz only ever sees "job failed" (rc 1) or
+        Record why this job's pod(s) actually died before the Job is deleted.
+        Deletion runs with `propagation_policy="Foreground"`, which removes the
+        pod along with it - so without this, a real OOMKill of the nextflow pod
+        is permanently invisible: roz only ever sees "job failed" (rc 1) or
         "job timed out" (rc 124), never the container's terminated reason.
 
+        Also called from the cleanup path in `execute`'s finally block, where
+        the pod is often still running and so has no terminated state at all -
+        an absent block here therefore no longer implies we failed to look.
+
         Best-effort only: any failure here must not affect the returncode
-        this method reports.
+        `execute` reports.
         """
         try:
             core_v1 = CoreV1Api(ApiClient())
