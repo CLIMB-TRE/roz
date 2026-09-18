@@ -1,3 +1,4 @@
+import functools
 import os
 from pathlib import Path
 import boto3
@@ -32,6 +33,7 @@ from roz_scripts.utils.utils import (
     add_nxf_pod_resource_args,
     pod_resources_from_args,
     PodResourceError,
+    persist_publish_ack,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
@@ -78,13 +80,16 @@ class worker_pool_handler:
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
             )
 
-            self._varys_client.send(
-                message=payload,
-                exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                queue_suffix="validator",
-            )
-
-            put_result_json(payload, self._log, self._config)
+            persists = [
+                functools.partial(put_result_json, payload, self._log, self._config)
+            ]
+            sends = [
+                {
+                    "message": payload,
+                    "exchange": f"inbound-results-{payload['project']}-{payload['site']}",
+                    "queue_suffix": "validator",
+                }
+            ]
 
             if not payload["test_flag"]:
                 new_artifact_payload = {
@@ -99,15 +104,30 @@ class worker_pool_handler:
                     "project": payload["project"],
                 }
 
-                self._varys_client.send(
-                    message=new_artifact_payload,
-                    exchange="inbound-new_artifact-pathsafe",
-                    queue_suffix="validator",
+                persists.append(
+                    functools.partial(put_linkage_json, payload, self._log, self._config)
                 )
 
-                put_linkage_json(payload, self._log, self._config)
+                # new_artifact sets downstream work going, so it is published last:
+                # anything replayed before it is cheap and idempotent
+                sends.append(
+                    {
+                        "message": new_artifact_payload,
+                        "exchange": "inbound-new_artifact-pathsafe",
+                        "queue_suffix": "validator",
+                    }
+                )
 
-            self._varys_client.acknowledge_message(message)
+            persist_publish_ack(
+                self._varys_client,
+                message,
+                self._log,
+                sends=sends,
+                persists=persists,
+                source="pathsafe",
+                uuid=payload["uuid"],
+                heartbeat=self._health.heartbeat,
+            )
 
         else:
             self._log.info(
@@ -167,15 +187,26 @@ class worker_pool_handler:
                     self._varys_client.nack_message(message)
 
             else:
-                self._varys_client.acknowledge_message(message)
-
-                self._varys_client.send(
-                    message=payload,
-                    exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                    queue_suffix="validator",
+                persist_publish_ack(
+                    self._varys_client,
+                    message,
+                    self._log,
+                    sends=[
+                        {
+                            "message": payload,
+                            "exchange": f"inbound-results-{payload['project']}-{payload['site']}",
+                            "queue_suffix": "validator",
+                        }
+                    ],
+                    persists=[
+                        functools.partial(
+                            put_result_json, payload, self._log, self._config
+                        )
+                    ],
+                    source="pathsafe",
+                    uuid=payload["uuid"],
+                    heartbeat=self._health.heartbeat,
                 )
-
-                put_result_json(payload, self._log, self._config)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")

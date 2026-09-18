@@ -14,6 +14,7 @@ from roz_scripts.utils.utils import (
     s3_to_fh,
     csv_field_checks,
     send_admin_alert,
+    persist_publish_ack,
 )
 from roz_scripts.general.s3_matcher import parse_object_key
 from roz_scripts.utils.health import HealthState, get_health_dir
@@ -404,25 +405,35 @@ def run(args):
                 )
 
                 if success:
-                    varys_client.acknowledge_message(message)
+                    sends = []
 
                     if not payload:
                         log.info(
                             f"No work to do for message: {json.loads(message.body)}"
                         )
-                        continue
-
-                    if payload["update_status"] == "success":
-                        varys_client.send(
-                            message=payload,
-                            exchange=f"inbound-onyx-updates-{payload['project']}",
-                            queue_suffix="onyx_updates",
+                    elif payload["update_status"] == "success":
+                        sends.append(
+                            {
+                                "message": payload,
+                                "exchange": f"inbound-onyx-updates-{payload['project']}",
+                                "queue_suffix": "onyx_updates",
+                            }
                         )
+
+                    persist_publish_ack(
+                        varys_client,
+                        message,
+                        log,
+                        sends=sends,
+                        source="s3_onyx_updates",
+                        heartbeat=health.heartbeat,
+                    )
 
                 else:
 
                     log.error(f"Failed to process message: {json.loads(message.body)}")
                     varys_client.nack_message(message)
+                    time.sleep(1)
 
     except BaseException as e:
         log.exception("Unhandled error: ")  # type: ignore

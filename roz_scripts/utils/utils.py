@@ -33,6 +33,8 @@ from onyx.exceptions import (
     OnyxClientError,
 )
 
+from varys import VarysPublishError
+
 from roz_scripts.utils.config import site_bucket
 
 from kubernetes import config as k8s_config
@@ -97,6 +99,120 @@ def send_admin_alert(
         exchange="remote-announce",
         queue_suffix="alert",
     )
+
+
+# How long to pause after a failed publish before returning to the receive loop,
+# so a broken broker does not spin the loop at full tilt
+PUBLISH_FAILURE_BACKOFF_S = 10
+
+
+def persist_publish_ack(
+    varys_client,
+    message,
+    log,
+    sends,
+    persists=(),
+    source="",
+    uuid=None,
+    heartbeat=None,
+) -> bool:
+    """Persist side effects, publish downstream messages, then acknowledge - in that order.
+
+    This is the only safe order. Acknowledging first (as roz did before varys 1.3.0)
+    drops the artifact entirely if the publish then fails, because the broker has
+    already been told the message is handled. Since 1.3.0, `varys_client.send`
+    blocks until the broker confirms and raises otherwise, so reaching the ack here
+    is a real guarantee that the downstream message is safe.
+
+    On failure nothing is acknowledged: the delivery is nacked with requeue, so it
+    comes back round. That accepts at-least-once delivery, whose duplicates
+    `csv_create`'s "already exists" path already absorbs.
+
+    Args:
+        varys_client: The Varys client instance holding the inbound and outbound channels
+        message: The inbound varys message to acknowledge or requeue
+        log (logging.Logger): Logger object
+        sends (iterable[dict]): kwargs for each `varys_client.send` call, published in
+            the order given - callers order them cheapest/most-idempotent first and the
+            expensive trigger last, so a partial failure re-runs the cheap work, and
+            this function must not reorder them
+        persists (iterable[callable]): zero-argument callables run before any publish
+            (e.g. `functools.partial(put_result_json, payload=..., log=..., config=...)`).
+            These write to deterministic S3 keys, so re-running one on redelivery is a
+            harmless overwrite
+        source (str): Component name for any admin alert raised from here
+        uuid (str | None): Artifact UUID for cross-referencing an alert, if known
+        heartbeat (callable | None): Zero-argument callable invoked around each persist
+            and publish. Publishing can now block for up to ~110s per send while the
+            broker is unreachable, which would otherwise count as no forward progress;
+            pass `health.heartbeat` or a `JobHeartbeat.beat` partial so a slow publish
+            cannot be mistaken for a wedged process
+
+    Returns:
+        bool: True if everything was persisted, published and acknowledged; False if the
+        delivery was requeued instead, in which case the caller should move on to the
+        next message rather than treating it as fatal
+    """
+
+    def _beat():
+        if heartbeat is None:
+            return
+        try:
+            heartbeat()
+        except Exception:
+            # A failed heartbeat is not worth losing the message over
+            log.exception("Failed to record a heartbeat, continuing anyway")
+
+    try:
+        for persist in persists:
+            _beat()
+            persist()
+
+        for send in sends:
+            _beat()
+            varys_client.send(**send)
+
+    except (VarysPublishError, ClientError) as e:
+        log.error(f"Failed to persist or publish, requeueing message: {e}")
+
+        # The alert publishes through the same broker, so when the broker is the thing
+        # that is broken this fails too. Log it and carry on; never fatal (Q10)
+        try:
+            send_admin_alert(
+                varys_client,
+                source=source,
+                description=f"Failed to persist or publish, message requeued: {e}",
+                uuid=uuid,
+            )
+        except Exception:
+            log.exception("Failed to send admin alert about the publish failure")
+
+        # The nack needs the same broker as well. It is best-effort because it does not
+        # have to succeed: losing the connection makes RabbitMQ requeue every unacked
+        # delivery anyway, which is what makes ack-after-publish safe by construction
+        try:
+            varys_client.nack_message(message, requeue=True)
+        except Exception:
+            log.exception(
+                "Failed to nack the message; connection loss will requeue it anyway"
+            )
+
+        _beat()
+        time.sleep(PUBLISH_FAILURE_BACKOFF_S)
+        _beat()
+
+        return False
+
+    try:
+        varys_client.acknowledge_message(message)
+    except Exception:
+        # The work is committed at this point, so a failed ack is not a failure of this
+        # call - the broker will simply redeliver, and the redelivery deduplicates
+        log.exception(
+            "Failed to acknowledge the message after publishing; it may be redelivered"
+        )
+
+    return True
 
 
 NO_LIMIT = "none"  # sentinel accepted on the CLI to drop a single resource dimension
