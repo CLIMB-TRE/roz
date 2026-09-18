@@ -39,6 +39,7 @@ from roz_scripts.utils.utils import (
     pod_resources_from_args,
     PodResourceError,
     throttled_progress,
+    persist_publish_ack,
 )
 from roz_scripts.utils.health import (
     HealthState,
@@ -169,11 +170,20 @@ class chimera_worker_pool_handler:
             )
 
             with self._varys_lock:
-                self._varys_client.acknowledge_message(message)
-                self._varys_client.send(
-                    message=payload,
-                    exchange=downstream_exchange,
-                    queue_suffix="chimera",
+                persist_publish_ack(
+                    self._varys_client,
+                    message,
+                    self._log,
+                    sends=[
+                        {
+                            "message": payload,
+                            "exchange": downstream_exchange,
+                            "queue_suffix": "chimera",
+                        }
+                    ],
+                    source=self._project,
+                    uuid=match_uuid,
+                    heartbeat=self._health.heartbeat,
                 )
 
             self._job_finished()

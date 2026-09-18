@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import csv
+import functools
 import os
 from pathlib import Path
 import json
@@ -39,6 +40,7 @@ from roz_scripts.utils.utils import (
     add_nxf_pod_resource_args,
     pod_resources_from_args,
     PodResourceError,
+    persist_publish_ack,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
@@ -115,16 +117,24 @@ class worker_pool_handler:
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
             )
 
+            persists = []
+            sends = []
+            new_artifact_send = None
+
             if not payload.get("rerun_of_published"):
                 # A rerun of a published artifact is admin-triggered, not a
                 # site submission - there is no site-facing result to file.
-                self._varys_client.send(
-                    message=payload,
-                    exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                    queue_suffix="validator",
+                persists.append(
+                    functools.partial(put_result_json, payload, self._log, self._config)
                 )
 
-                put_result_json(payload, self._log, self._config)
+                sends.append(
+                    {
+                        "message": payload,
+                        "exchange": f"inbound-results-{payload['project']}-{payload['site']}",
+                        "queue_suffix": "validator",
+                    }
+                )
 
             if not payload["test_flag"]:
                 new_artifact_payload = {
@@ -145,29 +155,52 @@ class worker_pool_handler:
                     ]
 
                 if not payload["low_priority"]:
-                    put_linkage_json(payload=payload, log=self._log, config=self._config)
+                    persists.append(
+                        functools.partial(
+                            put_linkage_json,
+                            payload=payload,
+                            log=self._log,
+                            config=self._config,
+                        )
+                    )
 
-                    self._varys_client.send(
-                        message=new_artifact_payload,
-                        exchange=f"inbound-new_artifact-{payload['project']}",
-                        queue_suffix="validator",
-                    )
+                    new_artifact_send = {
+                        "message": new_artifact_payload,
+                        "exchange": f"inbound-new_artifact-{payload['project']}",
+                        "queue_suffix": "validator",
+                    }
                 else:
-                    self._varys_client.send(
-                        message=new_artifact_payload,
-                        exchange=f"inbound-new_artifact_rerun-{payload['project']}",
-                        queue_suffix="validator",
-                    )
+                    new_artifact_send = {
+                        "message": new_artifact_payload,
+                        "exchange": f"inbound-new_artifact_rerun-{payload['project']}",
+                        "queue_suffix": "validator",
+                    }
 
                 for alert in hcid_alerts:
                     alert["climb_id"] = payload["climb_id"]
-                    self._varys_client.send(
-                        message=alert,
-                        exchange=f"{payload['project']}-restricted-hcid",
-                        queue_suffix="alert",
+                    sends.append(
+                        {
+                            "message": alert,
+                            "exchange": f"{payload['project']}-restricted-hcid",
+                            "queue_suffix": "alert",
+                        }
                     )
 
-            self._varys_client.acknowledge_message(message)
+            # new_artifact kicks off a full downstream run, so it is published
+            # last: anything replayed before it is cheap and idempotent
+            if new_artifact_send is not None:
+                sends.append(new_artifact_send)
+
+            persist_publish_ack(
+                self._varys_client,
+                message,
+                self._log,
+                sends=sends,
+                persists=persists,
+                source=self._project,
+                uuid=payload["uuid"],
+                heartbeat=self._health.heartbeat,
+            )
 
         else:
             self._log.info(
@@ -198,16 +231,34 @@ class worker_pool_handler:
                 self._varys_client.nack_message(message)
 
             else:
-                self._varys_client.acknowledge_message(message)
+                persists = []
+                sends = []
 
                 if not payload.get("rerun_of_published"):
-                    self._varys_client.send(
-                        message=payload,
-                        exchange=f"inbound-results-{payload['project']}-{payload['site']}",
-                        queue_suffix="validator",
+                    persists.append(
+                        functools.partial(
+                            put_result_json, payload, self._log, self._config
+                        )
                     )
 
-                    put_result_json(payload, self._log, self._config)
+                    sends.append(
+                        {
+                            "message": payload,
+                            "exchange": f"inbound-results-{payload['project']}-{payload['site']}",
+                            "queue_suffix": "validator",
+                        }
+                    )
+
+                persist_publish_ack(
+                    self._varys_client,
+                    message,
+                    self._log,
+                    sends=sends,
+                    persists=persists,
+                    source=self._project,
+                    uuid=payload["uuid"],
+                    heartbeat=self._health.heartbeat,
+                )
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")

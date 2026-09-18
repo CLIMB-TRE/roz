@@ -19,10 +19,8 @@ COPY . ./roz/
 
 # RUN chown -R jovyan:jovyan /.nextflow
 
-RUN pip3 install varys-client
-
-RUN pip3 install "climb-onyx-client>=4.8.2"
-
+# Dependencies and their version floors come from roz's setup.cfg, so there is
+# nothing to keep in step by hand here
 RUN pip3 install ./roz
 
 RUN rm -rf /roz
