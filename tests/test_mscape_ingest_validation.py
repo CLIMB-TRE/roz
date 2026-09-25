@@ -336,10 +336,31 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
                 "source": "mscape",
                 "description": "Ingest alert: manual intervention required",
                 "uuid": payload["uuid"],
+                "priority": "critical",
             },
             exchange="remote-announce",
             queue_suffix="alert",
         )
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_manual_intervention_alert_is_always_critical(
+        self, mock_put_result, mock_put_linkage
+    ):
+        """Every path that sets the `alert` flag also leaves `rerun` unset,
+        so the message is acked rather than requeued - this is the only
+        alert this record will ever produce, and must not be silently
+        dropped by the rate limiter."""
+        payload = base_payload()
+        self.handler.callback((True, True, [], payload, self.message))
+
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+        ]
+        self.assertEqual(len(remote_alerts), 1)
+        self.assertEqual(remote_alerts[0].kwargs["message"]["priority"], "critical")
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
@@ -529,6 +550,42 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         self.assertEqual(len(remote_alerts), 1)
         self.assertEqual(remote_alerts[0].kwargs["message"]["uuid"], payload["uuid"])
         self.assertEqual(remote_alerts[0].kwargs["message"]["source"], "mscape")
+        # First time this record has ever crossed the threshold - critical.
+        self.assertEqual(remote_alerts[0].kwargs["message"]["priority"], "critical")
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_failure_rerun_critical_only_on_first_crossing(self, mock_put_result):
+        payload = base_payload(rerun=True)
+        for _ in range(7):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+        ]
+        priorities = [c.kwargs["message"].get("priority") for c in remote_alerts]
+        self.assertEqual(priorities, ["critical", None, None])
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_failure_rerun_each_uuid_gets_its_own_critical_first_alert(
+        self, mock_put_result
+    ):
+        payload_a = base_payload(uuid="uuid-a", rerun=True)
+        payload_b = base_payload(uuid="uuid-b", rerun=True)
+        for _ in range(5):
+            self.handler.callback((False, False, False, payload_a, self.message))
+        for _ in range(5):
+            self.handler.callback((False, False, False, payload_b, self.message))
+
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+        ]
+        self.assertEqual(len(remote_alerts), 2)
+        for call in remote_alerts:
+            self.assertEqual(call.kwargs["message"]["priority"], "critical")
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_failure_rerun_sends_alert_on_every_subsequent_failure(self, mock_put_result):
@@ -581,6 +638,23 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         # Only the 21st call deadletters - the first 20 nack as usual.
         self.assertEqual(self.handler._varys_client.nack_message.call_count, 20)
         self.handler._varys_client.acknowledge_message.assert_called_once_with(self.message)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_deadletter_alert_is_critical(self, mock_put_result):
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(21):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+            and "dead-lettered" in c.kwargs["message"]["description"]
+        ]
+        self.assertEqual(len(remote_alerts), 1)
+        self.assertEqual(remote_alerts[0].kwargs["message"]["priority"], "critical")
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_scylla_failure_mixed_reasons_deadletter_breakdown(self, mock_put_result):

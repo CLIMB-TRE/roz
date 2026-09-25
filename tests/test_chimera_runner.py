@@ -1179,6 +1179,14 @@ class TestChimeraWorkerPoolHandlerSubmitJob(unittest.TestCase):
         self.handler._varys_client.nack_message.assert_called_once_with(bad_msg)
         self.assertEqual(self.handler.in_flight(), 0)
 
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+        ]
+        self.assertEqual(len(remote_alerts), 1)
+        self.assertNotIn("priority", remote_alerts[0].kwargs["message"])
+
 
 class TestChimeraWorkerPoolHandlerCallback(unittest.TestCase):
     def setUp(self):
@@ -1253,6 +1261,21 @@ class TestChimeraWorkerPoolHandlerCallback(unittest.TestCase):
         ]
         self.assertEqual(len(alert_calls), 1)
 
+    def test_callback_failure_alert_is_critical_only_on_first_crossing(self):
+        for _ in range(7):
+            self.handler._in_flight = 1
+            self.handler.callback(
+                (False, False, self.payload, "match-uuid-5678", False, self.message)
+            )
+
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+        ]
+        priorities = [c.kwargs["message"].get("priority") for c in remote_alerts]
+        self.assertEqual(priorities, ["critical", None, None])
+
     def test_callback_timeout_sends_alert_only_from_second_timeout(self):
         self.handler._in_flight = 1
         self.handler.callback((False, True, self.payload, "match-uuid-5678", False, self.message))
@@ -1269,6 +1292,7 @@ class TestChimeraWorkerPoolHandlerCallback(unittest.TestCase):
             if c.kwargs.get("queue_suffix") == "alert"
         ]
         self.assertEqual(len(alerts_after_second), 1)
+        self.assertEqual(alerts_after_second[0].kwargs["message"]["priority"], "critical")
 
     def test_callback_success_resets_failure_and_timeout_counters(self):
         self.handler._in_flight = 1
@@ -1280,6 +1304,34 @@ class TestChimeraWorkerPoolHandlerCallback(unittest.TestCase):
         self.handler.callback((True, False, self.payload, "match-uuid-5678", False, self.message))
         self.assertNotIn("match-uuid-5678", self.handler._timeout_log)
         self.assertNotIn("match-uuid-5678", self.handler._failure_log)
+
+    def test_callback_recovered_then_refailed_record_refires_critical(self):
+        """Both counters are popped on success, so a record that recovers
+        and later re-fails re-crosses from zero and re-fires critical -
+        accepted (see .claude/plans/alert-rate-limiting.md)."""
+        for _ in range(5):
+            self.handler._in_flight = 1
+            self.handler.callback(
+                (False, False, self.payload, "match-uuid-5678", False, self.message)
+            )
+
+        self.handler._in_flight = 1
+        self.handler.callback((True, False, self.payload, "match-uuid-5678", False, self.message))
+
+        for _ in range(5):
+            self.handler._in_flight = 1
+            self.handler.callback(
+                (False, False, self.payload, "match-uuid-5678", False, self.message)
+            )
+
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+        ]
+        self.assertEqual(len(remote_alerts), 2)
+        for call in remote_alerts:
+            self.assertEqual(call.kwargs["message"]["priority"], "critical")
 
 
 class TestChimeraWorkerPoolHandlerErrorCallback(unittest.TestCase):

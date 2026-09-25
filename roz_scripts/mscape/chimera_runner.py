@@ -35,6 +35,8 @@ from roz_scripts.utils.utils import (
     S3_CLIENT_CONFIG,
     s3_upload_file,
     send_admin_alert,
+    PRIORITY_ROUTINE,
+    PRIORITY_CRITICAL,
     add_nxf_pod_resource_args,
     pod_resources_from_args,
     PodResourceError,
@@ -49,6 +51,15 @@ from roz_scripts.utils.health import (
 )
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
 from varys import Varys
+
+# A repeatedly-failing (or repeatedly-timing-out) record only starts
+# alerting once it crosses these counts. Each alert is critical exactly when
+# its counter first reaches the threshold (the first alert this record ever
+# produces), and routine afterwards - see
+# .claude/plans/alert-rate-limiting.md. Keep the `>=` gates below and the
+# `==` first-crossing checks both anchored to these constants.
+REPEATED_FAILURE_ALERT_THRESHOLD = 5
+REPEATED_TIMEOUT_ALERT_THRESHOLD = 2
 
 
 class chimera_worker_pool_handler:
@@ -95,12 +106,15 @@ class chimera_worker_pool_handler:
             f"Successfully initialised chimera worker pool with {workers} workers"
         )
 
-    def _send_remote_alert(self, uuid: str, description: str) -> None:
+    def _send_remote_alert(
+        self, uuid: str, description: str, priority: str = PRIORITY_ROUTINE
+    ) -> None:
         send_admin_alert(
             self._varys_client,
             source=self._project,
             description=description,
             uuid=uuid,
+            priority=priority,
         )
 
     def in_flight(self) -> int:
@@ -194,24 +208,39 @@ class chimera_worker_pool_handler:
         )
 
         self._failure_log[match_uuid] = self._failure_log.get(match_uuid, 0) + 1
-        if self._failure_log[match_uuid] >= 5:
+        if self._failure_log[match_uuid] >= REPEATED_FAILURE_ALERT_THRESHOLD:
             self._log.error(
                 f"UUID: {match_uuid} has failed {self._failure_log[match_uuid]} times, sending alert"
             )
+            # Critical only the first time this record crosses the
+            # threshold. Both counters are popped on success, so a record
+            # that recovers and later re-fails re-crosses from zero and
+            # re-fires critical - accepted.
             self._send_remote_alert(
                 match_uuid,
                 f"Repeated chimera processing failure ({self._failure_log[match_uuid]} attempts)",
+                priority=(
+                    PRIORITY_CRITICAL
+                    if self._failure_log[match_uuid] == REPEATED_FAILURE_ALERT_THRESHOLD
+                    else PRIORITY_ROUTINE
+                ),
             )
 
         if timed_out:
             self._timeout_log[match_uuid] = self._timeout_log.get(match_uuid, 0) + 1
-            if self._timeout_log[match_uuid] >= 2:
+            if self._timeout_log[match_uuid] >= REPEATED_TIMEOUT_ALERT_THRESHOLD:
                 self._log.error(
                     f"UUID: {match_uuid} has timed out {self._timeout_log[match_uuid]} times, sending alert"
                 )
                 self._send_remote_alert(
                     match_uuid,
                     f"Chimera pipeline has timed out {self._timeout_log[match_uuid]} times",
+                    priority=(
+                        PRIORITY_CRITICAL
+                        if self._timeout_log[match_uuid]
+                        == REPEATED_TIMEOUT_ALERT_THRESHOLD
+                        else PRIORITY_ROUTINE
+                    ),
                 )
 
         # Never dead-letter: every message at this stage is vital, so always

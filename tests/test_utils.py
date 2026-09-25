@@ -19,6 +19,7 @@ from roz_scripts.utils.utils import (
     valid_character_checks,
     pipeline,
     send_admin_alert,
+    PRIORITY_CRITICAL,
     PodResources,
     PodResourceError,
     parse_cpu_quantity,
@@ -822,6 +823,36 @@ class test_send_admin_alert(unittest.TestCase):
 
         sent_message = mock_varys.send.call_args.kwargs["message"]
         self.assertNotIn("uuid", sent_message)
+
+    def test_omits_priority_by_default(self):
+        mock_varys = Mock()
+        send_admin_alert(mock_varys, source="mscape", description="boom")
+
+        sent_message = mock_varys.send.call_args.kwargs["message"]
+        self.assertNotIn("priority", sent_message)
+
+    def test_includes_priority_when_critical(self):
+        """Also the only coverage of pathsafe's deadletter alert fix - it
+        calls send_admin_alert with priority=PRIORITY_CRITICAL directly."""
+        mock_varys = Mock()
+        send_admin_alert(
+            mock_varys,
+            source="pathsafe",
+            description="boom",
+            priority=PRIORITY_CRITICAL,
+        )
+
+        sent_message = mock_varys.send.call_args.kwargs["message"]
+        self.assertEqual(sent_message["priority"], "critical")
+
+    def test_omits_priority_for_unrecognised_value(self):
+        mock_varys = Mock()
+        send_admin_alert(
+            mock_varys, source="mscape", description="boom", priority="something-else"
+        )
+
+        sent_message = mock_varys.send.call_args.kwargs["message"]
+        self.assertNotIn("priority", sent_message)
 
 
 class test_pipeline_execute(unittest.TestCase):

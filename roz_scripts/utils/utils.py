@@ -73,26 +73,51 @@ class NonPlaintextCSVError(Exception):
     pass
 
 
+# Alert rate-limit priority, mirrored in slack_integrations/remote_alerts.py
+# (that consumer cannot import from roz_scripts - it is deliberately kept
+# dependency-free since it runs off-prem - so the values are duplicated
+# rather than shared; keep both definitions in sync).
+PRIORITY_ROUTINE = "routine"
+PRIORITY_CRITICAL = "critical"
+
+
 def send_admin_alert(
-    varys_client, source: str, description: str, uuid: str | None = None
+    varys_client,
+    source: str,
+    description: str,
+    uuid: str | None = None,
+    priority: str = PRIORITY_ROUTINE,
 ) -> None:
     """Send a stripped, off-prem-safe alert to inform admins that something needs attention.
 
-    Only `source`, `description` and an optional `uuid` are ever included -
-    never a full payload dict - since this exchange is consumed outside the
-    restricted, per-project Slack channels.
+    Only `source`, `description`, an optional `uuid`, and an optional
+    `priority` are ever included - never a full payload dict - since this
+    exchange is consumed outside the restricted, per-project Slack channels.
 
     Args:
         varys_client: The Varys client instance to send the message with
         source (str): Name of the component raising the alert (e.g. "mscape", "s3_matcher")
         description (str): Human-readable description of the alert
         uuid (str | None): Opaque identifier for cross-referencing with the restricted system, if relevant
+        priority (str): PRIORITY_ROUTINE (default) or PRIORITY_CRITICAL. A
+            critical alert bypasses the consumer's rate limit entirely and
+            never updates its per-source cooldown, so it must be reserved for
+            terminal, effectively-once-per-record events (a deadletter, or
+            the first alert ever raised for a given record) - never for
+            something that can repeat quickly, or it defeats the limiter.
+            This is a control signal only: the consumer never renders its
+            value into the alert text.
     """
 
     message = {"source": source, "description": description}
 
     if uuid:
         message["uuid"] = uuid
+
+    if priority == PRIORITY_CRITICAL:
+        # Assign the constant, not the caller's argument, so this can never
+        # become a channel for a caller to smuggle arbitrary content through.
+        message["priority"] = PRIORITY_CRITICAL
 
     varys_client.send(
         message=message,

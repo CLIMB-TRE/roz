@@ -38,6 +38,8 @@ from roz_scripts.utils.utils import (
     EtagMismatchError,
     get_pod_namespace,
     send_admin_alert,
+    PRIORITY_ROUTINE,
+    PRIORITY_CRITICAL,
     add_nxf_pod_resource_args,
     pod_resources_from_args,
     PodResourceError,
@@ -54,6 +56,13 @@ from varys.utils import varys_message
 # is dead-lettered rather than retried further. Best-effort, in-memory - see
 # .claude/plans/rerun-scylla-deadlettering.md.
 RERUN_SCYLLA_DEADLETTER_THRESHOLD = 20
+
+# A rerunnable failure only starts alerting once it has failed this many
+# times. The alert is critical exactly when this count is first reached
+# (the first alert this record ever produces), and routine afterwards - see
+# .claude/plans/alert-rate-limiting.md. Keep the `>=` gate below and the
+# `==` first-crossing check both anchored to this constant.
+REPEATED_FAILURE_ALERT_THRESHOLD = 5
 
 
 class worker_pool_handler:
@@ -77,12 +86,15 @@ class worker_pool_handler:
 
         self._project = project
 
-    def _send_remote_alert(self, uuid: str, description: str) -> None:
+    def _send_remote_alert(
+        self, uuid: str, description: str, priority: str = PRIORITY_ROUTINE
+    ) -> None:
         send_admin_alert(
             self._varys_client,
             source=self._project,
             description=description,
             uuid=uuid,
+            priority=priority,
         )
 
     def submit_job(self, message, args, ingest_pipe, low_priority=False):
@@ -121,8 +133,13 @@ class worker_pool_handler:
                 exchange=f"{self._project}-restricted-announce",
                 queue_suffix="alert",
             )
+            # Always critical: every path that sets this flag also leaves
+            # `rerun` unset, so the message is acked rather than requeued -
+            # this is the only alert this record will ever produce.
             self._send_remote_alert(
-                payload["uuid"], "Ingest alert: manual intervention required"
+                payload["uuid"],
+                "Ingest alert: manual intervention required",
+                priority=PRIORITY_CRITICAL,
             )
 
         if success:
@@ -268,6 +285,7 @@ class worker_pool_handler:
                             f"Rerun of climb_id: {payload.get('climb_id')} failed the "
                             f"scylla stage {total_failures} times ({breakdown}); "
                             "dead-lettered without requeue",
+                            priority=PRIORITY_CRITICAL,
                         )
                     except Exception as alert_exception:
                         self._log.error(f"Failed to send admin alert: {alert_exception}")
@@ -279,7 +297,7 @@ class worker_pool_handler:
                 self._failure_log.setdefault(payload["uuid"], 0)
                 self._failure_log[payload["uuid"]] += 1
 
-                if self._failure_log[payload["uuid"]] >= 5:
+                if self._failure_log[payload["uuid"]] >= REPEATED_FAILURE_ALERT_THRESHOLD:
                     self._log.error(
                         f"UUID: {payload['uuid']} has failed {self._failure_log[payload['uuid']]} times, sending alert"
                     )
@@ -288,9 +306,19 @@ class worker_pool_handler:
                         exchange=f"{self._project}-restricted-announce",
                         queue_suffix="alert",
                     )
+                    # Critical only the first time this record crosses the
+                    # threshold - never popped here, so this fires at most
+                    # once per uuid per pod lifetime (a restart re-arms it,
+                    # which is accepted).
                     self._send_remote_alert(
                         payload["uuid"],
                         f"Repeated validation failure ({self._failure_log[payload['uuid']]} attempts)",
+                        priority=(
+                            PRIORITY_CRITICAL
+                            if self._failure_log[payload["uuid"]]
+                            == REPEATED_FAILURE_ALERT_THRESHOLD
+                            else PRIORITY_ROUTINE
+                        ),
                     )
 
                 self._log.info(

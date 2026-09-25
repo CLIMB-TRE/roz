@@ -30,6 +30,7 @@ from roz_scripts.utils.utils import (
     EtagMismatchError,
     get_pod_namespace,
     send_admin_alert,
+    PRIORITY_CRITICAL,
     add_nxf_pod_resource_args,
     pod_resources_from_args,
     PodResourceError,
@@ -151,11 +152,15 @@ class worker_pool_handler:
                     )
 
                     try:
+                        # Critical: this is the only alert this record ever
+                        # produces (mark_fatal below deliberately sends none
+                        # of its own, relying on this one having gone out).
                         send_admin_alert(
                             self._varys_client,
                             source="pathsafe",
                             description=f"Validation failed unrecoverably for UUID: {payload['uuid']}",
                             uuid=payload["uuid"],
+                            priority=PRIORITY_CRITICAL,
                         )
                     except Exception as alert_exception:
                         self._log.error(f"Failed to send admin alert: {alert_exception}")
