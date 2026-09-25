@@ -131,6 +131,7 @@ Sent on both success and non-rerunnable failure, **except** for a rerun of a pub
 | `low_priority` | boolean | `true` if the message was received from the rerun input queue (§3.2) |
 | `rerun_of_published` | boolean | `true` if this was a rerun-of-published-artifact request (§3.2) that sourced its metadata and reads from Onyx instead of the CSV. Absent otherwise |
 | `rerun` | boolean | `true` if the failure is considered transient and eligible for retry |
+| `scylla_failure` | string | Set only when the failure is attributable to the Scylla pipeline itself: `"timeout"`, `"job_failed"`, `"process_failure"` or `"trace_unparsable"`. Drives the rerun-of-published deadletter counter (§3.8). Absent for non-scylla failures (e.g. infrastructure errors, post-pipeline Onyx/S3 failures) and for the classified submission errors that are already terminal on the first attempt |
 | `ingest_errors` | array[string] | Human-readable validation error messages (absent if no errors) |
 | `ingest_warnings` | array[string] | Human-readable warning messages (absent if no warnings) |
 | `onyx_warnings` | object | Warnings from Onyx reconciliation. Shape: `{"reconcile_errors": [string]}` |
@@ -182,7 +183,7 @@ The remaining fields are defined by the Scylla pipeline's HCID warning schema.
 
 ### 3.8 Output (dead letter) — `mscape-restricted-announce` / `dead_letter`
 
-Sent when a rerunnable artifact has failed 5 or more consecutive validation attempts. Contains the full payload with an additional error entry in `ingest_errors`.
+Sent only for a rerun of a published artifact (§3.2) whose scylla stage has failed more than 20 times for a reason attributable to scylla itself (`scylla_failure` set — see §3.3), including timeouts. The count is kept in-memory per `uuid` and is best-effort: it does not persist across a worker restart, and it is not incremented by failures that never represent a completed scylla execution (infrastructure errors, a job that vanished mid-poll, or post-pipeline Onyx/S3 failures). Full re-validation reruns and first-time submissions are never dead-lettered. The message is dropped rather than requeued — there is no requeue, no site-facing result, and the worker pool is not restarted (contrast with the pathsafe deadletter, §6.4). Contains the full payload with an additional error entry in `ingest_errors` describing the failure count and a per-reason breakdown (e.g. `"14 timeout, 7 job_failed"`), preserved here so the rerun can be manually re-triggered later.
 
 ### 3.9 Output (dead worker) — `mscape-restricted-announce` / `dead_worker`
 
@@ -190,7 +191,7 @@ Sent as a plain string (not a JSON payload) when a worker process crashes with a
 
 ### 3.10 Output (admin alert) — `remote-announce` / `alert`
 
-Sent alongside §3.6 (manual intervention), the repeated-failure case in §3.3/§3.8, and §3.9 (dead worker). See [§7 Admin Alerts](#admin-alerts).
+Sent alongside §3.6 (manual intervention), the repeated-failure case in §3.3, the scylla deadletter (§3.8), and §3.9 (dead worker). See [§7 Admin Alerts](#admin-alerts).
 
 ---
 

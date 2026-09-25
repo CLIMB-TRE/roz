@@ -3,6 +3,7 @@
 import csv
 import functools
 import os
+from collections import Counter
 from pathlib import Path
 import json
 import copy
@@ -48,6 +49,13 @@ from varys import Varys
 from varys.utils import varys_message
 
 
+# A rerun-of-published sample whose scylla stage fails more than this many
+# times (for a reason attributable to scylla, see payload["scylla_failure"])
+# is dead-lettered rather than retried further. Best-effort, in-memory - see
+# .claude/plans/rerun-scylla-deadlettering.md.
+RERUN_SCYLLA_DEADLETTER_THRESHOLD = 20
+
+
 class worker_pool_handler:
     def __init__(
         self, workers, logger, varys_client, project, health: HealthState, config: dict
@@ -61,6 +69,11 @@ class worker_pool_handler:
         self._log.info(f"Successfully initialised worker pool with {workers} workers")
 
         self._failure_log = {}
+        # {uuid: Counter of scylla_failure reason -> count}, best-effort - see
+        # .claude/plans/rerun-scylla-deadlettering.md. Only incremented for
+        # rerun-of-published samples whose failure is attributable to scylla
+        # itself.
+        self._scylla_unknown_log = {}
 
         self._project = project
 
@@ -116,6 +129,8 @@ class worker_pool_handler:
             self._log.info(
                 f"Successful validation for match UUID: {payload['uuid']}, sending result"
             )
+
+            self._scylla_unknown_log.pop(payload["uuid"], None)
 
             persists = []
             sends = []
@@ -206,6 +221,59 @@ class worker_pool_handler:
             self._log.info(
                 f"Validation failed for match UUID: {payload['uuid']}, sending result"
             )
+
+            if payload.get("rerun_of_published") and payload.get("scylla_failure"):
+                reason_counts = self._scylla_unknown_log.setdefault(
+                    payload["uuid"], Counter()
+                )
+                reason_counts[payload["scylla_failure"]] += 1
+                total_failures = sum(reason_counts.values())
+
+                if total_failures > RERUN_SCYLLA_DEADLETTER_THRESHOLD:
+                    breakdown = ", ".join(
+                        f"{count} {reason}" for reason, count in reason_counts.items()
+                    )
+                    self._log.error(
+                        f"Rerun of climb_id: {payload.get('climb_id')} (UUID: "
+                        f"{payload['uuid']}) failed the scylla stage "
+                        f"{total_failures} times ({breakdown}), dead-lettering. "
+                        f"Full payload: {json.dumps(payload)}"
+                    )
+
+                    payload.setdefault("ingest_errors", [])
+                    payload["ingest_errors"].append(
+                        f"Rerun of {payload.get('climb_id')} failed the scylla stage "
+                        f"{total_failures} times ({breakdown}); not retried further"
+                    )
+
+                    persist_publish_ack(
+                        self._varys_client,
+                        message,
+                        self._log,
+                        sends=[
+                            {
+                                "message": payload,
+                                "exchange": f"{self._project}-restricted-announce",
+                                "queue_suffix": "dead_letter",
+                            }
+                        ],
+                        source=self._project,
+                        uuid=payload["uuid"],
+                        heartbeat=self._health.heartbeat,
+                    )
+
+                    try:
+                        self._send_remote_alert(
+                            payload["uuid"],
+                            f"Rerun of climb_id: {payload.get('climb_id')} failed the "
+                            f"scylla stage {total_failures} times ({breakdown}); "
+                            "dead-lettered without requeue",
+                        )
+                    except Exception as alert_exception:
+                        self._log.error(f"Failed to send admin alert: {alert_exception}")
+
+                    self._scylla_unknown_log.pop(payload["uuid"], None)
+                    return
 
             if payload["rerun"]:
                 self._failure_log.setdefault(payload["uuid"], 0)
@@ -1329,6 +1397,7 @@ def ret_0_parser(
                     )
                     ingest_fail = True
                     payload["rerun"] = True
+                    payload["scylla_failure"] = "process_failure"
 
     except Exception as pipeline_trace_exception:
         log.error(
@@ -1337,6 +1406,7 @@ def ret_0_parser(
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append("Could not parse Scylla pipeline trace")
         payload["rerun"] = True
+        payload["scylla_failure"] = "trace_unparsable"
         ingest_fail = True
 
     return (ingest_fail, payload)
@@ -1877,6 +1947,10 @@ def validate(
             f"Validation pipeline exited with non-0 exit code: {rc} for UUID: {payload['uuid']}"
         )
         payload["rerun"] = True
+        if rc == 124:
+            payload["scylla_failure"] = "timeout"
+        elif rc == 1:
+            payload["scylla_failure"] = "job_failed"
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 

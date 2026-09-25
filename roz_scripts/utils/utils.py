@@ -528,6 +528,13 @@ JOB_POLL_MAX_CONSECUTIVE_ERRORS = int(
     os.getenv("ROZ_JOB_POLL_MAX_CONSECUTIVE_ERRORS", "5")
 )
 
+# Returned instead of 1 whenever a failure cannot be attributed to the
+# pipeline itself - the job vanished before we could read its outcome, or an
+# infrastructure/client error meant it may never have started. Keeping this
+# distinct from a genuine job failure (rc 1) matters to callers that count
+# pipeline failures: an unattributable failure must not be counted as one.
+RC_INFRASTRUCTURE = 125
+
 
 class pipeline:
     def __init__(
@@ -756,11 +763,17 @@ class pipeline:
                     _request_timeout=k8s_request_timeout,
                 )
 
-            if resp and resp.status.failed and resp.status.failed >= backoff_limit:  # type: ignore
-                # A job with this name already reached a terminal failure in a
-                # previous invocation (e.g. the worker process was restarted and
-                # is reprocessing the same message) - delete it and start a fresh
-                # attempt rather than immediately reporting the old failure.
+            if resp and (
+                (resp.status.failed and resp.status.failed >= backoff_limit)  # type: ignore
+                or resp.status.succeeded  # type: ignore
+            ):
+                # A job with this name already reached a terminal state -
+                # failed or succeeded - in a previous invocation (e.g. the
+                # worker process was restarted, or the message was redelivered
+                # while a rerun's failure was still being written up, and is
+                # reprocessing the same message). Delete it and start a fresh
+                # attempt rather than attaching to (or silently re-reporting
+                # the outcome of) the old one.
                 self._delete_job(
                     api_instance, job_name, namespace, k8s_request_timeout
                 )
@@ -804,9 +817,9 @@ class pipeline:
                     self._append_stderr(
                         stderr_path,
                         f"Job {job_name} disappeared while being polled - "
-                        "treating as a failed run",
+                        "treating as unattributable",
                     )
-                    returncode = 1
+                    returncode = RC_INFRASTRUCTURE
                     break
 
                 if resp.status.succeeded:  # type: ignore
@@ -856,7 +869,7 @@ class pipeline:
                 stderr_path, f"Failed to execute pipeline due to exception: {e}"
             )
             if returncode is None:
-                returncode = 1
+                returncode = RC_INFRASTRUCTURE
             # Any failure that isn't one of the two decided outcomes above -
             # a k8s API error, a progress_cb blowing up, a delete that wouldn't
             # confirm - leaves a job behind whose pod is very likely still
@@ -884,7 +897,7 @@ class pipeline:
                 )
 
         if returncode is None:
-            returncode = 1
+            returncode = RC_INFRASTRUCTURE
 
         if returncode != 0:
             # Deliberately outside the finally: this has to run after the

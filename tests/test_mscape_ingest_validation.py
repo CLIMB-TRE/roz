@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ from roz_scripts.mscape.mscape_ingest_validation import (
     validate,
     worker_pool_handler,
     prepare_published_rerun,
+    ret_0_parser,
     run,
 )
 from roz_scripts.utils.health import HealthState
@@ -542,6 +544,229 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         remote_alerts = [c for c in all_alert_calls if c.kwargs.get("exchange") == "remote-announce"]
         self.assertEqual(len(restricted_alerts), 3)
         self.assertEqual(len(remote_alerts), 3)
+
+    # --- Failure path: rerun-of-published scylla deadletter ---
+    # See .claude/plans/rerun-scylla-deadlettering.md
+
+    def _dead_letter_sends(self):
+        return [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "dead_letter"
+        ]
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_scylla_failure_no_deadletter_at_twenty(self, mock_put_result):
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(20):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        self.assertEqual(self._dead_letter_sends(), [])
+        self.assertEqual(self.handler._varys_client.nack_message.call_count, 20)
+        self.handler._varys_client.acknowledge_message.assert_not_called()
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_scylla_failure_deadletters_at_twenty_first(self, mock_put_result):
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(21):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        dead_letter_calls = self._dead_letter_sends()
+        self.assertEqual(len(dead_letter_calls), 1)
+        self.assertEqual(dead_letter_calls[0].kwargs["exchange"], "mscape-restricted-announce")
+        self.assertIs(dead_letter_calls[0].kwargs["message"], payload)
+        # Only the 21st call deadletters - the first 20 nack as usual.
+        self.assertEqual(self.handler._varys_client.nack_message.call_count, 20)
+        self.handler._varys_client.acknowledge_message.assert_called_once_with(self.message)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_scylla_failure_mixed_reasons_deadletter_breakdown(self, mock_put_result):
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        payload["climb_id"] = "CLIMB001"
+
+        reasons = (["timeout"] * 14) + (["job_failed"] * 7)
+        for reason in reasons:
+            payload["scylla_failure"] = reason
+            self.handler.callback((False, False, False, payload, self.message))
+
+        self.assertEqual(len(self._dead_letter_sends()), 1)
+
+        # The pre-existing alert-at-5-and-every-subsequent-failure mechanism
+        # (keyed on `_failure_log`, unrelated to the scylla deadletter
+        # counter) also fires along the way - filter down to the deadletter's
+        # own alert specifically.
+        remote_alerts = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("queue_suffix") == "alert"
+            and c.kwargs.get("exchange") == "remote-announce"
+            and "dead-lettered" in c.kwargs["message"]["description"]
+        ]
+        self.assertEqual(len(remote_alerts), 1)
+        description = remote_alerts[0].kwargs["message"]["description"]
+        self.assertIn("14 timeout", description)
+        self.assertIn("7 job_failed", description)
+        self.assertIn("CLIMB001", description)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_rerun_of_published_without_scylla_failure_tag_never_deadletters(
+        self, mock_put_result
+    ):
+        """No `scylla_failure` tag - e.g. an infrastructure failure
+        (RC_INFRASTRUCTURE) or a non-scylla failure such as the post-pipeline
+        S3 upload path - must not count towards the threshold."""
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        for _ in range(25):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        self.assertEqual(self._dead_letter_sends(), [])
+        self.assertEqual(self.handler._varys_client.nack_message.call_count, 25)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_scylla_failure_without_rerun_of_published_never_deadletters(
+        self, mock_put_result
+    ):
+        """A full re-validation rerun (no `rerun_of_published`) is out of
+        scope - it keeps retrying forever, however many scylla failures."""
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(25):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        self.assertEqual(self._dead_letter_sends(), [])
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_scylla_failure_first_run_never_deadletters(self, mock_put_result):
+        payload = base_payload(rerun=True, low_priority=False)
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(25):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        self.assertEqual(self._dead_letter_sends(), [])
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_success_pops_scylla_failure_counter(
+        self, mock_put_result, mock_put_linkage
+    ):
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(5):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        self.assertIn(payload["uuid"], self.handler._scylla_unknown_log)
+
+        success_payload = base_payload(rerun=False, low_priority=True, test_flag=True)
+        success_payload["rerun_of_published"] = True
+        self.handler.callback((True, False, [], success_payload, self.message))
+
+        self.assertNotIn(success_payload["uuid"], self.handler._scylla_unknown_log)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_deadletter_pops_scylla_failure_counter(self, mock_put_result):
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(21):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        self.assertNotIn(payload["uuid"], self.handler._scylla_unknown_log)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_deadletter_does_not_requeue_or_put_result_json(
+        self, mock_put_result
+    ):
+        payload = base_payload(rerun=True, low_priority=True)
+        payload["rerun_of_published"] = True
+        payload["scylla_failure"] = "job_failed"
+        for _ in range(21):
+            self.handler.callback((False, False, False, payload, self.message))
+
+        mock_put_result.assert_not_called()
+        self.handler._health.mark_fatal.assert_not_called()
+
+        result_sends = [
+            c for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("exchange", "").startswith("inbound-results-")
+        ]
+        self.assertEqual(result_sends, [])
+
+        # publish-before-ack: the dead_letter publish must be confirmed
+        # before the message is acknowledged, or a failed publish would lose
+        # the payload permanently (the bug class fixed by persist_publish_ack).
+        call_names = [c[0] for c in self.handler._varys_client.mock_calls]
+        dead_letter_idx = next(
+            i
+            for i, c in enumerate(self.handler._varys_client.mock_calls)
+            if c[0] == "send" and c.kwargs.get("queue_suffix") == "dead_letter"
+        )
+        ack_idx = call_names.index("acknowledge_message")
+        self.assertLess(dead_letter_idx, ack_idx)
+
+
+class TestRet0ParserScyllaFailureTagging(unittest.TestCase):
+    """See .claude/plans/rerun-scylla-deadlettering.md §4.1."""
+
+    def _make_result_dir(self, uuid, rows):
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        pipeline_info = os.path.join(tmpdir, "pipeline_info")
+        os.makedirs(pipeline_info)
+        with open(
+            os.path.join(pipeline_info, f"execution_trace_{uuid}.txt"), "w"
+        ) as fh:
+            fh.write("name\texit\tstatus\n")
+            for name, exit_code, status in rows:
+                fh.write(f"{name}\t{exit_code}\t{status}\n")
+        with open(
+            os.path.join(pipeline_info, f"workflow_version_{uuid}.txt"), "w"
+        ) as fh:
+            fh.write("1.0.0\n")
+        return tmpdir
+
+    def test_unrecognised_exit_code_tagged_process_failure(self):
+        uuid = "trace-uuid-1"
+        result_path = self._make_result_dir(uuid, [("mystery_process", "42", "FAILED")])
+        payload = base_payload(uuid=uuid)
+
+        ingest_fail, payload = ret_0_parser(MagicMock(), payload, result_path)
+
+        self.assertTrue(ingest_fail)
+        self.assertTrue(payload["rerun"])
+        self.assertEqual(payload["scylla_failure"], "process_failure")
+
+    def test_unparsable_trace_tagged_trace_unparsable(self):
+        uuid = "trace-uuid-2"
+        result_path = self._make_result_dir(uuid, [])
+        os.remove(
+            os.path.join(result_path, "pipeline_info", f"execution_trace_{uuid}.txt")
+        )
+        payload = base_payload(uuid=uuid)
+
+        ingest_fail, payload = ret_0_parser(MagicMock(), payload, result_path)
+
+        self.assertTrue(ingest_fail)
+        self.assertTrue(payload["rerun"])
+        self.assertEqual(payload["scylla_failure"], "trace_unparsable")
+
+    def test_known_exit_pair_not_tagged_scylla_failure(self):
+        """Known (process, exit) pairs are already fully classified and
+        terminal on the first attempt (§3.2) - they must not be tagged, or
+        they would start counting towards the deadletter threshold."""
+        uuid = "trace-uuid-3"
+        result_path = self._make_result_dir(uuid, [("fastp", "255", "FAILED")])
+        payload = base_payload(uuid=uuid)
+
+        ingest_fail, payload = ret_0_parser(MagicMock(), payload, result_path)
+
+        self.assertTrue(ingest_fail)
+        self.assertFalse(payload["rerun"])
+        self.assertNotIn("scylla_failure", payload)
 
 
 class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
