@@ -683,7 +683,13 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         description = remote_alerts[0].kwargs["message"]["description"]
         self.assertIn("14 timeout", description)
         self.assertIn("7 job_failed", description)
-        self.assertIn("CLIMB001", description)
+        # climb_id must never appear in the off-prem remote-announce alert -
+        # only the opaque uuid is carried for cross-referencing. It's still
+        # available to admins via the restricted dead_letter payload.
+        self.assertNotIn("CLIMB001", description)
+        self.assertEqual(
+            self._dead_letter_sends()[0].kwargs["message"]["climb_id"], "CLIMB001"
+        )
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_rerun_of_published_without_scylla_failure_tag_never_deadletters(

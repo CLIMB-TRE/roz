@@ -280,10 +280,15 @@ class worker_pool_handler:
                     )
 
                     try:
+                        # No climb_id here - this goes out over the off-prem
+                        # remote-announce exchange, which only ever carries
+                        # the opaque uuid for cross-referencing. The climb_id
+                        # is available to admins via the restricted dead_letter
+                        # publish above and the local log line.
                         self._send_remote_alert(
                             payload["uuid"],
-                            f"Rerun of climb_id: {payload.get('climb_id')} failed the "
-                            f"scylla stage {total_failures} times ({breakdown}); "
+                            f"Rerun of published artifact failed the scylla "
+                            f"stage {total_failures} times ({breakdown}); "
                             "dead-lettered without requeue",
                             priority=PRIORITY_CRITICAL,
                         )
