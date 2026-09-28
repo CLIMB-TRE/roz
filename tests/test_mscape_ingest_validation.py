@@ -133,17 +133,20 @@ class TestWorkerPoolHandlerSubmitJob(unittest.TestCase):
     def test_submit_job_calls_apply_async_with_correct_kwargs(self):
         self.handler.submit_job(self.message, self.args, self.ingest_pipe, low_priority=True)
 
-        self.handler.worker_pool.apply_async.assert_called_once_with(
-            func=validate,
-            kwds={
+        _, kwargs = self.handler.worker_pool.apply_async.call_args
+        self.assertEqual(kwargs["func"], validate)
+        self.assertEqual(
+            kwargs["kwds"],
+            {
                 "message": self.message,
                 "args": self.args,
                 "ingest_pipe": self.ingest_pipe,
                 "low_priority": True,
             },
-            callback=self.handler.callback,
-            error_callback=self.handler.error_callback,
         )
+        self.assertEqual(kwargs["callback"], self.handler.callback)
+        self.assertEqual(kwargs["error_callback"].func, self.handler.error_callback)
+        self.assertEqual(kwargs["error_callback"].args, (self.message,))
 
     def test_submit_job_low_priority_defaults_to_false(self):
         self.handler.submit_job(self.message, self.args, self.ingest_pipe)
@@ -867,7 +870,7 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
 
     def test_error_callback_sends_dead_worker_message(self):
         exc = Exception("Worker exploded")
-        self.handler.error_callback(exc)
+        self.handler.error_callback(make_message(), exc)
 
         self.handler._varys_client.send.assert_any_call(
             message=f"mscape ingest worker failed with unhandled exception: {exc}",
@@ -875,9 +878,16 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
             queue_suffix="dead_worker",
         )
 
+    def test_error_callback_nacks_message(self):
+        exc = Exception("Worker exploded")
+        message = make_message()
+        self.handler.error_callback(message, exc)
+
+        self.handler._varys_client.nack_message.assert_called_once_with(message)
+
     def test_error_callback_sends_admin_alert(self):
         exc = Exception("Worker exploded")
-        self.handler.error_callback(exc)
+        self.handler.error_callback(make_message(), exc)
 
         self.handler._varys_client.send.assert_any_call(
             message={
@@ -889,7 +899,7 @@ class TestWorkerPoolHandlerErrorCallback(unittest.TestCase):
         )
 
     def test_error_callback_marks_health_fatal(self):
-        self.handler.error_callback(Exception("boom"))
+        self.handler.error_callback(make_message(), Exception("boom"))
 
         from pathlib import Path
 

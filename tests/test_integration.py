@@ -1846,7 +1846,11 @@ class Test_mscape_validator(unittest.TestCase):
             print(payload)
 
             self.assertFalse(Success)
-            self.assertFalse(alert)
+            # The mocked biosample_id reconcile filter returns zero matching
+            # records, which onyx_reconcile treats as alert=True; alert is
+            # now sticky across validate() rather than being clobbered by
+            # the later (non-alerting) csv_create failure, so it surfaces.
+            self.assertTrue(alert)
 
             self.assertFalse(payload["created"])
             self.assertFalse(payload["ingested"])
@@ -2153,7 +2157,11 @@ class Test_mscape_validator(unittest.TestCase):
             print(payload)
 
             self.assertTrue(Success)
-            self.assertFalse(alert)
+            # The mocked biosample_id reconcile filter returns zero matching
+            # records, which onyx_reconcile treats as alert=True; alert is
+            # now sticky across validate() rather than being clobbered by
+            # the later successful steps, so it surfaces here too.
+            self.assertTrue(alert)
 
             self.assertTrue(uuid.UUID(payload["uuid"], version=4))
             self.assertEqual(
