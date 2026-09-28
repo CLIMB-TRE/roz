@@ -197,8 +197,17 @@ def persist_publish_ack(
             _beat()
             varys_client.send(**send)
 
-    except (VarysPublishError, ClientError) as e:
-        log.error(f"Failed to persist or publish, requeueing message: {e}")
+    except Exception as e:
+        if isinstance(e, (VarysPublishError, ClientError)):
+            log.error(f"Failed to persist or publish, requeueing message: {e}")
+        else:
+            # Anything else (e.g. a KeyError from a malformed payload passed
+            # into a persist callable) would otherwise escape this function
+            # entirely, leaving the message neither acked nor nacked.
+            log.exception(
+                f"Unexpected error while persisting/publishing for uuid: {uuid} "
+                f"(source: {source}); requeueing"
+            )
 
         # The alert publishes through the same broker, so when the broker is the thing
         # that is broken this fails too. Log it and carry on; never fatal (Q10)

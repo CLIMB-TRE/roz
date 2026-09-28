@@ -116,10 +116,27 @@ class worker_pool_handler:
                 "low_priority": low_priority,
             },
             callback=self.callback,
-            error_callback=self.error_callback,
+            error_callback=functools.partial(self.error_callback, message),
         )
 
     def callback(self, validate_result):
+        try:
+            self._handle_result(validate_result)
+        except Exception:
+            _, _, _, payload, message = validate_result
+            uuid = payload.get("uuid", "unknown") if isinstance(payload, dict) else "unknown"
+            self._log.exception(
+                f"Unhandled exception while handling the validation result for "
+                f"UUID: {uuid}; nacking message for redelivery"
+            )
+            try:
+                self._varys_client.nack_message(message)
+            except Exception:
+                self._log.exception(
+                    f"Failed to nack message for UUID: {uuid} after a callback failure"
+                )
+
+    def _handle_result(self, validate_result):
         success, alert, hcid_alerts, payload, message = validate_result
 
         self._health.clear_job(payload["uuid"])
@@ -208,11 +225,11 @@ class worker_pool_handler:
                         "queue_suffix": "validator",
                     }
 
-                for alert in hcid_alerts:
-                    alert["climb_id"] = payload["climb_id"]
+                for hcid_alert in hcid_alerts:
+                    hcid_alert["climb_id"] = payload["climb_id"]
                     sends.append(
                         {
-                            "message": alert,
+                            "message": hcid_alert,
                             "exchange": f"{payload['project']}-restricted-hcid",
                             "queue_suffix": "alert",
                         }
@@ -335,7 +352,9 @@ class worker_pool_handler:
                 persists = []
                 sends = []
 
-                if not payload.get("rerun_of_published"):
+                if not payload.get("rerun_of_published") and not payload.get(
+                    "foreign_project"
+                ):
                     persists.append(
                         functools.partial(
                             put_result_json, payload, self._log, self._config
@@ -361,8 +380,20 @@ class worker_pool_handler:
                     heartbeat=self._health.heartbeat,
                 )
 
-    def error_callback(self, exception):
-        self._log.error(f"Worker failed with unhandled exception: {exception}")
+    def error_callback(self, message, exception):
+        try:
+            uuid = json.loads(message.body).get("uuid", "unknown")
+        except (json.JSONDecodeError, AttributeError):
+            uuid = "unknown"
+
+        self._log.error(
+            f"Worker failed with unhandled exception while validating "
+            f"UUID: {uuid}: {exception!r}",
+            exc_info=exception,
+        )
+
+        self._varys_client.nack_message(message)
+
         self._varys_client.send(
             message=f"{self._project} ingest worker failed with unhandled exception: {exception}",
             exchange=f"{self._project}-restricted-announce",
@@ -575,7 +606,10 @@ def handle_spike_ins(
                 alert = True
 
     except FileNotFoundError:
-        log.error("A spike in summary file was not found")
+        log.error(
+            f"Spike-in summary file not found for UUID: {payload['uuid']} with CID: "
+            f"{payload.get('climb_id')} at {spike_summary_path} (spike_in: {spike_in})"
+        )
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(
             "No spike-in summary file, this should never happen"
@@ -1239,9 +1273,9 @@ def read_fraction_upload(
                     progress_cb=progress_cb,
                 )
 
-            except ClientError as add_read_fraction_exception:
+            except (ClientError, FileNotFoundError) as add_read_fraction_exception:
                 log.error(
-                    f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CLIMB-ID: {payload['climb_id']} due to client error: {add_read_fraction_exception}"
+                    f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CLIMB-ID: {payload['climb_id']} due to error: {add_read_fraction_exception}"
                 )
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
@@ -1249,17 +1283,6 @@ def read_fraction_upload(
                 )
                 read_fraction_fail = True
                 alert = True
-                continue
-
-            except FileNotFoundError:
-                log.info(
-                    "Could not find read fraction file, probably because no reads were present in the fraction"
-                )
-                payload.setdefault("ingest_errors", [])
-                payload["ingest_errors"].append(
-                    f"Could not find read fraction file: {fraction_prefix}, probably because no reads were present in the fraction"
-                )
-                # This doesn't mean anything has actually failed, just that there were no reads in the fraction
                 continue
 
         if not read_fraction_fail:
@@ -1379,6 +1402,11 @@ def ret_0_parser(
         for process, trace in trace_dict.items():
             if trace["exit"] != "0":
                 if process.startswith("paired_concatenate") and trace["exit"] == "5":
+                    log.error(
+                        f"Scylla process {process} failed for UUID: {payload['uuid']} "
+                        f"with exit code {trace['exit']} and status {trace['status']} "
+                        "(invalid FASTQ header lines)"
+                    )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"At least one FASTQ in the pair appear to not contain valid header lines, please resubmit valid FASTQ files or contact the {payload['project']} admin team if you believe this to be in error"
@@ -1386,6 +1414,11 @@ def ret_0_parser(
                     ingest_fail = True
 
                 elif process.startswith("paired_concatenate") and trace["exit"] == "8":
+                    log.error(
+                        f"Scylla process {process} failed for UUID: {payload['uuid']} "
+                        f"with exit code {trace['exit']} and status {trace['status']} "
+                        "(mismatched paired FASTQ read headers)"
+                    )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Paired FASTQ read headers do not appear to match between files, please resubmit valid FASTQ files or contact the {payload['project']} admin team if you believe this to be in error"
@@ -1393,6 +1426,11 @@ def ret_0_parser(
                     ingest_fail = True
 
                 elif process.startswith("extract_taxa_") and trace["exit"] == "2":
+                    log.error(
+                        f"Scylla process {process} failed for UUID: {payload['uuid']} "
+                        f"with exit code {trace['exit']} and status {trace['status']} "
+                        "(human reads above rejection threshold)"
+                    )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         "Human reads detected above rejection threshold, please ensure pre-upload dehumanisation has been performed properly"
@@ -1403,6 +1441,11 @@ def ret_0_parser(
                     continue
 
                 elif process.startswith("fastp") and trace["exit"] == "255":
+                    log.error(
+                        f"Scylla process {process} failed for UUID: {payload['uuid']} "
+                        f"with exit code {trace['exit']} and status {trace['status']} "
+                        "(corrupted or unreadable gzipped FASTQ)"
+                    )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Submitted gzipped fastq file(s) appear to be corrupted or unreadable, please resubmit them or contact the {payload['project']} admin team for assistance"
@@ -1410,6 +1453,11 @@ def ret_0_parser(
                     ingest_fail = True
 
                 elif process.startswith("fastp") and trace["exit"] == "10":
+                    log.error(
+                        f"Scylla process {process} failed for UUID: {payload['uuid']} "
+                        f"with exit code {trace['exit']} and status {trace['status']} "
+                        "(no reads left after fastp filtering)"
+                    )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"No reads left after fastp filtering, either all reads fail QC or at least one FASTQ is malformed, please contact the {payload['project']} admin team if you believe this to be in error"
@@ -1417,6 +1465,11 @@ def ret_0_parser(
                     ingest_fail = True
 
                 elif process.startswith("check_single_fastq") and trace["exit"] == "11":
+                    log.error(
+                        f"Scylla process {process} failed for UUID: {payload['uuid']} "
+                        f"with exit code {trace['exit']} and status {trace['status']} "
+                        "(duplicate read IDs)"
+                    )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"Input FASTQ file has duplicate read IDs, please ensure that the FASTQ file is valid and does not contain duplicate read IDs, or contact the {payload['project']} admin team if you believe this to be in error"
@@ -1424,6 +1477,11 @@ def ret_0_parser(
                     ingest_fail = True
 
                 else:
+                    log.error(
+                        f"Scylla process {process} failed for UUID: {payload['uuid']} "
+                        f"with exit code {trace['exit']} and status {trace['status']} "
+                        "(unclassified failure, will be retried)"
+                    )
                     payload.setdefault("ingest_errors", [])
                     payload["ingest_errors"].append(
                         f"{payload['project']} validation pipeline (Scylla) failed in process {process} with exit code {trace['exit']} and status {trace['status']}"
@@ -1716,6 +1774,7 @@ def validate(
         log.info(
             f"Ignoring file set with UUID: {to_validate['uuid']} due non-{args.project} project ID"
         )
+        payload["foreign_project"] = True
         return (False, alert, hcid_alerts, payload, message)
 
     # A rerun of an already-published artifact sources its metadata and
@@ -1790,6 +1849,16 @@ def validate(
             return (False, alert, hcid_alerts, payload, message)
 
         if not to_validate["onyx_test_create_status"] or not to_validate["validate"]:
+            log.error(
+                f"Refusing to validate UUID: {payload['uuid']} - upstream flags say it "
+                f"should not be validated (onyx_test_create_status="
+                f"{to_validate.get('onyx_test_create_status')!r}, validate="
+                f"{to_validate.get('validate')!r}); acking without requeue"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append(
+                "Submission was not validated because the Onyx test-create stage did not pass"
+            )
             return (False, alert, hcid_alerts, payload, message)
 
         if to_validate["platform"] in ("ont", "illumina.se"):
@@ -2006,7 +2075,7 @@ def validate(
 
     if not rerun_of_published:
         # Spot if metadata disagrees anywhere, don't act on it yet though
-        source_reconcile_success, alert, payload = onyx_reconcile(
+        source_reconcile_success, source_reconcile_alert, payload = onyx_reconcile(
             payload=payload,
             identifier="biosample_id",
             fields_to_reconcile=[
@@ -2025,8 +2094,16 @@ def validate(
             ],
             log=log,
         )
+        alert = alert or source_reconcile_alert
 
-        run_reconcile_success, alert, payload = onyx_reconcile(
+        if not source_reconcile_success:
+            log.error(
+                f"Metadata reconciliation against biosample_id failed for UUID: "
+                f"{payload['uuid']}; proceeding without reconciliation. "
+                f"Onyx errors: {payload.get('onyx_errors')}"
+            )
+
+        run_reconcile_success, run_reconcile_alert, payload = onyx_reconcile(
             payload=payload,
             identifier="run_id",
             fields_to_reconcile=[
@@ -2041,14 +2118,23 @@ def validate(
             ],
             log=log,
         )
+        alert = alert or run_reconcile_alert
 
-        create_success, alert, payload = csv_create(
+        if not run_reconcile_success:
+            log.error(
+                f"Metadata reconciliation against run_id failed for UUID: "
+                f"{payload['uuid']}; proceeding without reconciliation. "
+                f"Onyx errors: {payload.get('onyx_errors')}"
+            )
+
+        create_success, create_alert, payload = csv_create(
             payload=payload,
             log=log,
             test_submission=False,
         )
+        alert = alert or create_alert
 
-        if alert:
+        if create_alert:
             log.error(
                 f"Failed to create Onyx record for UUID: {payload['uuid']}, catastrophic error"
             )
@@ -2079,26 +2165,42 @@ def validate(
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
-    total_bases_fail, alert, payload = onyx_update(
+    total_bases_fail, total_bases_alert, payload = onyx_update(
         payload=payload,
         fields={
             "total_bases": total_length["total_len"],
         },
         log=log,
     )
+    alert = alert or total_bases_alert
 
     if total_bases_fail:
-        log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
+        # The Onyx record has already been created at this point - treat the
+        # failure as transient and retry rather than abandoning the record.
+        log.error(
+            f"Failed to update Onyx record with total_bases for UUID: "
+            f"{payload['uuid']} with CID: {payload.get('climb_id')}; record "
+            f"created but incomplete. Onyx errors: {payload.get('onyx_update_errors')}"
+        )
+        payload["rerun"] = True
+        time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
-    scylla_version_fail, alert, payload = onyx_update(
+    scylla_version_fail, scylla_version_alert, payload = onyx_update(
         payload=payload,
         fields={"scylla_version": payload["scylla_version"]},
         log=log,
     )
+    alert = alert or scylla_version_alert
 
     if scylla_version_fail:
-        log.error(f"Failed to update Onyx record for UUID: {payload['uuid']}")
+        log.error(
+            f"Failed to update Onyx record with scylla_version for UUID: "
+            f"{payload['uuid']} with CID: {payload.get('climb_id')}; record "
+            f"created but incomplete. Onyx errors: {payload.get('onyx_update_errors')}"
+        )
+        payload["rerun"] = True
+        time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     if rerun_of_published:
@@ -2107,7 +2209,7 @@ def validate(
         etag_fail = False
 
     elif payload["platform"] == "illumina":
-        etag_fail, alert, payload = onyx_update(
+        etag_fail, etag_alert, payload = onyx_update(
             payload=payload,
             log=log,
             fields={
@@ -2115,19 +2217,36 @@ def validate(
                 "fastq_2_etag": payload["files"][".2.fastq.gz"]["etag"],
             },
         )
+        alert = alert or etag_alert
 
     elif payload["platform"] in ("ont", "illumina.se"):
-        etag_fail, alert, payload = onyx_update(
+        etag_fail, etag_alert, payload = onyx_update(
             payload=payload,
             log=log,
             fields={"fastq_1_etag": payload["files"][".fastq.gz"]["etag"]},
         )
+        alert = alert or etag_alert
 
     else:
         log.error(f"Unknown platform: {payload['platform']}")
         return (False, alert, hcid_alerts, payload, message)
 
     if etag_fail:
+        # The Onyx record has already been created at this point - treat the
+        # failure as transient and retry rather than leaving the record
+        # permanently created-but-unpublished.
+        log.error(
+            f"Failed to record fastq etag(s) on the Onyx record for UUID: "
+            f"{payload['uuid']} with CID: {payload.get('climb_id')} (platform: "
+            f"{payload['platform']}); record created but incomplete. "
+            f"Onyx errors: {payload.get('onyx_update_errors')}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "Failed to record fastq etags on the Onyx record"
+        )
+        payload["rerun"] = True
+        time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
     log.info(
@@ -2274,19 +2393,27 @@ def validate(
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
-    publish_fail, alert, payload = onyx_update(
+    publish_fail, publish_alert, payload = onyx_update(
         payload=payload, log=log, fields={"is_published": True}
     )
+    alert = alert or publish_alert
 
-    if alert:
+    if publish_fail:
+        # All artifacts have already been uploaded at this point - treat the
+        # failure as transient and retry rather than leaving a fully-ingested
+        # artifact permanently unpublished.
         log.error(
-            f"Failed to update Onyx record for UUID: {payload['uuid']} with CID: {payload['climb_id']}"
+            f"Failed to set is_published on the Onyx record for UUID: "
+            f"{payload['uuid']} with CID: {payload['climb_id']}; all artifacts "
+            f"were uploaded but the record remains unpublished. Onyx errors: "
+            f"{payload.get('onyx_update_errors')}"
+        )
+        payload.setdefault("ingest_errors", [])
+        payload["ingest_errors"].append(
+            "All files were uploaded but the Onyx record could not be marked published"
         )
         payload["rerun"] = True
         time.sleep(args.retry_delay)
-        return (False, alert, hcid_alerts, payload, message)
-
-    if publish_fail:
         return (False, alert, hcid_alerts, payload, message)
 
     if args.publish_delay_log:
