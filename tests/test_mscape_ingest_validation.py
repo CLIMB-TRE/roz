@@ -11,6 +11,8 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from roz_scripts.mscape.mscape_ingest_validation import (
+    add_classifier_calls,
+    handle_spike_ins,
     validate,
     worker_pool_handler,
     prepare_published_rerun,
@@ -325,6 +327,107 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
 
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
     @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_alert_surfaces_recorded_reasons(
+        self, mock_put_result, mock_put_linkage
+    ):
+        """Regression test: an alert must say which subsystem caused it,
+        both in the local log and in the remote alert description. An
+        unattributed alert leaves the operator guessing across nine
+        subsystems."""
+        payload = base_payload()
+        payload["alert_reasons"] = ["taxon_reports", "spike_in", "taxon_reports"]
+
+        self.handler.callback((True, True, [], payload, self.message))
+
+        self.handler._varys_client.send.assert_any_call(
+            message={
+                "source": "mscape",
+                "description": (
+                    "Ingest alert: manual intervention required; "
+                    "cause(s): taxon_reports, spike_in"
+                ),
+                "uuid": payload["uuid"],
+                "priority": "critical",
+            },
+            exchange="remote-announce",
+            queue_suffix="alert",
+        )
+
+        logged = " ".join(
+            str(c.args[0]) for c in self.handler._log.error.call_args_list
+        )
+        self.assertIn("taxon_reports", logged)
+        self.assertIn("spike_in", logged)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_alert_on_requeued_record_is_not_critical(
+        self, mock_put_result, mock_put_linkage
+    ):
+        """Regression test: a record that alerts AND sets rerun comes back
+        through _handle_result on every redelivery. Critical bypasses the
+        consumer's rate limit without updating its cooldown, so these must
+        stay routine or a requeue loop emits an unthrottled critical per
+        attempt."""
+        payload = base_payload(rerun=True)
+        payload["alert_reasons"] = ["taxon_reports"]
+
+        self.handler.callback((False, True, [], payload, self.message))
+
+        remote = [
+            c
+            for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("exchange") == "remote-announce"
+        ]
+        self.assertTrue(remote, "no remote alert was sent")
+        # send_admin_alert omits the key entirely for routine - only a
+        # critical alert carries a priority field.
+        self.assertNotIn("priority", remote[0].kwargs["message"])
+        self.assertIn(
+            "will be retried", remote[0].kwargs["message"]["description"]
+        )
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_alert_on_terminal_record_stays_critical(
+        self, mock_put_result, mock_put_linkage
+    ):
+        """Negative control: a terminal record produces exactly one alert
+        ever, so it keeps its critical priority."""
+        payload = base_payload(rerun=False)
+        payload["alert_reasons"] = ["taxon_reports"]
+
+        self.handler.callback((True, True, [], payload, self.message))
+
+        remote = [
+            c
+            for c in self.handler._varys_client.send.call_args_list
+            if c.kwargs.get("exchange") == "remote-announce"
+        ]
+        self.assertTrue(remote, "no remote alert was sent")
+        self.assertEqual(remote[0].kwargs["message"]["priority"], "critical")
+        self.assertNotIn(
+            "will be retried", remote[0].kwargs["message"]["description"]
+        )
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_callback_alert_without_reasons_says_so(
+        self, mock_put_result, mock_put_linkage
+    ):
+        """An alert raised without recording a reason is a bug at the call
+        site - the output must say so rather than silently omitting it."""
+        payload = base_payload()
+        self.handler.callback((True, True, [], payload, self.message))
+
+        logged = " ".join(
+            str(c.args[0]) for c in self.handler._log.error.call_args_list
+        )
+        self.assertIn("reason not recorded", logged)
+
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
     def test_callback_alert_sends_to_alert_exchange(self, mock_put_result, mock_put_linkage):
         payload = base_payload()
         self.handler.callback((True, True, [], payload, self.message))
@@ -337,7 +440,10 @@ class TestWorkerPoolHandlerCallback(unittest.TestCase):
         self.handler._varys_client.send.assert_any_call(
             message={
                 "source": "mscape",
-                "description": "Ingest alert: manual intervention required",
+                "description": (
+                    "Ingest alert: manual intervention required; "
+                    "cause(s): reason not recorded"
+                ),
                 "uuid": payload["uuid"],
                 "priority": "critical",
             },
@@ -1306,3 +1412,154 @@ class TestRunMessagePrioritisation(unittest.TestCase):
 
         mock_pool.submit_job.assert_not_called()
         mock_sleep.assert_any_call(60)
+
+
+class TestNestedFieldAlertSeverity(unittest.TestCase):
+    """The infra-vs-data split that onyx_update makes must survive the
+    callers: an OnyxRequestError (submitter data problem, returned as
+    (True, False)) must not be escalated into an admin alert, while a
+    genuine infrastructure failure ((True, True)) must still alert.
+
+    Without the negative controls these tests would pass equally well
+    against code that had simply deleted the alerts.
+    """
+
+    def setUp(self):
+        self.log = MagicMock()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.payload = {
+            "uuid": "test-uuid-1234",
+            "climb_id": "C-1234567890",
+            "project": "mscape",
+            "platform": "ont",
+        }
+
+    def _write_classifier_inputs(self, n_rows: int):
+        result_path = self.tmpdir.name
+
+        os.makedirs(os.path.join(result_path, "pipeline_info"), exist_ok=True)
+        os.makedirs(os.path.join(result_path, "classifications"), exist_ok=True)
+
+        with open(
+            os.path.join(
+                result_path, "pipeline_info", f"params_{self.payload['uuid']}.log"
+            ),
+            "wt",
+        ) as fh:
+            json.dump({"kraken_database": {"default": {"name": "PlusPF"}}}, fh)
+
+        with open(
+            os.path.join(result_path, "classifications", "PlusPF.kraken_report.json"),
+            "wt",
+        ) as fh:
+            json.dump(
+                {
+                    f"n{i}": {"taxid": i, "name": f"sp{i}", "count": i}
+                    for i in range(n_rows)
+                },
+                fh,
+            )
+
+        return result_path
+
+    def _write_spike_in_inputs(self):
+        result_path = self.tmpdir.name
+        os.makedirs(os.path.join(result_path, "qc"), exist_ok=True)
+
+        with open(
+            os.path.join(result_path, "qc", "spike_count_summary.json"), "wt"
+        ) as fh:
+            json.dump(
+                {"SPIKE1": {"ref": {"taxid": 1, "human_readable": "x", "mapped_count": 5}}},
+                fh,
+            )
+
+        with open(os.path.join(result_path, "qc", "spike_summary.json"), "wt") as fh:
+            json.dump({"SPIKE1": "pass"}, fh)
+
+        return result_path
+
+    # --- classifier_calls batch writes ---
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_update")
+    def test_classifier_calls_batch_request_error_does_not_alert(self, mock_update):
+        result_path = self._write_classifier_inputs(5)
+        mock_update.side_effect = [
+            (False, False, self.payload),  # clear
+            (True, False, self.payload),   # batch write, 4xx -> data problem
+        ]
+
+        fail, alert, payload = add_classifier_calls(
+            payload=self.payload, result_path=result_path, log=self.log
+        )
+
+        self.assertTrue(fail)
+        self.assertFalse(alert)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_update")
+    def test_classifier_calls_batch_infra_error_still_alerts(self, mock_update):
+        """Negative control for the test above."""
+        result_path = self._write_classifier_inputs(5)
+        mock_update.side_effect = [
+            (False, False, self.payload),  # clear
+            (True, True, self.payload),    # batch write, infra failure
+        ]
+
+        fail, alert, payload = add_classifier_calls(
+            payload=self.payload, result_path=result_path, log=self.log
+        )
+
+        self.assertTrue(fail)
+        self.assertTrue(alert)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_update")
+    def test_classifier_calls_batch_failure_logs_batch_number(self, mock_update):
+        result_path = self._write_classifier_inputs(150)
+        mock_update.side_effect = [
+            (False, False, self.payload),  # clear
+            (False, False, self.payload),  # batch 1 of 2 succeeds
+            (True, False, self.payload),   # batch 2 of 2 fails
+        ]
+
+        add_classifier_calls(
+            payload=self.payload, result_path=result_path, log=self.log
+        )
+
+        logged = " ".join(str(c.args[0]) for c in self.log.error.call_args_list)
+        self.assertIn("batch 2", logged)
+        self.assertIn("classifier_calls", logged)
+        self.assertIn(self.payload["uuid"], logged)
+
+    # --- spike-in clear (consistency with its two siblings) ---
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_update")
+    def test_spike_in_clear_request_error_does_not_alert(self, mock_update):
+        result_path = self._write_spike_in_inputs()
+        mock_update.return_value = (True, False, self.payload)
+
+        fail, alert, payload = handle_spike_ins(
+            payload=self.payload,
+            result_path=result_path,
+            log=self.log,
+            spike_in="SPIKE1",
+        )
+
+        self.assertTrue(fail)
+        self.assertFalse(alert)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.onyx_update")
+    def test_spike_in_clear_infra_error_still_alerts(self, mock_update):
+        """Negative control for the test above."""
+        result_path = self._write_spike_in_inputs()
+        mock_update.return_value = (True, True, self.payload)
+
+        fail, alert, payload = handle_spike_ins(
+            payload=self.payload,
+            result_path=result_path,
+            log=self.log,
+            spike_in="SPIKE1",
+        )
+
+        self.assertTrue(fail)
+        self.assertTrue(alert)

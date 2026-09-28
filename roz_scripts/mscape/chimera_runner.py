@@ -544,9 +544,15 @@ def handle_alignment_report(
         payload=payload, fields=None, log=log, clear_fields=["alignment_results"]
     )
 
-    if clear_fail or clear_alert:
+    # alert implies fail in onyx_update, so `or clear_alert` was always
+    # redundant. Branch on the failure; report the class separately so a
+    # submitter-data 4xx is distinguishable from an infrastructure fault.
+    if clear_fail:
         log.error(
-            f"Failed to clear old alignment results from Onyx for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
+            f"Failed to clear old alignment results from Onyx for UUID: "
+            f"{payload['match_uuid']} "
+            f"({'infrastructure' if clear_alert else 'data'} error), "
+            f"onyx errors: {payload.get('onyx_update_errors')}"
         )
         return False
 
@@ -556,9 +562,12 @@ def handle_alignment_report(
             payload=payload, fields={"alignment_results": batch}, log=log
         )
 
-        if update_fail or update_alert:
+        if update_fail:
             log.error(
-                f"Failed to update Onyx with alignment results for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
+                f"Failed to update Onyx with alignment results for UUID: "
+                f"{payload['match_uuid']} "
+                f"({'infrastructure' if update_alert else 'data'} error), "
+                f"onyx errors: {payload.get('onyx_update_errors')}"
             )
             return False
 
@@ -584,9 +593,12 @@ def handle_sylph_report(
             payload=payload, fields=None, log=log, clear_fields=["sylph_results"]
         )
 
-        if clear_fail or clear_alert:
+        if clear_fail:
             log.error(
-                f"Failed to clear old Sylph results from Onyx for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
+                f"Failed to clear old Sylph results from Onyx for UUID: "
+                f"{payload['match_uuid']} "
+                f"({'infrastructure' if clear_alert else 'data'} error), "
+                f"onyx errors: {payload.get('onyx_update_errors')}"
             )
             return False
 
@@ -622,9 +634,12 @@ def handle_sylph_report(
             payload=payload, fields={"sylph_results": batch}, log=log
         )
 
-        if update_fail or update_alert:
+        if update_fail:
             log.error(
-                f"Failed to update Onyx with sylph results for UUID: {payload['match_uuid']}, onyx errors: {payload.get('onyx_update_errors')}"
+                f"Failed to update Onyx with sylph results for UUID: "
+                f"{payload['match_uuid']} "
+                f"({'infrastructure' if update_alert else 'data'} error), "
+                f"onyx errors: {payload.get('onyx_update_errors')}"
             )
             return False
 
@@ -999,8 +1014,12 @@ def process_record(
             },
             log=log,
         )
-        if update_fail or update_alert:
-            return fail(f"Failed to update Onyx with BAM URI for UUID: {match_uuid}")
+        if update_fail:
+            return fail(
+                f"Failed to update Onyx with BAM URI for UUID: {match_uuid} "
+                f"({'infrastructure' if update_alert else 'data'} error), "
+                f"onyx errors: {payload.get('onyx_update_errors')}"
+            )
 
         log.info(f"Successfully updated Onyx for {metadata['climb_id']}")  # type: ignore
 

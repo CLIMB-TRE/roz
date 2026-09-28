@@ -1696,3 +1696,63 @@ class TestRunCrashHandling(unittest.TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 run(make_args())
+
+
+class TestChimeraOnyxErrorClassLogging(unittest.TestCase):
+    """chimera aborts a job on any Onyx failure, and the callback's repeated-
+    failure counter is what eventually alerts. A deterministic 4xx therefore
+    reaches that threshold just as an infrastructure fault does, so the logs
+    must at least say which class it was."""
+
+    def setUp(self):
+        self.log = MagicMock()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.payload = {"match_uuid": "match-1234", "project": "mscape", "climb_id": "C-1"}
+
+    def _write_alignment_tsv(self):
+        path = os.path.join(self.tmpdir.name, "alignment_report.tsv")
+        with open(path, "w") as fh:
+            writer = csv.DictWriter(
+                fh, fieldnames=["reference", "mapped_reads"], delimiter="\t"
+            )
+            writer.writeheader()
+            writer.writerow({"reference": "ref1", "mapped_reads": "100"})
+        return path
+
+    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
+    def test_data_class_failure_is_logged_as_data(self, mock_update):
+        mock_update.return_value = (True, False, self.payload)
+
+        result = handle_alignment_report(
+            self._write_alignment_tsv(), self.payload, self.log
+        )
+
+        self.assertFalse(result)
+        logged = " ".join(str(c.args[0]) for c in self.log.error.call_args_list)
+        self.assertIn("data error", logged)
+        self.assertNotIn("infrastructure error", logged)
+
+    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
+    def test_infra_class_failure_is_logged_as_infrastructure(self, mock_update):
+        mock_update.return_value = (True, True, self.payload)
+
+        result = handle_alignment_report(
+            self._write_alignment_tsv(), self.payload, self.log
+        )
+
+        self.assertFalse(result)
+        logged = " ".join(str(c.args[0]) for c in self.log.error.call_args_list)
+        self.assertIn("infrastructure error", logged)
+
+    @patch("roz_scripts.mscape.chimera_runner.onyx_update")
+    def test_alert_only_failure_still_aborts(self, mock_update):
+        """`alert` implies `fail` in onyx_update, so dropping `or update_alert`
+        from the condition is behaviour-preserving. Guards that assumption."""
+        mock_update.return_value = (True, True, self.payload)
+
+        self.assertFalse(
+            handle_alignment_report(
+                self._write_alignment_tsv(), self.payload, self.log
+            )
+        )

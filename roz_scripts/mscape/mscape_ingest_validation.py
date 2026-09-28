@@ -142,21 +142,40 @@ class worker_pool_handler:
         self._health.clear_job(payload["uuid"])
 
         if alert:
+            # Subsystem names accumulated by whichever step raised the alert.
+            # Empty means something set the flag without recording why, which
+            # is a bug in that call site - say so rather than staying silent.
+            reasons = payload.get("alert_reasons") or ["reason not recorded"]
+            reason_summary = ", ".join(dict.fromkeys(reasons))
+
             self._log.error(
-                f"Alert flag set for UUID: {payload['uuid']}, manual intervention required"
+                f"Alert flag set for UUID: {payload['uuid']}, manual "
+                f"intervention required; cause(s): {reason_summary}"
             )
             self._varys_client.send(
                 message=payload,
                 exchange=f"{self._project}-restricted-announce",
                 queue_suffix="alert",
             )
-            # Always critical: every path that sets this flag also leaves
-            # `rerun` unset, so the message is acked rather than requeued -
-            # this is the only alert this record will ever produce.
+            # Critical only when the record is terminal. A record that
+            # also sets `rerun` is requeued and comes back through here on
+            # every redelivery, and critical bypasses the consumer's rate
+            # limit without updating its cooldown - so a rerunning record
+            # would emit an unthrottled critical per attempt. Those stay
+            # routine and let the limiter do its job; the repeated-failure
+            # threshold below is what escalates a record that keeps failing.
+            requeued = payload.get("rerun", False)
+
+            # No climb_id here - this goes out over the off-prem
+            # remote-announce exchange. Subsystem names are safe; the
+            # climb_id is available to admins via the restricted publish
+            # above and the local log line.
             self._send_remote_alert(
                 payload["uuid"],
-                "Ingest alert: manual intervention required",
-                priority=PRIORITY_CRITICAL,
+                f"Ingest alert: manual intervention required; "
+                f"cause(s): {reason_summary}"
+                + (" (record will be retried)" if requeued else ""),
+                priority=PRIORITY_ROUTINE if requeued else PRIORITY_CRITICAL,
             )
 
         if success:
@@ -564,7 +583,10 @@ def handle_spike_ins(
                     "Failed to clear existing spike-in info"
                 )
                 spike_in_fail = True
-                alert = True
+                # Mirrors add_taxon_records / add_classifier_calls: only
+                # alert if onyx_update classed the clear failure as
+                # infrastructure, not if it was a 4xx.
+                alert = clear_alert
 
                 return (spike_in_fail, alert, payload)
 
@@ -586,6 +608,12 @@ def handle_spike_ins(
                 spike_in_fail = True
 
             if update_alert:
+                log.error(
+                    f"Alert-worthy Onyx failure writing spike_in_info for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
+                payload.setdefault("alert_reasons", []).append("spike_in_info")
                 alert = True
 
         spike_summary_path = os.path.join(result_path, "qc", "spike_summary.json")
@@ -603,6 +631,12 @@ def handle_spike_ins(
                 spike_in_fail = True
 
             if update_alert:
+                log.error(
+                    f"Alert-worthy Onyx failure writing spike_in_result for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
+                payload.setdefault("alert_reasons", []).append("spike_in_result")
                 alert = True
 
     except FileNotFoundError:
@@ -840,7 +874,9 @@ def add_taxon_records(
 
     if not binned_read_fail:
         top_level_fail = False
-        for batch in batched(nested_records, 100):
+        batch_alert = False
+
+        for batch_no, batch in enumerate(batched(nested_records, 100), start=1):
             update_fail, update_alert, payload = onyx_update(
                 payload=payload,
                 fields={"taxa_files": batch},
@@ -848,11 +884,24 @@ def add_taxon_records(
             )
 
             if update_fail:
+                log.error(
+                    f"Failed to write taxon record batch {batch_no} "
+                    f"({len(batch)} rows) to taxa_files for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
                 top_level_fail = True
+
+            # Only propagate the alert onyx_update actually raised. A 4xx on
+            # a batch is a submitter-data problem, which onyx_update
+            # deliberately classes as non-alerting - escalating it here would
+            # page an admin about bad metadata.
+            if update_alert:
+                batch_alert = True
 
         if top_level_fail:
             binned_read_fail = True
-            alert = True
+            alert = batch_alert
 
     return (binned_read_fail, alert, payload)
 
@@ -945,6 +994,12 @@ def push_taxon_reports(
             taxon_report_fail = True
 
         if update_alert:
+            log.error(
+                f"Alert-worthy Onyx failure writing taxon_reports for UUID: "
+                f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                f"Onyx errors: {payload.get('onyx_update_errors')}"
+            )
+            payload.setdefault("alert_reasons", []).append("taxon_reports")
             alert = True
 
     return (taxon_report_fail, alert, payload)
@@ -1021,7 +1076,9 @@ def add_classifier_calls(
 
     if not classifier_calls_fail:
         top_level_fail = False
-        for batch in batched(classifier_calls, 100):
+        batch_alert = False
+
+        for batch_no, batch in enumerate(batched(classifier_calls, 100), start=1):
             update_fail, update_alert, payload = onyx_update(
                 payload=payload,
                 fields={"classifier_calls": batch},
@@ -1029,11 +1086,24 @@ def add_classifier_calls(
             )
 
             if update_fail:
+                log.error(
+                    f"Failed to write classifier call batch {batch_no} "
+                    f"({len(batch)} rows) to classifier_calls for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
                 top_level_fail = True
+
+            # Only propagate the alert onyx_update actually raised. A 4xx on
+            # a batch is a submitter-data problem, which onyx_update
+            # deliberately classes as non-alerting - escalating it here would
+            # page an admin about bad metadata.
+            if update_alert:
+                batch_alert = True
 
         if top_level_fail:
             classifier_calls_fail = True
-            alert = True
+            alert = batch_alert
 
     return (classifier_calls_fail, alert, payload)
 
@@ -1101,6 +1171,12 @@ def push_report_file(
             report_fail = True
 
         if update_alert:
+            log.error(
+                f"Alert-worthy Onyx failure writing ingest_report for UUID: "
+                f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                f"Onyx errors: {payload.get('onyx_update_errors')}"
+            )
+            payload.setdefault("alert_reasons", []).append("ingest_report")
             alert = True
 
     return (report_fail, alert, payload)
@@ -1175,6 +1251,12 @@ def add_reads_record(
                 raw_read_fail = True
 
             if update_alert:
+                log.error(
+                    f"Alert-worthy Onyx failure writing fastq_1/fastq_2 for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
+                payload.setdefault("alert_reasons", []).append("raw_reads")
                 alert = True
 
     elif payload["platform"] in ("ont", "illumina.se"):
@@ -1214,6 +1296,12 @@ def add_reads_record(
                 raw_read_fail = True
 
             if update_alert:
+                log.error(
+                    f"Alert-worthy Onyx failure writing fastq_1 for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
+                payload.setdefault("alert_reasons", []).append("raw_reads")
                 alert = True
 
     else:
@@ -1275,7 +1363,7 @@ def read_fraction_upload(
 
             except (ClientError, FileNotFoundError) as add_read_fraction_exception:
                 log.error(
-                    f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CLIMB-ID: {payload['climb_id']} due to error: {add_read_fraction_exception}"
+                    f"Failed to upload read fraction '{fraction_prefix}' to long-term storage bucket for UUID: {payload['uuid']} with CLIMB-ID: {payload['climb_id']} due to error: {add_read_fraction_exception}"
                 )
                 payload.setdefault("ingest_errors", [])
                 payload["ingest_errors"].append(
@@ -1299,6 +1387,12 @@ def read_fraction_upload(
                 read_fraction_fail = True
 
             if update_alert:
+                log.error(
+                    f"Alert-worthy Onyx failure writing {fraction_prefix}_reads_1/2 for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
+                payload.setdefault("alert_reasons", []).append(f"read_fraction:{fraction_prefix}")
                 alert = True
 
     elif payload["platform"] in ("ont", "illumina.se"):
@@ -1323,7 +1417,7 @@ def read_fraction_upload(
 
         except (ClientError, FileNotFoundError) as add_read_fraction_exception:
             log.error(
-                f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_read_fraction_exception}"
+                f"Failed to upload read fraction '{fraction_prefix}' to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_read_fraction_exception}"
             )
             payload.setdefault("ingest_errors", [])
             payload["ingest_errors"].append(
@@ -1344,12 +1438,25 @@ def read_fraction_upload(
                 read_fraction_fail = True
 
             if update_alert:
+                log.error(
+                    f"Alert-worthy Onyx failure writing {fraction_prefix}_reads_1 for UUID: "
+                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                    f"Onyx errors: {payload.get('onyx_update_errors')}"
+                )
+                payload.setdefault("alert_reasons", []).append(f"read_fraction:{fraction_prefix}")
                 alert = True
 
     else:
-        log.error(f"Unknown platform: {payload['platform']}")
+        log.error(
+            f"Unknown platform: {payload['platform']} while uploading read "
+            f"fraction '{fraction_prefix}' for UUID: {payload['uuid']} with "
+            f"CID: {payload.get('climb_id')}"
+        )
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(f"Unknown platform: {payload['platform']}")
+        payload.setdefault("alert_reasons", []).append(
+            f"read_fraction:{fraction_prefix}:unknown_platform"
+        )
         read_fraction_fail = True
         alert = True
 
@@ -1629,6 +1736,7 @@ def prepare_published_rerun(
         payload["ingest_errors"].append(
             "Could not fetch Onyx record for rerun, this is likely a transient Onyx error"
         )
+        payload.setdefault("alert_reasons", []).append("rerun:onyx_fetch_failed")
         return (False, True, True, {}, (), payload)
 
     if record is None:
@@ -1637,6 +1745,7 @@ def prepare_published_rerun(
         payload["ingest_errors"].append(
             f"No Onyx record found for climb_id: {payload['climb_id']}"
         )
+        payload.setdefault("alert_reasons", []).append("rerun:no_such_record")
         return (False, False, True, {}, (), payload)
 
     if not record.get("is_published"):
@@ -1647,6 +1756,7 @@ def prepare_published_rerun(
         payload["ingest_errors"].append(
             f"Artifact {payload['climb_id']} is not published, reruns only apply to artifacts that have already completed first-time ingest"
         )
+        payload.setdefault("alert_reasons", []).append("rerun:not_published")
         return (False, False, True, record, (), payload)
 
     platform = record.get("platform")
@@ -1661,6 +1771,7 @@ def prepare_published_rerun(
         )
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(f"Unrecognised platform: {platform}")
+        payload.setdefault("alert_reasons", []).append("rerun:unrecognised_platform")
         return (False, False, True, record, (), payload)
 
     if not all(read_uris):
@@ -1671,6 +1782,7 @@ def prepare_published_rerun(
         payload["ingest_errors"].append(
             f"Published record {payload['climb_id']} has no recorded fastq_1/fastq_2 URI to rerun against"
         )
+        payload.setdefault("alert_reasons", []).append("rerun:missing_fastq_uri")
         return (False, False, True, record, (), payload)
 
     if not do_uris_exist(*read_uris):
@@ -1681,6 +1793,7 @@ def prepare_published_rerun(
         payload["ingest_errors"].append(
             f"Published reads for {payload['climb_id']} no longer exist in the published reads bucket"
         )
+        payload.setdefault("alert_reasons", []).append("rerun:reads_missing")
         return (False, False, True, record, read_uris, payload)
 
     if are_files_empty(*read_uris):
@@ -1689,6 +1802,7 @@ def prepare_published_rerun(
         payload["ingest_errors"].append(
             f"Published reads for {payload['climb_id']} appear to be empty"
         )
+        payload.setdefault("alert_reasons", []).append("rerun:reads_empty")
         return (False, False, True, record, read_uris, payload)
 
     payload["platform"] = platform
@@ -1723,6 +1837,7 @@ def prepare_published_rerun(
         payload["ingest_errors"].append(
             "Incomplete identifiers resolved from Onyx record, cannot proceed with rerun"
         )
+        payload.setdefault("alert_reasons", []).append("rerun:incomplete_identifiers")
         return (False, False, True, record, read_uris, payload)
 
     return (True, False, False, record, read_uris, payload)
@@ -1862,12 +1977,25 @@ def validate(
             return (False, alert, hcid_alerts, payload, message)
 
         if to_validate["platform"] in ("ont", "illumina.se"):
-            unseen_check_fail, fastq_unseen, alert, payload = ensure_file_unseen(
+            unseen_check_fail, fastq_unseen, unseen_alert, payload = ensure_file_unseen(
                 etag_field="fastq_1_etag",
                 etag=to_validate["files"][".fastq.gz"]["etag"],
                 log=log,
                 payload=payload,
             )
+
+            # Accumulate rather than assign - a direct assignment here would
+            # discard an alert raised by an earlier unseen check.
+            if unseen_alert:
+                log.error(
+                    f"Alert raised checking whether fastq file is unseen for "
+                    f"UUID: {payload['uuid']}"
+                )
+                payload.setdefault("alert_reasons", []).append(
+                    "unseen_check:fastq_1_etag"
+                )
+
+            alert = alert or unseen_alert
 
             if unseen_check_fail:
                 log.error(
@@ -1932,12 +2060,25 @@ def validate(
                 )
                 return (False, alert, hcid_alerts, payload, message)
 
-            unseen_check_fail, fastq_1_unseen, alert, payload = ensure_file_unseen(
+            unseen_check_fail, fastq_1_unseen, unseen_alert, payload = ensure_file_unseen(
                 etag_field="fastq_1_etag",
                 etag=to_validate["files"][".1.fastq.gz"]["etag"],
                 log=log,
                 payload=payload,
             )
+
+            # Accumulate rather than assign - a direct assignment here would
+            # discard an alert raised by an earlier unseen check.
+            if unseen_alert:
+                log.error(
+                    f"Alert raised checking whether fastq_1 file is unseen for "
+                    f"UUID: {payload['uuid']}"
+                )
+                payload.setdefault("alert_reasons", []).append(
+                    "unseen_check:fastq_1_etag"
+                )
+
+            alert = alert or unseen_alert
             if unseen_check_fail:
                 log.error(
                     f"Failed to check if fastq file for UUID: {payload['uuid']} is unseen"
@@ -1950,12 +2091,25 @@ def validate(
 
                 return (False, alert, hcid_alerts, payload, message)
 
-            unseen_check_fail, fastq_2_unseen, alert, payload = ensure_file_unseen(
+            unseen_check_fail, fastq_2_unseen, unseen_alert, payload = ensure_file_unseen(
                 etag_field="fastq_2_etag",
                 etag=to_validate["files"][".2.fastq.gz"]["etag"],
                 log=log,
                 payload=payload,
             )
+
+            # Accumulate rather than assign - a direct assignment here would
+            # discard an alert raised by an earlier unseen check.
+            if unseen_alert:
+                log.error(
+                    f"Alert raised checking whether fastq_2 file is unseen for "
+                    f"UUID: {payload['uuid']}"
+                )
+                payload.setdefault("alert_reasons", []).append(
+                    "unseen_check:fastq_2_etag"
+                )
+
+            alert = alert or unseen_alert
 
             if unseen_check_fail:
                 log.error(
@@ -2097,10 +2251,11 @@ def validate(
         alert = alert or source_reconcile_alert
 
         if not source_reconcile_success:
+            onyx_errors = payload.get("onyx_errors")
             log.error(
                 f"Metadata reconciliation against biosample_id failed for UUID: "
-                f"{payload['uuid']}; proceeding without reconciliation. "
-                f"Onyx errors: {payload.get('onyx_errors')}"
+                f"{payload['uuid']}; proceeding without reconciliation."
+                + (f" Onyx errors: {onyx_errors}" if onyx_errors else "")
             )
 
         run_reconcile_success, run_reconcile_alert, payload = onyx_reconcile(
@@ -2121,10 +2276,11 @@ def validate(
         alert = alert or run_reconcile_alert
 
         if not run_reconcile_success:
+            onyx_errors = payload.get("onyx_errors")
             log.error(
                 f"Metadata reconciliation against run_id failed for UUID: "
-                f"{payload['uuid']}; proceeding without reconciliation. "
-                f"Onyx errors: {payload.get('onyx_errors')}"
+                f"{payload['uuid']}; proceeding without reconciliation."
+                + (f" Onyx errors: {onyx_errors}" if onyx_errors else "")
             )
 
         create_success, create_alert, payload = csv_create(
@@ -2324,6 +2480,13 @@ def validate(
         )
 
         if fraction_alert:
+            log.error(
+                f"Alert raised uploading read fraction '{fraction}' for UUID: "
+                f"{payload['uuid']} with CID: {payload.get('climb_id')}"
+            )
+            payload.setdefault("alert_reasons", []).append(
+                f"read_fraction:{fraction}"
+            )
             alert = True
 
         if fraction_fail_inner:
@@ -2363,16 +2526,29 @@ def validate(
         spike_in=artifact_metadata.get("spike_in", "none"),
     )
 
-    if (
-        reads_alert
-        or taxa_alert
-        or report_alert
-        or taxa_reports_alert
-        or classifier_alert
-        or classifier_metadata_alert
-        or hcid_alert
-        or spike_in_alert
-    ):
+    # Keyed by subsystem so the log can name what actually fired - an
+    # unattributed alert leaves the operator guessing across nine
+    # subsystems, which is the whole reason this dict exists.
+    alert_sources = {
+        "raw_reads": reads_alert,
+        "taxon_records": taxa_alert,
+        "scylla_report": report_alert,
+        "taxon_reports": taxa_reports_alert,
+        "classifier_calls": classifier_alert,
+        "classifier_metadata": classifier_metadata_alert,
+        "hcid": hcid_alert,
+        "spike_in": spike_in_alert,
+    }
+
+    fired = [name for name, flagged in alert_sources.items() if flagged]
+
+    if fired:
+        log.error(
+            f"Alert raised during post-pipeline processing for UUID: "
+            f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+            f"failing subsystem(s): {', '.join(fired)}"
+        )
+        payload.setdefault("alert_reasons", []).extend(fired)
         alert = True
 
     if (

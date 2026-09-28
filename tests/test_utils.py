@@ -667,7 +667,10 @@ class test_utils(unittest.TestCase):
             )
 
     def test_onyx_reconcile_no_filter_return(self):
-        # Test no filter return
+        """A known identifier with no published records is the normal state
+        for the first submission under that identifier - nothing to
+        reconcile against, so a successful no-op and emphatically not an
+        alert."""
         with patch("roz_scripts.utils.utils.OnyxClient") as mock_client:
             mock_client.return_value.__enter__.return_value.identify.return_value = {
                 "field": "run_index",
@@ -688,8 +691,33 @@ class test_utils(unittest.TestCase):
 
             print(payload)
 
-            self.assertFalse(success)
-            self.assertTrue(alert)
+            self.assertTrue(success)
+            self.assertFalse(alert)
+
+    def test_onyx_reconcile_no_filter_return_is_logged(self):
+        """The zero-record path used to return silently. Whatever its
+        severity, it must say what happened - the caller's own log prints
+        payload['onyx_errors'], which is never populated here."""
+        with patch("roz_scripts.utils.utils.OnyxClient") as mock_client, patch.object(
+            self, "log", Mock()
+        ):
+            mock_client.return_value.__enter__.return_value.identify.return_value = {
+                "field": "run_index",
+                "value": "hidden-value",
+                "identifier": "S-1234567890",
+            }
+            mock_client.return_value.__enter__.return_value.filter.return_value = iter(())
+
+            onyx_reconcile(
+                payload=self.example_match,
+                log=self.log,
+                identifier="run_index",
+                fields_to_reconcile=["adm1_country"],
+            )
+
+            logged = " ".join(str(c.args[0]) for c in self.log.info.call_args_list)
+            self.assertIn("No published records yet", logged)
+            self.assertIn("S-1234567890", logged)
 
     def test_valid_character_check_success(self):
         success, alert, payload = valid_character_checks(payload=self.example_match)

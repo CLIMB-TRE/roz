@@ -1962,7 +1962,18 @@ def onyx_reconcile(
                 )
 
                 if len(response) == 0:
-                    return (False, True, payload)
+                    # A known identifier with no published records is the
+                    # normal state for the first submission under a new
+                    # biosample_id/run_id - there is simply nothing to
+                    # reconcile against yet. Treated as success, matching
+                    # the not-identified branch above, and emphatically not
+                    # an alert.
+                    log.info(
+                        f"No published records yet for {identifier}: "
+                        f"{payload[f'anonymised_{identifier}']} (artifact: "
+                        f"{payload['artifact']}), nothing to reconcile against"
+                    )
+                    return (True, False, payload)
 
                 fields_of_concern = []
 
