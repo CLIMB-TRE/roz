@@ -495,27 +495,30 @@ class TestHandleAlignmentReport(unittest.TestCase):
         alignment_results is logged with the failing row's unique_accession,
         not a bare index string."""
         mock_client = mock_client_cls.return_value.__enter__.return_value
-        # onyx_update's clear step passes fields=None, which short-circuits
-        # before ever calling client.update() - so only the actual batch
-        # update below results in a call to client.update().
-        mock_client.update.side_effect = OnyxRequestError(
-            "bad request",
-            MagicMock(
-                json=MagicMock(
-                    return_value={
-                        "messages": {
-                            "alignment_results": {
-                                "1": {
-                                    "uniquely_mapped_reads": [
-                                        "A valid integer is required."
-                                    ]
+        # onyx_update's clear step is a real client.update() call now
+        # (fields=None, clear=["alignment_results"]), so let it succeed and
+        # only fail the batch update that follows it.
+        mock_client.update.side_effect = [
+            None,  # clear step
+            OnyxRequestError(
+                "bad request",
+                MagicMock(
+                    json=MagicMock(
+                        return_value={
+                            "messages": {
+                                "alignment_results": {
+                                    "1": {
+                                        "uniquely_mapped_reads": [
+                                            "A valid integer is required."
+                                        ]
+                                    }
                                 }
                             }
                         }
-                    }
-                )
+                    )
+                ),
             ),
-        )
+        ]
 
         path = os.path.join(self.tmpdir.name, "alignment_report.tsv")
         with open(path, "w") as fh:

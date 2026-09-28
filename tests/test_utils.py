@@ -1471,6 +1471,92 @@ class test_pod_resources(unittest.TestCase):
         PodResources(cpu_limit="none", memory_limit="16G").validate()
 
 
+class test_onyx_update_clear_fields(unittest.TestCase):
+    """Regression tests: a clear-only update (fields=None, clear_fields set)
+    must reach client.update(). Gating the call on `fields` alone turned
+    every nested-field pre-write wipe into a silent no-op, so reruns
+    accumulated stale rows instead of replacing them."""
+
+    def setUp(self):
+        os.environ["ONYX_DOMAIN"] = "testing"
+        os.environ["ONYX_TOKEN"] = "testing"
+        self.log = Mock()
+        self.payload = {
+            "project": "mscape",
+            "climb_id": "CLIMB001",
+            "uuid": "uuid-1234",
+        }
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_clear_only_update_calls_client(self, mock_client_cls):
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+
+        fail, alert, payload = onyx_update(
+            payload=self.payload,
+            fields=None,
+            log=self.log,
+            clear_fields=["taxa_files"],
+        )
+
+        self.assertFalse(fail)
+        self.assertFalse(alert)
+        mock_client.update.assert_called_once_with(
+            project="mscape",
+            climb_id="CLIMB001",
+            fields=None,
+            clear=["taxa_files"],
+        )
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_clear_only_update_failure_is_reported(self, mock_client_cls):
+        """A failed wipe must not be reported back to the caller as success -
+        callers abort the rerun on it rather than appending to stale rows."""
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+        mock_client.update.side_effect = OnyxRequestError(
+            "bad request",
+            MockResponse(400, json_data={"messages": {"taxa_files": ["nope"]}}),
+        )
+
+        fail, alert, payload = onyx_update(
+            payload=self.payload,
+            fields=None,
+            log=self.log,
+            clear_fields=["taxa_files"],
+        )
+
+        self.assertTrue(fail)
+        self.assertEqual(payload["onyx_update_errors"]["taxa_files"], ["nope"])
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_fields_and_clear_are_sent_together(self, mock_client_cls):
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+
+        fail, alert, payload = onyx_update(
+            payload=self.payload,
+            fields={"foo": "bar"},
+            log=self.log,
+            clear_fields=["taxa_files"],
+        )
+
+        self.assertFalse(fail)
+        mock_client.update.assert_called_once_with(
+            project="mscape",
+            climb_id="CLIMB001",
+            fields={"foo": "bar"},
+            clear=["taxa_files"],
+        )
+
+    @patch("roz_scripts.utils.utils.OnyxClient")
+    def test_no_fields_and_no_clear_is_a_noop(self, mock_client_cls):
+        mock_client = mock_client_cls.return_value.__enter__.return_value
+
+        fail, alert, payload = onyx_update(payload=self.payload, fields=None, log=self.log)
+
+        self.assertFalse(fail)
+        self.assertFalse(alert)
+        mock_client.update.assert_not_called()
+
+
 class test_onyx_update_payload_key_errors(unittest.TestCase):
     """Regression tests: onyx_update must not raise KeyError from inside its
     own exception handlers when the payload doesn't carry 'artifact'/'uuid'

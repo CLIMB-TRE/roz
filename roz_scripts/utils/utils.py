@@ -2376,7 +2376,12 @@ def onyx_update(
         reconnect_count = 0
         while reconnect_count <= 3:
             try:
-                if fields:
+                # A clear-only update (fields=None, clear_fields set) is a
+                # valid Onyx call - `clear` is sent as a query param, not in
+                # the body - and is how nested fields are wiped before a
+                # rerun appends fresh rows. Gating on `fields` alone made
+                # every such wipe a silent no-op.
+                if fields or clear_fields:
                     client.update(
                         project=payload["project"],
                         climb_id=payload["climb_id"],
