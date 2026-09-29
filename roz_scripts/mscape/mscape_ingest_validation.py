@@ -1695,6 +1695,45 @@ def handle_hcid(
     return (hcid_fail, hcid_alerts, alert, payload)
 
 
+def log_publish_delay(
+    payload: dict,
+    args: argparse.Namespace,
+    log: logging.Logger,
+) -> None:
+    """Append this artifact's time-to-publish to the publish delay log.
+
+    Only first-time publishes are recorded. A rerun of an already-published
+    artifact was published on its original ingest and has its match_timestamp
+    stamped when the rerun is requested, so recording one here would enter the
+    rerun's processing time as a publish delay and skew the metric.
+
+    Args:
+        payload (dict): Payload dict for the artifact that was just published
+        args (argparse.Namespace): Script arguments
+        log (logging.Logger): Logger object
+    """
+
+    if not args.publish_delay_log or payload.get("rerun_of_published"):
+        return
+
+    try:
+        with open(args.publish_delay_log, "a") as publish_delay_fh:
+            publish_delay_fh.write(
+                json.dumps(
+                    {
+                        "publish_date": time.strftime("%Y-%m-%d", time.gmtime()),
+                        "climb_id": payload["climb_id"],
+                        "publish_delay": time.time_ns() - payload["match_timestamp"],
+                    }
+                )
+                + "\n"
+            )
+    except Exception as publish_delay_log_exception:
+        log.error(
+            f"Could not write to publish delay log for UUID: {payload['uuid']} due to error: {publish_delay_log_exception}"
+        )
+
+
 def prepare_published_rerun(
     payload: dict,
     log: logging.Logger,
@@ -2592,24 +2631,7 @@ def validate(
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
 
-    if args.publish_delay_log:
-        try:
-            with open(args.publish_delay_log, "a") as publish_delay_fh:
-                publish_delay_fh.write(
-                    json.dumps(
-                        {
-                            "publish_date": time.strftime("%Y-%m-%d", time.gmtime()),
-                            "climb_id": payload["climb_id"],
-                            "publish_delay": time.time_ns()
-                            - payload["match_timestamp"],
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception as publish_delay_log_exception:
-            log.error(
-                f"Could not write to publish delay log for UUID: {payload['uuid']} due to error: {publish_delay_log_exception}"
-            )
+    log_publish_delay(payload=payload, args=args, log=log)
 
     payload["published"] = True
     log.info(

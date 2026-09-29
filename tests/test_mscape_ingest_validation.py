@@ -13,6 +13,7 @@ import pytest
 from roz_scripts.mscape.mscape_ingest_validation import (
     add_classifier_calls,
     handle_spike_ins,
+    log_publish_delay,
     validate,
     worker_pool_handler,
     prepare_published_rerun,
@@ -1563,3 +1564,69 @@ class TestNestedFieldAlertSeverity(unittest.TestCase):
 
         self.assertTrue(fail)
         self.assertTrue(alert)
+
+
+class TestLogPublishDelay(unittest.TestCase):
+    def setUp(self):
+        self.log = MagicMock()
+        self.tmpdir = tempfile.mkdtemp()
+        self.delay_log = os.path.join(self.tmpdir, "publish_delay.log")
+        self.addCleanup(shutil.rmtree, self.tmpdir)
+
+    def _payload(self, **overrides):
+        payload = {
+            "uuid": "test-uuid",
+            "climb_id": "CLIMB001",
+            "match_timestamp": 1_000_000_000,
+        }
+        payload.update(overrides)
+        return payload
+
+    def _args(self, publish_delay_log):
+        return argparse.Namespace(publish_delay_log=publish_delay_log)
+
+    def _entries(self):
+        with open(self.delay_log) as fh:
+            return [json.loads(line) for line in fh if line.strip()]
+
+    def test_first_time_publish_is_logged(self):
+        log_publish_delay(
+            payload=self._payload(),
+            args=self._args(self.delay_log),
+            log=self.log,
+        )
+
+        entries = self._entries()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["climb_id"], "CLIMB001")
+        self.assertGreater(entries[0]["publish_delay"], 0)
+
+    def test_rerun_of_published_is_not_logged(self):
+        """A rerun republishes an artifact that was already published on its
+        first ingest, so its `delay` is really just rerun processing time and
+        would skew the metric."""
+        log_publish_delay(
+            payload=self._payload(rerun_of_published=True),
+            args=self._args(self.delay_log),
+            log=self.log,
+        )
+
+        self.assertFalse(os.path.exists(self.delay_log))
+
+    def test_no_delay_log_configured_is_a_noop(self):
+        log_publish_delay(
+            payload=self._payload(),
+            args=self._args(None),
+            log=self.log,
+        )
+
+        self.log.error.assert_not_called()
+
+    def test_write_failure_is_logged_and_swallowed(self):
+        log_publish_delay(
+            payload=self._payload(),
+            args=self._args(os.path.join(self.tmpdir, "nonexistent", "delay.log")),
+            log=self.log,
+        )
+
+        self.log.error.assert_called_once()
