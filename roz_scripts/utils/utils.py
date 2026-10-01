@@ -1328,6 +1328,120 @@ def put_linkage_json(payload: dict, log: logging.Logger, config: dict):
         raise e
 
 
+# Retention tagging. The lifecycle rules that act on these live in
+# s3_controller.generate_lifecycle_configuration; see
+# .claude/plans/s3-retention-policy-critique.md for why the vocabulary is this small.
+#
+# Only RETENTION_RELEASE is load-bearing: it is the sole value a lifecycle rule
+# filters on. RETENTION_HOLD is a state record, not a mechanism - an untagged
+# object is protected exactly as well as a held one, because nothing but the
+# long bucket-wide backstop rule matches it. Do not build anything that assumes
+# the hold tag is complete or timely.
+RETENTION_TAG_KEY = "roz-retention"
+RETENTION_HOLD = "hold"
+RETENTION_RELEASE = "release"
+
+
+def set_match_retention_state(
+    payload: dict,
+    state: str,
+    log: logging.Logger,
+    s3_client: BaseClient | None = None,
+) -> bool:
+    """Tag every uploader object in a match with its retention state.
+
+    Objects tagged RETENTION_RELEASE become eligible for the short lifecycle
+    expiry; anything else is held until the bucket-wide backstop reaps it.
+
+    This function NEVER raises. It is called after persist_publish_ack has
+    already published and acked, where an exception would be either useless or
+    actively harmful - persist_publish_ack runs its persists before publishing
+    and requeues the whole message if one raises, which for mscape means
+    re-running a multi-hour validation because a tagging call blipped. For the
+    same reason it must never be passed as a persist.
+
+    Args:
+        payload (dict): A match payload; payload["files"] maps ext -> {"uri", "key", ...}
+        state (str): RETENTION_HOLD or RETENTION_RELEASE
+        log (logging.Logger): Logger object
+        s3_client (BaseClient, optional): Client to reuse. Built once if omitted -
+            never per object, since get_s3_credentials() re-reads the credentials
+            file on every call.
+
+    Returns:
+        bool: True only if every object in the match was tagged successfully
+    """
+
+    files = payload.get("files") or {}
+
+    if not files:
+        log.info(
+            f"No files to set retention state '{state}' on for UUID: {payload.get('uuid')}"
+        )
+        return True
+
+    try:
+        if s3_client is None:
+            s3_client = get_s3_client(get_s3_credentials())
+    except Exception as e:
+        log.error(
+            f"Failed to build S3 client to set retention state '{state}' for UUID: {payload.get('uuid')}: {e}"
+        )
+        return False
+
+    all_ok = True
+
+    for ext, file_dict in files.items():
+        uri = file_dict.get("uri")
+        key = file_dict.get("key")
+
+        if not uri or not key:
+            log.error(
+                f"Cannot set retention state '{state}' for {ext} of UUID: {payload.get('uuid')}: missing uri or key"
+            )
+            all_ok = False
+            continue
+
+        # gen_s3_uri builds s3://{bucket}/{key}; take the bucket from the URI and
+        # the key from its own field, since keys contain dots but never slashes.
+        bucket = uri.removeprefix("s3://").split("/", 1)[0]
+
+        try:
+            s3_client.put_object_tagging(
+                Bucket=bucket,
+                Key=key,
+                Tagging={"TagSet": [{"Key": RETENTION_TAG_KEY, "Value": state}]},
+            )
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+
+            # The site owns its ingest bucket and may delete its own uploads at
+            # any time; a missing object has no retention state to set and is
+            # not a failure.
+            if error_code in ("NoSuchKey", "404"):
+                log.info(
+                    f"Object s3://{bucket}/{key} is already gone, no retention state to set for UUID: {payload.get('uuid')}"
+                )
+                continue
+
+            log.error(
+                f"Failed to set retention state '{state}' on s3://{bucket}/{key} for UUID: {payload.get('uuid')}: {e}"
+            )
+            all_ok = False
+        except Exception as e:
+            log.error(
+                f"Failed to set retention state '{state}' on s3://{bucket}/{key} for UUID: {payload.get('uuid')}: {e}"
+            )
+            all_ok = False
+
+    if all_ok:
+        log.info(
+            f"Set retention state '{state}' on {len(files)} file(s) for UUID: {payload.get('uuid')}"
+        )
+
+    return all_ok
+
+
 def are_files_empty(*s3_uris: str) -> bool:
     """Check if the files at the given S3 URIs are empty
 

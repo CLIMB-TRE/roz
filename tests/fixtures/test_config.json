@@ -29,7 +29,12 @@
             "uploader": "site_ingest",
             "service": "site_ingest"
           },
-          "owner": "{site}"
+          "owner": "{site}",
+          "retention": {
+            "class": "ingest",
+            "released_days": 30,
+            "backstop_days": 180
+          }
         },
         "results": {
           "name_layout": "{project}-{site}-fakeresults",
@@ -38,7 +43,12 @@
             "uploader": "site_ingest",
             "service": "site_ingest"
           },
-          "owner": "{site}"
+          "owner": "{site}",
+          "retention": {
+            "class": "flat",
+            "days": 90,
+            "prefix": "{project}"
+          }
         }
       },
       "notification_bucket_configs": {
@@ -77,7 +87,12 @@
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
           "policy": {"analysis": "project_ingest"},
-          "owner": "admin"
+          "owner": "admin",
+          "retention": {
+            "class": "ingest",
+            "released_days": 30,
+            "backstop_days": 180
+          }
         },
         "fake_widget_zeta": {
           "name_layout": "{project}-fake-widget-zeta",

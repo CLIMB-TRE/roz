@@ -1230,3 +1230,259 @@ class TestS3Controller(unittest.TestCase):
 
         for statement in site_statements:
             self.assertEqual(set(statement["Principal"]["AWS"]), expected_principals)
+
+
+class TestLifecycleConfiguration(unittest.TestCase):
+    """Retention lifecycle rule generation.
+
+    Retention is opt-in: a bucket with no "retention" block must never acquire a
+    lifecycle rule. See .claude/plans/s3-retention-policy-critique.md.
+    """
+
+    def setUp(self):
+        with open(os.path.join(DIR, "fixtures", "test_config.json")) as f:
+            self.config_dict = json.load(f)
+
+    def test_published_bucket_gets_no_lifecycle(self):
+        """The most important test here: a wrong expiry on published data is
+        irreversible, so absence of a retention block must mean absence of a rule."""
+
+        project_buckets = self.config_dict["configs"]["mscape"]["project_buckets"]
+
+        published_buckets = [
+            bucket for bucket in project_buckets if bucket.startswith("published")
+        ]
+
+        self.assertTrue(published_buckets, "fixture has no published buckets to check")
+
+        for bucket in published_buckets:
+            self.assertIsNone(
+                s3_controller.generate_lifecycle_configuration(
+                    bucket=bucket,
+                    project="mscape",
+                    config_dict=self.config_dict,
+                    bucket_scope="project_buckets",
+                ),
+                f"{bucket} must not get a lifecycle configuration",
+            )
+
+        # And nothing else in the fixture quietly acquired one either.
+        with_retention = [
+            bucket
+            for bucket, bucket_config in project_buckets.items()
+            if "retention" in bucket_config
+        ]
+
+        self.assertEqual(with_retention, ["ingest"])
+
+    def test_ingest_class_rules(self):
+        lifecycle = s3_controller.generate_lifecycle_configuration(
+            bucket="ingest",
+            project="mscape",
+            config_dict=self.config_dict,
+            bucket_scope="site_buckets",
+        )
+
+        rules = {rule["ID"]: rule for rule in lifecycle["Rules"]}
+
+        self.assertEqual(
+            set(rules),
+            {
+                s3_controller.LIFECYCLE_RULE_RELEASED,
+                s3_controller.LIFECYCLE_RULE_BACKSTOP,
+            },
+        )
+
+        released = rules[s3_controller.LIFECYCLE_RULE_RELEASED]
+        self.assertEqual(released["Status"], "Enabled")
+        self.assertEqual(released["Expiration"]["Days"], 30)
+        self.assertEqual(
+            released["Filter"]["Tag"],
+            {"Key": "roz-retention", "Value": "release"},
+        )
+
+        backstop = rules[s3_controller.LIFECYCLE_RULE_BACKSTOP]
+        self.assertEqual(backstop["Filter"], {"Prefix": ""})
+        self.assertEqual(backstop["Expiration"]["Days"], 180)
+
+        # Shortest-expiration-wins means the backstop must outlive the release
+        # rule, or it silently becomes the only rule in effect.
+        self.assertGreater(
+            backstop["Expiration"]["Days"], released["Expiration"]["Days"]
+        )
+
+    def test_backstop_must_outlive_released(self):
+        config = copy.deepcopy(self.config_dict)
+        config["configs"]["mscape"]["site_buckets"]["ingest"]["retention"][
+            "backstop_days"
+        ] = 10
+
+        with self.assertRaises(ValueError):
+            s3_controller.generate_lifecycle_configuration(
+                bucket="ingest",
+                project="mscape",
+                config_dict=config,
+                bucket_scope="site_buckets",
+            )
+
+    def test_flat_class_rule_is_prefix_scoped(self):
+        """The results bucket is site-owned and site-writable, so the 90 day rule
+        must not reach objects the site put there itself."""
+
+        lifecycle = s3_controller.generate_lifecycle_configuration(
+            bucket="results",
+            project="mscape",
+            config_dict=self.config_dict,
+            bucket_scope="site_buckets",
+        )
+
+        self.assertEqual(len(lifecycle["Rules"]), 1)
+
+        rule = lifecycle["Rules"][0]
+        self.assertEqual(rule["ID"], s3_controller.LIFECYCLE_RULE_FLAT)
+        self.assertEqual(rule["Expiration"]["Days"], 90)
+        self.assertEqual(rule["Filter"], {"Prefix": "mscape"})
+
+    def test_invalid_retention_class_raises(self):
+        config = copy.deepcopy(self.config_dict)
+        config["configs"]["mscape"]["site_buckets"]["ingest"]["retention"][
+            "class"
+        ] = "nonsense"
+
+        with self.assertRaises(ValueError):
+            s3_controller.generate_lifecycle_configuration(
+                bucket="ingest",
+                project="mscape",
+                config_dict=config,
+                bucket_scope="site_buckets",
+            )
+
+    def test_resolve_bucket_lifecycles_only_covers_configured_buckets(self):
+        config_map = s3_controller.create_config_map(self.config_dict)
+
+        resolved = s3_controller.resolve_bucket_lifecycles(
+            config_map=config_map, config_dict=self.config_dict
+        )
+
+        self.assertTrue(resolved)
+
+        covered_keys = {bucket for bucket, _, _, _, _ in resolved}
+        self.assertEqual(covered_keys, {"ingest", "results"})
+
+        for _, bucket_arn, _, _, _ in resolved:
+            self.assertNotIn("fake-widget", bucket_arn)
+
+
+class TestSetupBucketLifecycle(unittest.TestCase):
+    """put_bucket_lifecycle_configuration returning 200 is not evidence.
+
+    RGW has historically accepted a lifecycle document and silently dropped
+    filter elements it does not implement. If a tag filter were dropped, a rule
+    meant for released objects would apply to the whole bucket and reap held
+    uploads on the short clock. The read-back diff is what catches that.
+    """
+
+    def setUp(self):
+        with open(os.path.join(DIR, "fixtures", "test_config.json")) as f:
+            config_dict = json.load(f)
+
+        self.lifecycle = s3_controller.generate_lifecycle_configuration(
+            bucket="ingest",
+            project="mscape",
+            config_dict=config_dict,
+            bucket_scope="site_buckets",
+        )
+
+        self.creds = {
+            "admin": {
+                "aws_access_key_id": "k",
+                "aws_secret_access_key": "s",
+                "username": "admin",
+            },
+            "mscape": {
+                "birm.mscape": {
+                    "aws_access_key_id": "k",
+                    "aws_secret_access_key": "s",
+                    "username": "birm",
+                }
+            },
+        }
+
+    def _run_with_readback(self, readback):
+        client = Mock()
+        client.get_bucket_lifecycle_configuration.return_value = readback
+
+        with patch.object(s3_controller, "get_s3_client", return_value=client):
+            result = s3_controller.setup_bucket_lifecycle(
+                aws_credentials_dict=self.creds,
+                bucket_name="mscape-birm-illumina-prod",
+                project="mscape",
+                site="birm.mscape",
+                lifecycle=self.lifecycle,
+            )
+
+        return result, client
+
+    def test_faithful_round_trip_succeeds(self):
+        # Extra echoed-back fields and reordered rules are both fine.
+        readback = {
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+            "Rules": list(reversed(copy.deepcopy(self.lifecycle["Rules"]))),
+        }
+
+        for rule in readback["Rules"]:
+            rule["Transitions"] = []
+
+        result, client = self._run_with_readback(readback)
+
+        self.assertTrue(result)
+        client.put_bucket_lifecycle_configuration.assert_called_once()
+
+    def test_dropped_tag_filter_is_rejected(self):
+        """The failure mode that would delete held uploads."""
+
+        mangled = copy.deepcopy(self.lifecycle)
+
+        for rule in mangled["Rules"]:
+            if rule["ID"] == s3_controller.LIFECYCLE_RULE_RELEASED:
+                rule["Filter"] = {"Prefix": ""}
+
+        result, _ = self._run_with_readback(mangled)
+
+        self.assertFalse(result)
+
+    def test_altered_days_is_rejected(self):
+        mangled = copy.deepcopy(self.lifecycle)
+        mangled["Rules"][0]["Expiration"]["Days"] = 1
+
+        result, _ = self._run_with_readback(mangled)
+
+        self.assertFalse(result)
+
+    def test_missing_rule_is_rejected(self):
+        mangled = {"Rules": copy.deepcopy(self.lifecycle["Rules"][:1])}
+
+        result, _ = self._run_with_readback(mangled)
+
+        self.assertFalse(result)
+
+    def test_site_credentials_are_used_for_a_site_bucket(self):
+        client = Mock()
+        client.get_bucket_lifecycle_configuration.return_value = copy.deepcopy(
+            self.lifecycle
+        )
+
+        with patch.object(
+            s3_controller, "get_s3_client", return_value=client
+        ), patch.object(
+            s3_controller, "resolve_credentials", wraps=s3_controller.resolve_credentials
+        ) as resolve:
+            s3_controller.setup_bucket_lifecycle(
+                aws_credentials_dict=self.creds,
+                bucket_name="mscape-birm-illumina-prod",
+                project="mscape",
+                site="birm.mscape",
+                lifecycle=self.lifecycle,
+            )
+
+        resolve.assert_called_once_with(self.creds, "mscape", "birm.mscape")

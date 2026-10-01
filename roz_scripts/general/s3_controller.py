@@ -8,6 +8,9 @@ import re
 import copy
 import requests
 
+# utils imports only roz_scripts.utils.config, so this does not cycle back here.
+from roz_scripts.utils.utils import RETENTION_TAG_KEY, RETENTION_RELEASE
+
 S3_ENDPOINT_URL = "https://s3.climb.ac.uk"
 
 REQUESTS_TIMEOUT = 30
@@ -54,6 +57,7 @@ admin_bucket_actions_template = [
     "s3:GetBucketVersioning",
     "s3:GetBucketWebsite",
     "s3:GetLifecycleConfiguration",
+    "s3:PutLifecycleConfiguration",
     "s3:ListBucket",
     "s3:ListAllMyBuckets",
     "s3:ListBucketMultipartUploads",
@@ -79,11 +83,15 @@ admin_obj_actions_template = [
     "s3:GetObjectVersion",
     "s3:GetObjectVersionTorrent",
     "s3:ListMultipartUploadParts",
-    "s3:PutLifecycleConfiguration",
     "s3:PutObjectAcl",
     "s3:PutObjectVersionAcl",
     "s3:RestoreObject",
     "s3:PutObject",
+    # Retention: site-uploaded objects are owned by the site RGW user, so the
+    # admin identity needs these granted explicitly to tag them hold/release.
+    "s3:PutObjectTagging",
+    "s3:GetObjectTagging",
+    "s3:DeleteObjectTagging",
 ]
 
 perm_map = {
@@ -2064,7 +2072,331 @@ def audit_bucket_messaging(
     return to_fix
 
 
+# Rule Ids are fixed so a round-trip diff can match rules up by name.
+LIFECYCLE_RULE_RELEASED = "roz-released"
+LIFECYCLE_RULE_BACKSTOP = "roz-backstop"
+LIFECYCLE_RULE_FLAT = "roz-flat"
+
+
+def generate_lifecycle_configuration(
+    bucket: str, project: str, config_dict: dict, bucket_scope: str
+) -> dict | None:
+    """Build the lifecycle configuration for a bucket, or None if it has none.
+
+    Retention is strictly opt-in: a bucket with no "retention" block in config
+    gets no lifecycle configuration at all. This is what keeps published-data
+    buckets from ever acquiring an expiry by accident, and it is the single most
+    important safety property here - do not replace it with a default.
+
+    Two classes:
+      "ingest" - uploader buckets. Objects tagged roz-retention=release expire
+                 at released_days; everything else (held, untagged, junk) is
+                 caught by a bucket-wide backstop at backstop_days.
+      "flat"   - one whole-bucket rule at `days`, optionally narrowed to a
+                 prefix so objects written by someone other than roz are left
+                 alone.
+
+    Note that S3/RGW lifecycle Days counts from object creation, not from when
+    the tag was set, and that where several rules match an object the shortest
+    expiration wins. The backstop therefore doubles as the maximum hold
+    duration: a crashed worker cannot hold an object forever.
+
+    Args:
+        bucket (str): The logical bucket key (e.g. "ingest"), not the bucket name
+        project (str): The project the bucket belongs to
+        config_dict (dict): The config file as a dictionary
+        bucket_scope (str): "site_buckets" or "project_buckets"
+
+    Returns:
+        dict | None: A boto3 LifecycleConfiguration, or None if not configured
+
+    Raises:
+        ValueError: If the configuration is incoherent
+    """
+
+    bucket_config = (
+        config_dict["configs"][project].get(bucket_scope, {}).get(bucket, {})
+    )
+
+    retention = bucket_config.get("retention")
+
+    if not retention:
+        return None
+
+    retention_class = retention.get("class")
+
+    if retention_class == "ingest":
+        released_days = retention.get("released_days")
+        backstop_days = retention.get("backstop_days")
+
+        for name, value in (
+            ("released_days", released_days),
+            ("backstop_days", backstop_days),
+        ):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(
+                    f"Retention config for {project}/{bucket} has invalid {name}: {value!r}"
+                )
+
+        # If the backstop is not the longest rule it silently becomes the only
+        # effective one, and held objects get reaped on the short clock.
+        if backstop_days <= released_days:
+            raise ValueError(
+                f"Retention config for {project}/{bucket} has backstop_days "
+                f"({backstop_days}) <= released_days ({released_days}); the backstop "
+                "must outlive every other rule or it becomes the only rule in effect"
+            )
+
+        return {
+            "Rules": [
+                {
+                    "ID": LIFECYCLE_RULE_RELEASED,
+                    "Status": "Enabled",
+                    "Filter": {
+                        "Tag": {
+                            "Key": RETENTION_TAG_KEY,
+                            "Value": RETENTION_RELEASE,
+                        }
+                    },
+                    "Expiration": {"Days": released_days},
+                },
+                {
+                    "ID": LIFECYCLE_RULE_BACKSTOP,
+                    "Status": "Enabled",
+                    "Filter": {"Prefix": ""},
+                    "Expiration": {"Days": backstop_days},
+                },
+            ]
+        }
+
+    if retention_class == "flat":
+        days = retention.get("days")
+
+        if not isinstance(days, int) or isinstance(days, bool) or days < 1:
+            raise ValueError(
+                f"Retention config for {project}/{bucket} has invalid days: {days!r}"
+            )
+
+        prefix = retention.get("prefix", "")
+
+        if prefix:
+            prefix = prefix.format(project=project)
+
+        return {
+            "Rules": [
+                {
+                    "ID": LIFECYCLE_RULE_FLAT,
+                    "Status": "Enabled",
+                    "Filter": {"Prefix": prefix},
+                    "Expiration": {"Days": days},
+                }
+            ]
+        }
+
+    raise ValueError(
+        f"Retention config for {project}/{bucket} has unknown class: {retention_class!r}"
+    )
+
+
+def _normalise_lifecycle_rules(lifecycle: dict) -> dict:
+    """Reduce a lifecycle document to the fields we set, keyed by rule ID.
+
+    RGW and AWS both echo back extra fields, and rule order is not meaningful,
+    so a raw equality check on the round-tripped document is useless.
+    """
+
+    normalised = {}
+
+    for rule in lifecycle.get("Rules", []):
+        rule_filter = rule.get("Filter", {})
+
+        if "Tag" in rule_filter:
+            filter_repr = (
+                "tag",
+                rule_filter["Tag"].get("Key"),
+                rule_filter["Tag"].get("Value"),
+            )
+        else:
+            filter_repr = ("prefix", rule_filter.get("Prefix", ""))
+
+        normalised[rule.get("ID")] = {
+            "status": rule.get("Status"),
+            "filter": filter_repr,
+            "days": rule.get("Expiration", {}).get("Days"),
+        }
+
+    return normalised
+
+
+def setup_bucket_lifecycle(
+    aws_credentials_dict: dict,
+    bucket_name: str,
+    project: str,
+    site: str,
+    lifecycle: dict,
+) -> bool:
+    """Apply a lifecycle configuration to a bucket and verify it round-trips.
+
+    The verification is not optional ceremony. RGW has historically accepted a
+    lifecycle document and silently dropped filter elements it does not
+    implement, which would turn a tag-filtered rule into a bucket-wide one and
+    delete held objects on the short clock. An HTTP 200 is not evidence; the
+    read-back is.
+
+    Uses the owning site's credentials for site buckets, mirroring
+    setup_messaging, which sidesteps the question of whether a non-owner may set
+    lifecycle on a Bryn-created bucket.
+
+    Args:
+        aws_credentials_dict (dict): Credentials dict
+        bucket_name (str): The real bucket name
+        project (str): Project the bucket belongs to
+        site (str): Owning site, or "admin" for project buckets
+        lifecycle (dict): Configuration from generate_lifecycle_configuration()
+
+    Returns:
+        bool: True if applied and verified, False otherwise
+    """
+
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
+
+    s3_client = get_s3_client(credentials)
+
+    try:
+        s3_client.put_bucket_lifecycle_configuration(
+            Bucket=bucket_name,
+            LifecycleConfiguration=lifecycle,
+        )
+    except ClientError as e:
+        print(
+            f"Failed to put lifecycle configuration on {bucket_name}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+    try:
+        deployed = s3_client.get_bucket_lifecycle_configuration(Bucket=bucket_name)
+    except ClientError as e:
+        print(
+            f"Failed to read back lifecycle configuration from {bucket_name}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+    expected_rules = _normalise_lifecycle_rules(lifecycle)
+    deployed_rules = _normalise_lifecycle_rules(deployed)
+
+    if deployed_rules != expected_rules:
+        print(
+            f"Lifecycle configuration on {bucket_name} did not round-trip. "
+            f"Sent {expected_rules}, got back {deployed_rules}. "
+            "Refusing to treat this bucket as configured.",
+            file=sys.stderr,
+        )
+        return False
+
+    return True
+
+
+def remove_bucket_lifecycle(
+    aws_credentials_dict: dict, bucket_name: str, project: str, site: str
+) -> bool:
+    """Remove all lifecycle configuration from a bucket.
+
+    The rollback path. This exists so that there is a way to switch deletion off
+    again without hand-editing bucket state, and it should be exercised on a
+    -test bucket before --setup-lifecycle is ever pointed at production.
+    """
+
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
+
+    s3_client = get_s3_client(credentials)
+
+    try:
+        s3_client.delete_bucket_lifecycle(Bucket=bucket_name)
+        return True
+    except ClientError as e:
+        print(
+            f"Failed to remove lifecycle configuration from {bucket_name}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def resolve_bucket_lifecycles(config_map: dict, config_dict: dict) -> list:
+    """Work out which buckets have a retention policy and what it should be.
+
+    Pure: makes no S3 calls, so --dry-run can print exactly what would be
+    applied before anything touches a bucket.
+
+    Returns:
+        list: [(bucket, bucket_arn, project, site, lifecycle)]
+    """
+
+    resolved = []
+
+    for project, project_config in config_map.items():
+        for bucket, bucket_arn in sorted(project_config["project_buckets"]):
+            lifecycle = generate_lifecycle_configuration(
+                bucket=bucket,
+                project=project,
+                config_dict=config_dict,
+                bucket_scope="project_buckets",
+            )
+
+            if lifecycle is not None:
+                resolved.append((bucket, bucket_arn, project, "admin", lifecycle))
+
+        for site, site_config in sorted(project_config["sites"].items()):
+            for bucket, bucket_arn in sorted(site_config["site_buckets"]):
+                lifecycle = generate_lifecycle_configuration(
+                    bucket=bucket,
+                    project=project,
+                    config_dict=config_dict,
+                    bucket_scope="site_buckets",
+                )
+
+                if lifecycle is not None:
+                    resolved.append((bucket, bucket_arn, project, site, lifecycle))
+
+    return resolved
+
+
+def _print_lifecycle_plan(resolved: list) -> None:
+    """Print the full bucket -> rules mapping, so a config typo is visible."""
+
+    if not resolved:
+        print("No buckets have a retention policy configured", file=sys.stdout)
+        return
+
+    for bucket, bucket_arn, project, site, lifecycle in resolved:
+        print(f"{bucket_arn} (project: {project}, site: {site})", file=sys.stdout)
+
+        for rule in lifecycle["Rules"]:
+            rule_filter = rule.get("Filter", {})
+
+            if "Tag" in rule_filter:
+                filter_desc = (
+                    f"tag {rule_filter['Tag']['Key']}={rule_filter['Tag']['Value']}"
+                )
+            else:
+                filter_desc = f"prefix {rule_filter.get('Prefix', '')!r}"
+
+            print(
+                f"    {rule['ID']}: {filter_desc} -> expire after "
+                f"{rule['Expiration']['Days']} days",
+                file=sys.stdout,
+            )
+
+
 def run(args):
+    if args.setup_lifecycle and args.remove_lifecycle:
+        print(
+            "--setup-lifecycle and --remove-lifecycle are mutually exclusive",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if args.setup_messaging:
         for env_var in [
             "AMQP_HOST",
@@ -2211,6 +2543,67 @@ def run(args):
                     file=sys.stdout,
                 )
 
+    if args.setup_lifecycle or args.remove_lifecycle:
+        resolved_lifecycles = resolve_bucket_lifecycles(
+            config_map=config_map, config_dict=config_dict
+        )
+
+        if args.remove_lifecycle:
+            print(
+                "Would remove all lifecycle configuration from these buckets:",
+                file=sys.stdout,
+            )
+        else:
+            print("Lifecycle configuration to apply:", file=sys.stdout)
+
+        _print_lifecycle_plan(resolved_lifecycles)
+
+        if args.dry_run:
+            print("Dry run, not applying lifecycle configuration", file=sys.stdout)
+        elif not resolved_lifecycles:
+            pass
+        elif args.remove_lifecycle:
+            for bucket, bucket_arn, project, site, _ in resolved_lifecycles:
+                if remove_bucket_lifecycle(
+                    aws_credentials_dict=aws_credentials_dict,
+                    bucket_name=bucket_arn,
+                    project=project,
+                    site=site,
+                ):
+                    print(
+                        f"Removed lifecycle configuration from {bucket_arn}",
+                        file=sys.stdout,
+                    )
+                else:
+                    print(
+                        f"Failed to remove lifecycle configuration from {bucket_arn}",
+                        file=sys.stdout,
+                    )
+        else:
+            failed = []
+
+            for bucket, bucket_arn, project, site, lifecycle in resolved_lifecycles:
+                if setup_bucket_lifecycle(
+                    aws_credentials_dict=aws_credentials_dict,
+                    bucket_name=bucket_arn,
+                    project=project,
+                    site=site,
+                    lifecycle=lifecycle,
+                ):
+                    print(
+                        f"Applied lifecycle configuration to {bucket_arn}",
+                        file=sys.stdout,
+                    )
+                else:
+                    failed.append(f"{bucket_arn} ({project}/{site})")
+
+            if failed:
+                print(
+                    f"Failed to apply lifecycle configuration to {len(failed)} buckets: "
+                    + ", ".join(failed),
+                    file=sys.stdout,
+                )
+
     if (to_fix["site_buckets"] or to_fix["project_buckets"]) and not args.dry_run:
         if args.legacy_audit:
             retest_audit_dict = audit_all_buckets(
@@ -2276,6 +2669,16 @@ def main():
         "--aws-credentials",
         help="The AWS credentials file to use",
         type=str,
+    )
+    parser.add_argument(
+        "--setup-lifecycle",
+        action="store_true",
+        help="Apply the configured object retention lifecycle rules to every bucket with a 'retention' block in config. Buckets without one are never touched.",
+    )
+    parser.add_argument(
+        "--remove-lifecycle",
+        action="store_true",
+        help="Remove all lifecycle configuration from every bucket with a 'retention' block in config. The rollback for --setup-lifecycle.",
     )
     parser.add_argument(
         "--setup-messaging",

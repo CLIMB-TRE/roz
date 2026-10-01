@@ -44,6 +44,8 @@ from roz_scripts.utils.utils import (
     pod_resources_from_args,
     PodResourceError,
     persist_publish_ack,
+    set_match_retention_state,
+    RETENTION_RELEASE,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
@@ -259,7 +261,7 @@ class worker_pool_handler:
             if new_artifact_send is not None:
                 sends.append(new_artifact_send)
 
-            persist_publish_ack(
+            acked = persist_publish_ack(
                 self._varys_client,
                 message,
                 self._log,
@@ -269,6 +271,16 @@ class worker_pool_handler:
                 uuid=payload["uuid"],
                 heartbeat=self._health.heartbeat,
             )
+
+            # Published: the uploader copies are no longer needed. Reruns of a
+            # published artifact source their reads from the published bucket
+            # via Onyx (see prepare_published_rerun), precisely because the
+            # inbound fastqs may already be gone.
+            #
+            # A rerun_of_published payload's files came from Onyx, not from an
+            # uploader bucket, so there is nothing of ours to release.
+            if acked and not payload.get("rerun_of_published"):
+                set_match_retention_state(payload, RETENTION_RELEASE, self._log)
 
         else:
             self._log.info(
@@ -388,7 +400,7 @@ class worker_pool_handler:
                         }
                     )
 
-                persist_publish_ack(
+                acked = persist_publish_ack(
                     self._varys_client,
                     message,
                     self._log,
@@ -398,6 +410,12 @@ class worker_pool_handler:
                     uuid=payload["uuid"],
                     heartbeat=self._health.heartbeat,
                 )
+
+                # Permanently rejected (no rerun flag), so the uploads are done
+                # with. The rerun branch above deliberately does not release:
+                # those files are still in flight.
+                if acked and not payload.get("rerun_of_published"):
+                    set_match_retention_state(payload, RETENTION_RELEASE, self._log)
 
     def error_callback(self, message, exception):
         try:
