@@ -2590,6 +2590,25 @@ S3_TRANSFER_CONFIG = TransferConfig(
     max_concurrency=4,
 )
 
+# CopyObject's maximum source size. Above this, a server-side copy has to be
+# done as a multipart UploadPartCopy.
+S3_MAX_SINGLE_PART_COPY_BYTES = 5 * 1024 * 1024 * 1024
+
+# Server-side copies across buckets must stay on the single-part CopyObject
+# path: the Ceph RGW backing CLIMB's S3 authorises UploadPartCopy's copy
+# source against bucket/object ACLs rather than the bucket policy, so a
+# cross-bucket multipart copy is refused with AccessDenied even where the
+# policy grants s3:GetObject on the source (a same-bucket multipart copy, or
+# a cross-bucket CopyObject, both succeed). Raising the threshold to
+# CopyObject's own ceiling keeps everything that *can* be copied in one call
+# on that path; anything larger cannot be server-side copied at all and has
+# to be staged through the shared filesystem instead.
+S3_COPY_TRANSFER_CONFIG = TransferConfig(
+    multipart_threshold=S3_MAX_SINGLE_PART_COPY_BYTES,
+    multipart_chunksize=64 * 1024 * 1024,
+    max_concurrency=4,
+)
+
 
 def get_s3_client(s3_credentials: __s3_creds) -> BaseClient:
     """
@@ -2688,6 +2707,110 @@ def s3_upload_file(
             pass
         finally:
             os.close(fd)
+
+
+def s3_publish_object(
+    s3_client: BaseClient,
+    source_bucket: str,
+    source_key: str,
+    dest_bucket: str,
+    dest_key: str,
+    staging_dir: str,
+    log: logging.Logger,
+    progress_cb=None,
+) -> bool:
+    """Put an object into another bucket, server-side where possible.
+
+    Prefers a server-side CopyObject, which moves no bytes through this pod.
+    Objects too large for a single-part copy fall back to staging through
+    staging_dir, because a cross-bucket multipart copy is refused by the Ceph
+    RGW behind CLIMB's S3 (see S3_COPY_TRANSFER_CONFIG) - download and
+    re-upload use only GetObject and PutObject, which are unaffected.
+
+    Args:
+        s3_client (BaseClient): Boto3 S3 client to copy with
+        source_bucket (str): Bucket holding the object to publish
+        source_key (str): Key of the object to publish
+        dest_bucket (str): Bucket to publish into
+        dest_key (str): Key to publish to
+        staging_dir (str): Directory to stage through if the copy can't be
+            done server-side. Must be on the shared team volume rather than
+            pod-local storage - a submission can be tens of GB, which pod
+            ephemeral storage has neither the room nor the eviction headroom
+            for - and must have free space for the whole object.
+        log (logging.Logger): Logger object
+        progress_cb: Optional callable invoked as bytes are transferred, for
+            keeping a liveness heartbeat fresh across a long transfer
+
+    Returns:
+        bool: True if the object was copied server-side, False if it had to
+        be staged through staging_dir
+
+    Raises:
+        ClientError: If both the copy and the staged transfer fail
+    """
+
+    try:
+        s3_client.copy(
+            CopySource={"Bucket": source_bucket, "Key": source_key},
+            Bucket=dest_bucket,
+            Key=dest_key,
+            Config=S3_COPY_TRANSFER_CONFIG,
+            Callback=progress_cb,
+        )
+
+        return True
+
+    except ClientError as copy_exception:
+        error_code = copy_exception.response["Error"].get("Code")
+
+        # AccessDenied is what a cross-bucket UploadPartCopy is refused with,
+        # so it means "too big to copy in one call" here rather than "not
+        # allowed to read the source" - a source we genuinely cannot read
+        # fails again, and propagates, on the download below. Anything else
+        # (NoSuchKey, NoSuchBucket, ...) is a real error worth surfacing as-is.
+        if error_code not in ("AccessDenied", "EntityTooLarge", "InvalidRequest"):
+            raise
+
+        log.warning(
+            f"Server-side copy of s3://{source_bucket}/{source_key} to "
+            f"s3://{dest_bucket}/{dest_key} was refused ({error_code}); "
+            f"staging it through {staging_dir} instead"
+        )
+
+    os.makedirs(staging_dir, exist_ok=True)
+
+    staged_path = os.path.join(staging_dir, f"{os.path.basename(dest_key)}.staging")
+
+    try:
+        s3_client.download_file(
+            source_bucket,
+            source_key,
+            staged_path,
+            Config=S3_TRANSFER_CONFIG,
+            Callback=progress_cb,
+        )
+
+        s3_upload_file(
+            s3_client,
+            staged_path,
+            dest_bucket,
+            dest_key,
+            progress_cb=progress_cb,
+        )
+
+    finally:
+        # The staged copy can be tens of GB, and several of these run per
+        # artifact - leaving one behind on a failure path would eat into the
+        # team share for every subsequent retry. The output-cleanup cronjob
+        # would eventually reap it along with the rest of the job directory,
+        # but not before a retry loop had filled the volume.
+        try:
+            os.remove(staged_path)
+        except FileNotFoundError:
+            pass
+
+    return False
 
 
 def s3_to_fh(s3_uri: str, eTag: str) -> StringIO:

@@ -20,8 +20,14 @@ from roz_scripts.mscape.mscape_ingest_validation import (
     ret_0_parser,
     run,
 )
+from botocore.exceptions import ClientError
+
 from roz_scripts.utils.health import HealthState
-from roz_scripts.utils.utils import PodResources
+from roz_scripts.utils.utils import (
+    PodResources,
+    s3_publish_object,
+    split_s3_uri,
+)
 
 
 def setUpModule():
@@ -1630,3 +1636,121 @@ class TestLogPublishDelay(unittest.TestCase):
         )
 
         self.log.error.assert_called_once()
+
+
+class TestS3PublishObject(unittest.TestCase):
+    """A cross-bucket multipart copy is refused by CLIMB's RGW, so anything
+    too large for a single-part CopyObject has to be staged through the
+    shared team volume instead (see s3_publish_object)."""
+
+    def setUp(self):
+        self.staging_dir = tempfile.mkdtemp()
+        self.log = MagicMock()
+        self.addCleanup(shutil.rmtree, self.staging_dir, True)
+
+    @staticmethod
+    def _client_error(code):
+        return ClientError({"Error": {"Code": code, "Message": code}}, "UploadPartCopy")
+
+    def test_server_side_copy_is_preferred(self):
+        s3_client = MagicMock()
+
+        server_side = s3_publish_object(
+            s3_client=s3_client,
+            source_bucket="uploader",
+            source_key="submitted.fastq.gz",
+            dest_bucket="published",
+            dest_key="CID.fastq.gz",
+            staging_dir=self.staging_dir,
+            log=self.log,
+        )
+
+        self.assertTrue(server_side)
+        s3_client.copy.assert_called_once()
+        s3_client.download_file.assert_not_called()
+        self.assertEqual(os.listdir(self.staging_dir), [])
+
+    def test_access_denied_falls_back_to_staging(self):
+        s3_client = MagicMock()
+        s3_client.copy.side_effect = self._client_error("AccessDenied")
+
+        # download_file is what writes the staged file in the real client
+        s3_client.download_file.side_effect = lambda b, k, path, **kw: open(
+            path, "wb"
+        ).close()
+
+        with patch(
+            "roz_scripts.utils.utils.s3_upload_file"
+        ) as mock_upload:
+            server_side = s3_publish_object(
+                s3_client=s3_client,
+                source_bucket="uploader",
+                source_key="submitted.fastq.gz",
+                dest_bucket="published",
+                dest_key="CID.fastq.gz",
+                staging_dir=self.staging_dir,
+                log=self.log,
+            )
+
+        self.assertFalse(server_side)
+        s3_client.download_file.assert_called_once()
+        self.assertEqual(mock_upload.call_args.args[2], "published")
+        self.assertEqual(mock_upload.call_args.args[3], "CID.fastq.gz")
+        # The staged copy must not be left behind to eat into the team share
+        self.assertEqual(os.listdir(self.staging_dir), [])
+
+    def test_staged_file_is_removed_when_upload_fails(self):
+        s3_client = MagicMock()
+        s3_client.copy.side_effect = self._client_error("AccessDenied")
+        s3_client.download_file.side_effect = lambda b, k, path, **kw: open(
+            path, "wb"
+        ).close()
+
+        with patch(
+            "roz_scripts.utils.utils.s3_upload_file",
+            side_effect=self._client_error("InternalError"),
+        ):
+            with self.assertRaises(ClientError):
+                s3_publish_object(
+                    s3_client=s3_client,
+                    source_bucket="uploader",
+                    source_key="submitted.fastq.gz",
+                    dest_bucket="published",
+                    dest_key="CID.fastq.gz",
+                    staging_dir=self.staging_dir,
+                    log=self.log,
+                )
+
+        self.assertEqual(os.listdir(self.staging_dir), [])
+
+    def test_unrelated_client_error_is_not_masked_by_the_fallback(self):
+        s3_client = MagicMock()
+        s3_client.copy.side_effect = self._client_error("NoSuchKey")
+
+        with self.assertRaises(ClientError) as raised:
+            s3_publish_object(
+                s3_client=s3_client,
+                source_bucket="uploader",
+                source_key="missing.fastq.gz",
+                dest_bucket="published",
+                dest_key="CID.fastq.gz",
+                staging_dir=self.staging_dir,
+                log=self.log,
+            )
+
+        self.assertEqual(raised.exception.response["Error"]["Code"], "NoSuchKey")
+        s3_client.download_file.assert_not_called()
+
+
+class TestSplitS3Uri(unittest.TestCase):
+    def test_splits_bucket_and_key(self):
+        self.assertEqual(
+            split_s3_uri("s3://bucket/path/to/file.fastq.gz"),
+            ("bucket", "path/to/file.fastq.gz"),
+        )
+
+    def test_rejects_malformed_uris(self):
+        for bad in ("", None, "bucket/key", "s3://bucket", "s3://bucket/"):
+            with self.subTest(uri=bad):
+                with self.assertRaises(ValueError):
+                    split_s3_uri(bad)

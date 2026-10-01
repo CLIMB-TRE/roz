@@ -24,8 +24,8 @@ from roz_scripts.utils.utils import (
     get_s3_credentials,
     get_s3_client,
     s3_upload_file,
+    s3_publish_object,
     split_s3_uri,
-    S3_TRANSFER_CONFIG,
     throttled_progress,
     csv_create,
     onyx_update,
@@ -1187,6 +1187,7 @@ def push_report_file(
 def add_reads_record(
     payload: dict,
     s3_client: BaseClient,
+    result_path: str,
     log: logging.Logger,
     config: dict,
     progress_cb=None,
@@ -1204,10 +1205,16 @@ def add_reads_record(
     this is a server-side copy rather than a local upload - the inbound
     FASTQs are not kept on local disk after the pipeline runs, and copying
     avoids pulling multi-GB objects back down just to push them up again.
+    Submissions too large to copy in one call are staged through result_path
+    - on the shared team outputs volume, not pod-local storage - instead;
+    see s3_publish_object().
 
     Args:
         payload (dict): Payload dict for the record to update
         s3_client (BaseClient): Boto3 client object for S3
+        result_path (str): Path to this job's results directory on the shared
+            team volume, used to stage a submission that cannot be copied
+            server-side
         log (logging.Logger): Logger object
         config (dict): The loaded roz config, from load_config()
         progress_cb: Optional callable invoked as bytes are transferred, for
@@ -1246,15 +1253,23 @@ def add_reads_record(
         try:
             source_bucket, source_key = split_s3_uri(payload["files"][extension]["uri"])
 
-            s3_client.copy(
-                CopySource={"Bucket": source_bucket, "Key": source_key},
-                Bucket=s3_bucket,
-                Key=s3_key,
-                Config=S3_TRANSFER_CONFIG,
-                Callback=progress_cb,
+            s3_publish_object(
+                s3_client=s3_client,
+                source_bucket=source_bucket,
+                source_key=source_key,
+                dest_bucket=s3_bucket,
+                dest_key=s3_key,
+                staging_dir=result_path,
+                log=log,
+                progress_cb=progress_cb,
             )
 
-        except (ClientError, KeyError, ValueError) as add_reads_record_exception:
+        except (
+            ClientError,
+            OSError,
+            KeyError,
+            ValueError,
+        ) as add_reads_record_exception:
             log.error(
                 f"Failed to copy submitted reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {add_reads_record_exception}"
             )
@@ -2434,6 +2449,7 @@ def validate(
         raw_read_fail, reads_alert, payload = add_reads_record(
             payload=payload,
             s3_client=s3_client,
+            result_path=result_path,
             log=log,
             config=args.config,
             progress_cb=upload_progress_cb,
