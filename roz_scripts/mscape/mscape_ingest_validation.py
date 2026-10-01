@@ -24,6 +24,8 @@ from roz_scripts.utils.utils import (
     get_s3_credentials,
     get_s3_client,
     s3_upload_file,
+    split_s3_uri,
+    S3_TRANSFER_CONFIG,
     throttled_progress,
     csv_create,
     onyx_update,
@@ -1185,19 +1187,31 @@ def push_report_file(
 def add_reads_record(
     payload: dict,
     s3_client: BaseClient,
-    result_path: str,
     log: logging.Logger,
     config: dict,
     progress_cb=None,
 ) -> tuple[bool, bool, dict]:
-    """Function to upload raw reads to long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
+    """Function to publish the submitted reads to the long-term storage bucket and add the fastq_1 and fastq_2 fields to the Onyx record
+
+    The published reads are the FASTQ(s) exactly as they were uploaded to the
+    site's uploader bucket, not the fastp-processed derivative the pipeline
+    works from - what gets published should be the submitter's own data, so
+    that downstream consumers (and reruns, which take their input from these
+    objects) see unfiltered reads rather than the output of whichever fastp
+    settings happened to be in force at ingest time.
+
+    Since both the source and the destination live in the same S3 estate,
+    this is a server-side copy rather than a local upload - the inbound
+    FASTQs are not kept on local disk after the pipeline runs, and copying
+    avoids pulling multi-GB objects back down just to push them up again.
 
     Args:
         payload (dict): Payload dict for the record to update
         s3_client (BaseClient): Boto3 client object for S3
-        result_path (str): Path to the results directory
         log (logging.Logger): Logger object
         config (dict): The loaded roz config, from load_config()
+        progress_cb: Optional callable invoked as bytes are transferred, for
+            keeping a liveness heartbeat fresh across a long copy
 
     Returns:
         tuple[bool, bool, dict]: Tuple containing a bool indicating whether the operation failed, a bool indicating whether to squawk in the alerts channel, and the updated payload dict
@@ -1209,107 +1223,67 @@ def add_reads_record(
     s3_bucket = project_bucket(config, payload["project"], "published_reads")
 
     if payload["platform"] == "illumina":
-        for i in (1, 2):
-            fastq_path = os.path.join(
-                result_path, f"preprocess/{payload['uuid']}_{i}.fastp.fastq.gz"
-            )
-
-            try:
-                s3_key = f"{payload['climb_id']}_{i}.fastq.gz"
-
-                s3_upload_file(
-                    s3_client,
-                    fastq_path,
-                    s3_bucket,
-                    s3_key,
-                    progress_cb=progress_cb,
-                )
-
-            except (ClientError, FileNotFoundError) as add_reads_record_exception:
-                log.error(
-                    f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_reads_record_exception}"
-                )
-                payload.setdefault("ingest_errors", [])
-                payload["ingest_errors"].append(
-                    "Failed to upload reads to storage bucket"
-                )
-                raw_read_fail = True
-                alert = True
-                continue
-
-        if not raw_read_fail:
-            update_fail, update_alert, payload = onyx_update(
-                payload=payload,
-                fields={
-                    "fastq_1": f"s3://{s3_bucket}/{payload['climb_id']}_1.fastq.gz",
-                    "fastq_2": f"s3://{s3_bucket}/{payload['climb_id']}_2.fastq.gz",
-                },
-                log=log,
-            )
-
-            if update_fail:
-                raw_read_fail = True
-
-            if update_alert:
-                log.error(
-                    f"Alert-worthy Onyx failure writing fastq_1/fastq_2 for UUID: "
-                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
-                    f"Onyx errors: {payload.get('onyx_update_errors')}"
-                )
-                payload.setdefault("alert_reasons", []).append("raw_reads")
-                alert = True
-
+        source_extensions = {1: ".1.fastq.gz", 2: ".2.fastq.gz"}
     elif payload["platform"] in ("ont", "illumina.se"):
-        fastq_path = os.path.join(
-            result_path, f"preprocess/{payload['uuid']}.fastp.fastq.gz"
-        )
-
-        s3_key = f"{payload['climb_id']}.fastq.gz"
-
-        try:
-            s3_upload_file(
-                s3_client,
-                fastq_path,
-                s3_bucket,
-                s3_key,
-                progress_cb=progress_cb,
-            )
-
-        except (ClientError, FileNotFoundError) as add_reads_record_exception:
-            log.error(
-                f"Failed to upload reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to client error: {add_reads_record_exception}"
-            )
-            payload.setdefault("ingest_errors", [])
-            payload["ingest_errors"].append("Failed to upload reads to storage bucket")
-
-            raw_read_fail = True
-            alert = True
-
-        if not raw_read_fail:
-            update_fail, update_alert, payload = onyx_update(
-                payload=payload,
-                fields={"fastq_1": f"s3://{s3_bucket}/{s3_key}"},
-                log=log,
-            )
-
-            if update_fail:
-                raw_read_fail = True
-
-            if update_alert:
-                log.error(
-                    f"Alert-worthy Onyx failure writing fastq_1 for UUID: "
-                    f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
-                    f"Onyx errors: {payload.get('onyx_update_errors')}"
-                )
-                payload.setdefault("alert_reasons", []).append("raw_reads")
-                alert = True
-
+        source_extensions = {1: ".fastq.gz"}
     else:
         log.error(f"Unknown platform: {payload['platform']}")
         payload.setdefault("ingest_errors", [])
         payload["ingest_errors"].append(f"Unknown platform: {payload['platform']}")
-        raw_read_fail = True
-        alert = True
+        return (True, True, payload)
+
+    paired = payload["platform"] == "illumina"
+
+    published_uris = {}
+
+    for i, extension in source_extensions.items():
+        s3_key = (
+            f"{payload['climb_id']}_{i}.fastq.gz"
+            if paired
+            else f"{payload['climb_id']}.fastq.gz"
+        )
+
+        try:
+            source_bucket, source_key = split_s3_uri(payload["files"][extension]["uri"])
+
+            s3_client.copy(
+                CopySource={"Bucket": source_bucket, "Key": source_key},
+                Bucket=s3_bucket,
+                Key=s3_key,
+                Config=S3_TRANSFER_CONFIG,
+                Callback=progress_cb,
+            )
+
+        except (ClientError, KeyError, ValueError) as add_reads_record_exception:
+            log.error(
+                f"Failed to copy submitted reads to long-term storage bucket for UUID: {payload['uuid']} with CID: {payload['climb_id']} due to error: {add_reads_record_exception}"
+            )
+            payload.setdefault("ingest_errors", [])
+            payload["ingest_errors"].append("Failed to upload reads to storage bucket")
+            raw_read_fail = True
+            alert = True
+            continue
+
+        published_uris[f"fastq_{i}"] = f"s3://{s3_bucket}/{s3_key}"
+
+    if not raw_read_fail:
+        update_fail, update_alert, payload = onyx_update(
+            payload=payload,
+            fields=published_uris,
+            log=log,
+        )
+
+        if update_fail:
+            raw_read_fail = True
+
+        if update_alert:
+            log.error(
+                f"Alert-worthy Onyx failure writing {'/'.join(published_uris)} for UUID: "
+                f"{payload['uuid']} with CID: {payload.get('climb_id')}; "
+                f"Onyx errors: {payload.get('onyx_update_errors')}"
+            )
+            payload.setdefault("alert_reasons", []).append("raw_reads")
+            alert = True
 
     return (raw_read_fail, alert, payload)
 
@@ -2451,15 +2425,15 @@ def validate(
     job_heartbeat.beat(stage="uploading_raw_reads", budget_s=3600)
 
     if rerun_of_published:
-        # add_reads_record() would overwrite the published_reads bucket
-        # objects with a double-fastp'd derivative - the exact objects a
-        # rerun reads as its own pipeline input - so it must not run here.
+        # A rerun sources its metadata and reads from the published record
+        # rather than from an inbound submission, so payload["files"] holds
+        # no uploader-bucket URIs to publish from - and the published reads
+        # the rerun ran against are already the right objects.
         raw_read_fail, reads_alert = False, False
     else:
         raw_read_fail, reads_alert, payload = add_reads_record(
             payload=payload,
             s3_client=s3_client,
-            result_path=result_path,
             log=log,
             config=args.config,
             progress_cb=upload_progress_cb,

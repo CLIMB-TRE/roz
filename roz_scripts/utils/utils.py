@@ -1353,6 +1353,30 @@ def are_files_empty(*s3_uris: str) -> bool:
     return False
 
 
+def split_s3_uri(s3_uri: str) -> tuple[str, str]:
+    """Split an s3://bucket/key URI into its bucket and key.
+
+    Args:
+        s3_uri (str): The S3 URI to split
+
+    Returns:
+        tuple[str, str]: The bucket name and the object key
+
+    Raises:
+        ValueError: If the URI is not a well-formed s3:// URI with a key
+    """
+
+    if not s3_uri or not s3_uri.startswith("s3://"):
+        raise ValueError(f"Not an S3 URI: {s3_uri}")
+
+    bucket, _, key = s3_uri[len("s3://") :].partition("/")
+
+    if not bucket or not key:
+        raise ValueError(f"S3 URI is missing a bucket or key: {s3_uri}")
+
+    return (bucket, key)
+
+
 def do_uris_exist(*s3_uris: str) -> bool:
     """Check if the files at the given S3 URIs exist
 
