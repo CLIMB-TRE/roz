@@ -7,12 +7,14 @@ from roz_scripts.utils.utils import (
 )
 from roz_scripts.utils.health import HealthState, get_health_dir
 from roz_scripts.general.s3_controller import create_config_map
+from roz_scripts.utils.config import load_config, parse_ingest_bucket_name, ConfigError
 from varys import Varys
 
 import boto3
 from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 
+import logging
 import uuid
 import time
 import json
@@ -125,12 +127,19 @@ def gen_s3_uri(bucket_name: str, key: str) -> str:
     return f"s3://{bucket_name}/{key}"
 
 
-def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
+def parse_existing_objects(
+    existing_objects: dict, config_dict: dict, log: logging.Logger | None = None
+) -> dict:
     """Parses existing objects into a dictionary of artifacts.
 
     Args:
         existing_objects (dict): Dictionary of existing objects from func get_existing_objects
         config_dict (dict): Dictionary containing the config file
+        log (logging.Logger | None): Logger object, for reporting a bucket
+            name that doesn't resolve against config_dict. Buckets reaching
+            this point were themselves discovered from config_dict, so this
+            should never happen in practice - it's a defensive skip, not an
+            expected path.
 
     Returns:
         dict: Dictionary of artifacts
@@ -139,12 +148,18 @@ def parse_existing_objects(existing_objects: dict, config_dict: dict) -> dict:
     parsed_objects = {}
 
     for bucket_name, objs in existing_objects.items():
-        project, site_str, platform, test_flag = bucket_name.split("-")
+        try:
+            parsed_bucket_name = parse_ingest_bucket_name(config_dict, bucket_name)
+        except ConfigError as e:
+            if log is not None:
+                log.error(f"Skipping unresolvable bucket {bucket_name!r}: {e}")
+            continue
 
-        if "." in site_str:
-            site = site_str.split(".")[-2]
-        else:
-            site = site_str
+        project = parsed_bucket_name["project"]
+        site_str = parsed_bucket_name["raw_site"]
+        site = parsed_bucket_name["site"]
+        platform = parsed_bucket_name["platform"]
+        test_flag = parsed_bucket_name["test_flag"]
 
         for obj in objs:
             # Ignore test key, s3_controller uses it to check if the bucket is correctly configured
@@ -227,7 +242,7 @@ def is_artifact_dict_complete(
 
 def parse_new_object_message(
     existing_object_dict: dict, new_object_message: dict, config_dict: dict
-) -> tuple[bool, dict, tuple, dict]:
+) -> tuple[bool, dict, tuple | None, dict | None]:
     """Parses a new object message and adds it to the existing object dict.
 
     Args:
@@ -236,7 +251,13 @@ def parse_new_object_message(
         config_dict (dict): Dictionary parsed from the config file
 
     Returns:
-        tuple[bool, dict, tuple, dict]: Tuple containing a boolean indicating if the artifact is complete, the updated existing object dict, the index tuple, and the parsed bucket name
+        tuple[bool, dict, tuple | None, dict | None]: Tuple containing a
+            boolean indicating if the artifact is complete, the updated
+            existing object dict, the index tuple, and the parsed bucket
+            name. index_tuple and the parsed bucket name are both None if
+            the message's bucket name doesn't resolve against config_dict at
+            all (e.g. a stale/foreign bucket) - the caller must check for
+            this before unpacking index_tuple.
     """
 
     # There should only ever be one record here
@@ -244,19 +265,12 @@ def parse_new_object_message(
 
     bucket_name = record["s3"]["bucket"]["name"]
 
-    parsed_bucket_name = {
-        x: y
-        for x, y in zip(
-            ("project", "site_str", "platform", "test_flag"), bucket_name.split("-")
-        )
-    }
+    try:
+        parsed_bucket_name = parse_ingest_bucket_name(config_dict, bucket_name)
+    except ConfigError:
+        return (False, existing_object_dict, None, None)
 
-    # project, site_str, platform, test_flag = parsed_bucket_name
-
-    if "." in parsed_bucket_name["site_str"]:
-        site = parsed_bucket_name["site_str"].split(".")[-2]
-    else:
-        site = parsed_bucket_name["site_str"]
+    site = parsed_bucket_name["site"]
 
     object_key = record["s3"]["object"]["key"]
 
@@ -332,7 +346,7 @@ def parse_new_object_message(
     existing_object_dict[index_tuple]["objects"][extension] = record
 
     if extension == ".csv":
-        existing_object_dict[index_tuple]["raw_site"] = parsed_bucket_name["site_str"]
+        existing_object_dict[index_tuple]["raw_site"] = parsed_bucket_name["raw_site"]
 
     return (
         is_artifact_dict_complete(
@@ -419,8 +433,11 @@ def main():
         log_level=os.environ["INGEST_LOG_LEVEL"],
     )
 
-    with open(os.environ["ROZ_CONFIG_JSON"], "r") as f:
-        config_dict = json.load(f)
+    try:
+        config_dict = load_config()
+    except ConfigError as e:
+        print(f"Invalid roz config: {e}", file=sys.stderr)
+        sys.exit(3)
 
     config_map = create_config_map(config_dict=config_dict)
 
@@ -439,7 +456,7 @@ def main():
     objects = get_existing_objects(s3_client=s3_client, to_check=buckets)
 
     existing_object_dict = parse_existing_objects(
-        existing_objects=objects, config_dict=config_dict
+        existing_objects=objects, config_dict=config_dict, log=log
     )
 
     health = HealthState(get_health_dir())
@@ -470,6 +487,16 @@ def main():
                 )
             )
 
+            if index_tuple is None:
+                bucket_name = message_dict["Records"][0]["s3"]["bucket"]["name"]
+                failure_message = f"Bucket name {bucket_name!r} does not match any known bucket layout, skipping message"
+                log.error(failure_message)
+                send_admin_alert(
+                    varys_client, source="s3_matcher", description=failure_message
+                )
+                continue
+
+            assert parsed_bucket_name is not None
             artifact, project, site, platform, test_flag = index_tuple
 
             if not artifact:

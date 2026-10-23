@@ -8,6 +8,8 @@ import re
 import copy
 import requests
 
+from roz_scripts.utils.config import TEST_FLAGS
+
 S3_ENDPOINT_URL = "https://s3.climb.ac.uk"
 
 REQUESTS_TIMEOUT = 30
@@ -200,7 +202,7 @@ def create_config_map(config_dict: dict) -> dict:
             desired_labels = re.findall(r"{(\w*)}", bucket_config["name_layout"])
 
             for platform in config["file_specs"].keys():
-                for test_flag in ["prod", "test"]:
+                for test_flag in TEST_FLAGS:
                     try:
                         namespace = {}
 
@@ -223,7 +225,7 @@ def create_config_map(config_dict: dict) -> dict:
                 desired_labels = re.findall(r"{(\w*)}", bucket_config["name_layout"])
 
                 for platform in config["file_specs"].keys():
-                    for test_flag in ["prod", "test"]:
+                    for test_flag in TEST_FLAGS:
                         try:
                             namespace = {}
 
