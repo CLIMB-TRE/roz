@@ -8,6 +8,7 @@ import hashlib
 import html
 import json
 import os
+import shutil
 import subprocess
 import time
 from ftplib import FTP
@@ -687,6 +688,165 @@ def get_sylph_dbs():
         os.symlink(relative_target, link_path)
 
 
+# `mmseqs databases` name -> either a URL whose Last-Modified header is used as
+# the version, or a fixed version label for sources pinned by the mmseqs build
+# (these only change when the mmseqs binary does). URLs mirror the ones in
+# MMseqs2 data/workflow/databases.sh (release 18-8cc5c).
+# Deliberately excluded: NR (~755 GB), NT (~1.2 TB) and core_nt (~305 GB)
+# duplicate the BLAST copies in get_ncbi_blast; Pfam-B 404s upstream; UniRef100,
+# UniProtKB, UniProtKB/TrEMBL and GTDB (40-130 GB downloads each) are too large.
+_MMSEQS_DBS = {
+    "UniRef90": "https://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref90/uniref90.release_note",
+    "UniRef50": "https://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref50/uniref50.release_note",
+    "UniProtKB/Swiss-Prot": "https://ftp.expasy.org/databases/uniprot/current_release/knowledgebase/complete/reldate.txt",
+    "PDB": "https://files.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz",
+    "PDB70": "pdb70_mmcif",
+    "Pfam-A.full": "https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam.version.gz",
+    "Pfam-A.seed": "https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam.version.gz",
+    "CDD": "https://ftp.ncbi.nlm.nih.gov/pub/mmdb/cdd/cdd.info",
+    "eggNOG": "eggnog_5.0",
+    "VOGDB": "http://fileshare.csb.univie.ac.at/vog/latest/release.txt",
+    "dbCAN2": "dbcan_v9",
+    "SILVA": "silva_138",
+    "Resfinder": "https://api.bitbucket.org/2.0/repositories/genomicepidemiology/resfinder_db/commit/master?fields=hash,date",
+    "Kalamari": "kalamari_3.7",
+}
+
+
+def _mmseqs_slug(name):
+    return re.sub(r"[/.-]", "_", name.lower())
+
+
+def _mmseqs_probe_version(value):
+    if not value.startswith("http"):
+        return value
+
+    resp = requests.head(value, allow_redirects=True, timeout=60)
+    resp.raise_for_status()
+    last_modified = resp.headers.get("Last-Modified")
+    if not last_modified:
+        raise RuntimeError(f"no Last-Modified header from {value}")
+
+    return datetime.datetime.strptime(
+        last_modified, "%a, %d %b %Y %H:%M:%S %Z"
+    ).strftime("%Y-%m-%d")
+
+
+def _mmseqs_databases_gpu_args():
+    # 18-8cc5c always builds GPU-padded sequence dbs and rejects --gpu; later
+    # builds accept --gpu but default to unpadded, so only pass it when offered.
+    result = subprocess.run(["mmseqs", "databases", "-h"], capture_output=True, text=True)
+    return ["--gpu", "1"] if "--gpu" in result.stdout + result.stderr else []
+
+
+# Basic dbtypes from mmseqs Parameters.h
+_MMSEQS_DBTYPE_AMINO_ACIDS = 0
+_MMSEQS_DBTYPE_NUCLEOTIDES = 1
+_MMSEQS_DBTYPE_HMM_PROFILE = 2
+
+
+def _mmseqs_dbtype(prefix):
+    with open(f"{prefix}.dbtype", "rb") as f:
+        return int.from_bytes(f.read(4), "little")
+
+
+def _mmseqs_check_gpu_padded(prefix):
+    # Only sequence dbs can be GPU-padded (profile dbs are never GPU targets).
+    # The GPU flag lives in the extended bits of the 4-byte .dbtype, see
+    # DBReader::getExtendedDbtype / Parameters::DBTYPE_EXTENDED_GPU.
+    dbtype = _mmseqs_dbtype(prefix)
+
+    if dbtype & 0xFFFF not in (_MMSEQS_DBTYPE_AMINO_ACIDS, _MMSEQS_DBTYPE_NUCLEOTIDES):
+        return
+
+    if not ((dbtype >> 16) & 0x7FFE) & 8:
+        raise RuntimeError(
+            f"{prefix} is not GPU-padded; delete its version dir and rebuild with an mmseqs that pads"
+        )
+
+
+def _mmseqs_index_args(prefix):
+    # createindex refuses nucleotide dbs without an explicit --search-type and
+    # profile dbs without an explicit -s; use mmseqs search's own defaults
+    # (nucleotide search, -s 5.7) so default searches pick up the index.
+    basic_type = _mmseqs_dbtype(prefix) & 0xFFFF
+    if basic_type == _MMSEQS_DBTYPE_NUCLEOTIDES:
+        return ["--search-type", "3"]
+    if basic_type == _MMSEQS_DBTYPE_HMM_PROFILE:
+        return ["-s", "5.7"]
+    return []
+
+
+def get_mmseqs_dbs():
+    if shutil.which("mmseqs") is None:
+        print("mmseqs: binary not found on PATH -> skipping")
+        return
+
+    gpu_args = _mmseqs_databases_gpu_args()
+
+    for name, version_source in _MMSEQS_DBS.items():
+        try:
+            slug = _mmseqs_slug(name)
+            version = _mmseqs_probe_version(version_source)
+
+            db_dir = os.path.join(base_db_path, "mmseqs", slug)
+            version_dir = os.path.join(db_dir, version)
+            tmp_dir = os.path.join(base_db_path, "mmseqs", ".tmp", slug)
+
+            if _version_complete(version_dir):
+                print(f"mmseqs: already have {name} {version} -> skipping")
+                continue
+
+            if dry_run:
+                print(f"Would build mmseqs db: {name} to path: {version_dir}")
+                continue
+
+            # On failure the .incomplete marker and tmp_dir are left in place;
+            # mmseqs skips already-downloaded files in tmp_dir on the next run.
+            # mmseqs only creates the leaf tmp dir, not its parents.
+            os.makedirs(tmp_dir, exist_ok=True)
+            prefix = os.path.join(version_dir, slug)
+            with _atomic_version_dir(version_dir):
+                _run(
+                    [
+                        "mmseqs",
+                        "databases",
+                        name,
+                        prefix,
+                        tmp_dir,
+                        "--remove-tmp-files",
+                        "1",
+                        *gpu_args,
+                    ],
+                    f"mmseqs databases {name}",
+                )
+                _mmseqs_check_gpu_padded(prefix)
+                _run(
+                    [
+                        "mmseqs",
+                        "createindex",
+                        prefix,
+                        tmp_dir,
+                        "--remove-tmp-files",
+                        "1",
+                        *_mmseqs_index_args(prefix),
+                    ],
+                    f"mmseqs createindex {name}",
+                )
+
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+            try:
+                os.remove(os.path.join(db_dir, "latest"))
+            except OSError:
+                pass
+
+            os.symlink(version, os.path.join(db_dir, "latest"))
+        except Exception as e:
+            print(f"mmseqs: failed to build {name}: {e}")
+            continue
+
+
 def run():
     k2_to_get = {}
 
@@ -766,7 +926,13 @@ def run():
                     os.path.join(base_db_path, "taxonomy", "latest"),
                 )
 
-    for fetcher in (get_ncbi_blast, get_bakta_db, get_sylph_dbs, get_gtdb_db):
+    for fetcher in (
+        get_ncbi_blast,
+        get_bakta_db,
+        get_sylph_dbs,
+        get_gtdb_db,
+        get_mmseqs_dbs,
+    ):
         try:
             fetcher()
         except Exception as e:
