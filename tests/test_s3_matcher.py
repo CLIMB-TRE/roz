@@ -1063,3 +1063,91 @@ class test_s3_matcher(unittest.TestCase):
 
         self.assertNotEqual(project, "project4")
 
+
+
+class test_matcher_retention_tagging(unittest.TestCase):
+    """The hold tag must be written before the match is handed downstream.
+
+    Tag-then-send can leave a held object with no message, which the bucket-wide
+    backstop eventually reaps - harmless. Send-then-tag can hand a match to the
+    validators while its files are still untagged, and if anything released them
+    in between they would be on the short expiry clock while in flight.
+
+    There is no harness that drives s3_matcher.main(), so this asserts the
+    ordering structurally rather than by execution. The companion guarantee -
+    that a tagging failure cannot block the send - comes from
+    set_match_retention_state never raising, which test_utils covers.
+    """
+
+    def _main_body(self):
+        import ast
+        import inspect
+
+        source = inspect.getsource(s3_matcher)
+        tree = ast.parse(source)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "main":
+                return node
+
+        self.fail("s3_matcher.main not found")
+
+    def test_hold_tag_is_written_before_the_matched_send(self):
+        import ast
+
+        main = self._main_body()
+
+        for node in ast.walk(main):
+            if not isinstance(node, (ast.For, ast.While, ast.Try, ast.If)):
+                continue
+
+            for block in (getattr(node, "body", []), getattr(node, "orelse", [])):
+                send_index = None
+                tag_index = None
+
+                for index, statement in enumerate(block):
+                    # Only direct statements of this block, so that an enclosing
+                    # block containing both calls inside one nested statement
+                    # cannot look like a correct ordering.
+                    if not isinstance(statement, ast.Expr) or not isinstance(
+                        statement.value, ast.Call
+                    ):
+                        continue
+
+                    for call in [statement.value]:
+                        func = call.func
+
+                        if (
+                            isinstance(func, ast.Attribute)
+                            and func.attr == "send"
+                            and any(
+                                isinstance(kw.value, ast.Constant)
+                                and kw.value.value == "inbound-matched"
+                                for kw in call.keywords
+                            )
+                        ):
+                            send_index = index
+
+                        if (
+                            isinstance(func, ast.Name)
+                            and func.id == "set_match_retention_state"
+                            and any(
+                                isinstance(arg, ast.Name) and arg.id == "RETENTION_HOLD"
+                                for arg in call.args
+                            )
+                        ):
+                            tag_index = index
+
+                if send_index is not None:
+                    self.assertIsNotNone(
+                        tag_index,
+                        "the inbound-matched send is not preceded by a hold tag",
+                    )
+                    self.assertLess(
+                        tag_index,
+                        send_index,
+                        "the hold tag must be written before the match is sent",
+                    )
+                    return
+
+        self.fail("no inbound-matched send found in s3_matcher.main")

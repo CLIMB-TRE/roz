@@ -1,9 +1,11 @@
 from roz_scripts.utils.utils import (
+    RETENTION_HOLD,
     get_s3_credentials,
     get_s3_client,
     init_logger,
     put_result_json,
     send_admin_alert,
+    set_match_retention_state,
 )
 from roz_scripts.utils.health import HealthState, get_health_dir
 from roz_scripts.general.s3_controller import create_config_map
@@ -498,6 +500,12 @@ def main():
             payload = generate_payload(
                 index_tuple=index_tuple, existing_object_dict=existing_object_dict
             )
+
+            # Tag before sending, not after. Tag-then-send can leave a held
+            # object with no message, which the backstop rule eventually reaps.
+            # Send-then-tag can hand a match downstream whose files are already
+            # eligible for the short expiry. Tagging never blocks the send.
+            set_match_retention_state(payload, RETENTION_HOLD, log, s3_client=s3_client)
 
             log.info(f"Successful match for artifact: {artifact}. Sending payload.")
             varys_client.send(

@@ -35,6 +35,8 @@ from roz_scripts.utils.utils import (
     pod_resources_from_args,
     PodResourceError,
     persist_publish_ack,
+    set_match_retention_state,
+    RETENTION_RELEASE,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
@@ -119,7 +121,7 @@ class worker_pool_handler:
                     }
                 )
 
-            persist_publish_ack(
+            acked = persist_publish_ack(
                 self._varys_client,
                 message,
                 self._log,
@@ -129,6 +131,10 @@ class worker_pool_handler:
                 uuid=payload["uuid"],
                 heartbeat=self._health.heartbeat,
             )
+
+            # Published: uploader copies are done with.
+            if acked:
+                set_match_retention_state(payload, RETENTION_RELEASE, self._log)
 
         else:
             self._log.info(
@@ -192,7 +198,7 @@ class worker_pool_handler:
                     self._varys_client.nack_message(message)
 
             else:
-                persist_publish_ack(
+                acked = persist_publish_ack(
                     self._varys_client,
                     message,
                     self._log,
@@ -212,6 +218,14 @@ class worker_pool_handler:
                     uuid=payload["uuid"],
                     heartbeat=self._health.heartbeat,
                 )
+
+                # Permanently rejected (no rerun flag), so the uploads can age
+                # out. Deliberately NOT released in the 5-attempt dead-letter
+                # branch above: that one nacks with requeue and then raises to
+                # restart the pool, which rebuilds _retry_log empty and gives
+                # the delivery five fresh attempts - the files are still live.
+                if acked:
+                    set_match_retention_state(payload, RETENTION_RELEASE, self._log)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
