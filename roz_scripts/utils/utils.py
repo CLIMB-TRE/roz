@@ -672,7 +672,10 @@ class pipeline:
 
         cmd_str = " ".join(str(x) for x in cmd)
 
-        pod_env_vars = [{"name": k, "value": v} for k, v in env_vars.items()]
+        pod_env_vars = [
+            {"name": k, "value": v}
+            for k, v in {**env_vars, "NXF_ENABLE_FS_SYNC": "true"}.items()
+        ]
 
         job_name = f"roz-{self.job_prefix}-{job_id}"
         backoff_limit = 0
