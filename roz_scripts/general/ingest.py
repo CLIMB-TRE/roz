@@ -19,6 +19,8 @@ from roz_scripts.utils.utils import (
     NonPlaintextCSVError,
     send_admin_alert,
     persist_publish_ack,
+    set_match_retention_state,
+    RETENTION_RELEASE,
     PUBLISH_FAILURE_BACKOFF_S,
 )
 from roz_scripts.utils.health import HealthState, get_health_dir
@@ -84,7 +86,7 @@ def main():
 
     def send_result(message, payload):
         """File the result JSON and publish the result, then ack - in that order."""
-        return persist_publish_ack(
+        acked = persist_publish_ack(
             varys_client,
             message,
             log,
@@ -102,6 +104,15 @@ def main():
             uuid=payload.get("uuid"),
             heartbeat=health.heartbeat,
         )
+
+        # Every caller of send_result is a permanent rejection - transient
+        # failures go through requeue_with_alert instead - so the uploads are
+        # done with and can age out. Released only on a successful ack, and
+        # never as a persist: a tagging failure must not requeue the message.
+        if acked:
+            set_match_retention_state(payload, RETENTION_RELEASE, log)
+
+        return acked
 
     while True:
         message = None

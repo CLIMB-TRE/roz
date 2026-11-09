@@ -1,4 +1,5 @@
 import boto3
+import datetime
 import json
 import sys
 from botocore.exceptions import ClientError
@@ -7,6 +8,9 @@ import os
 import re
 import copy
 import requests
+
+# utils imports only roz_scripts.utils.config, so this does not cycle back here.
+from roz_scripts.utils.utils import RETENTION_TAG_KEY, RETENTION_RELEASE
 
 S3_ENDPOINT_URL = "https://s3.climb.ac.uk"
 
@@ -54,6 +58,7 @@ admin_bucket_actions_template = [
     "s3:GetBucketVersioning",
     "s3:GetBucketWebsite",
     "s3:GetLifecycleConfiguration",
+    "s3:PutLifecycleConfiguration",
     "s3:ListBucket",
     "s3:ListAllMyBuckets",
     "s3:ListBucketMultipartUploads",
@@ -79,11 +84,15 @@ admin_obj_actions_template = [
     "s3:GetObjectVersion",
     "s3:GetObjectVersionTorrent",
     "s3:ListMultipartUploadParts",
-    "s3:PutLifecycleConfiguration",
     "s3:PutObjectAcl",
     "s3:PutObjectVersionAcl",
     "s3:RestoreObject",
     "s3:PutObject",
+    # Retention: site-uploaded objects are owned by the site RGW user, so the
+    # admin identity needs these granted explicitly to tag them hold/release.
+    "s3:PutObjectTagging",
+    "s3:GetObjectTagging",
+    "s3:DeleteObjectTagging",
 ]
 
 perm_map = {
@@ -92,6 +101,30 @@ perm_map = {
     "delete": "s3:DeleteObject",
     "list": "s3:ListBucket",
 }
+
+# Tag-gated visibility for published buckets. A non-admin principal may only
+# GetObject when the object carries this tag/value; an untagged object matches no
+# Allow and falls to default-deny. The reconciler (s3_publication_visibility)
+# sets and removes the tag from Onyx is_published state.
+#
+# Key and value are code constants, never config: a typo in either is a
+# bucket-wide blackout. Only the opt-in itself is configurable.
+#
+# Deliberately a different tag key from the uploader scheme's roz-retention, so
+# applying the wrong class to a bucket produces a rule matching nothing rather
+# than a rule matching the wrong things.
+VISIBILITY_TAG_KEY = "roz-visibility"
+VISIBILITY_VISIBLE = "visible"
+OBJECT_VISIBILITY_CONDITION_KEY = f"s3:ExistingObjectTag/{VISIBILITY_TAG_KEY}"
+
+# Accepted limitation: s3:ExistingObjectTag is an object-level condition key and
+# s3:ListBucket is a bucket-level operation, so the condition cannot gate
+# listing. On a gated bucket that still grants "list", key names, sizes and
+# timestamps of hidden objects stay visible - and since every key begins with the
+# climb_id, the gap between what is listed and what is gettable reveals which
+# records are suppressed. Contents are protected; names and existence are not.
+# Withdrawing "list" in config closes it, at the cost of breaking anything that
+# discovers files by enumerating a prefix.
 
 
 def resolve_credentials(
@@ -544,6 +577,62 @@ def generate_site_policy(
     return policy
 
 
+def _bucket_is_tag_gated(config_dict: dict, project: str, bucket: str) -> bool:
+    """Whether a project bucket's GetObject grants are gated on the visibility tag
+
+    Opt-in per bucket via {"visibility": {"class": "tag_gated"}}. A bucket with no
+    visibility block generates exactly the policy it generates today.
+
+    Args:
+        config_dict (dict): The config file as a dictionary
+        project (str): The project the bucket belongs to
+        bucket (str): The logical bucket key (e.g. "published_reads"), not the bucket name
+
+    Returns:
+        bool: True if the bucket's site object statement should carry the condition
+
+    Raises:
+        ValueError: If the visibility block is malformed, or the bucket grants
+            sites write access
+    """
+
+    bucket_config = (
+        config_dict["configs"][project].get("project_buckets", {}).get(bucket, {})
+    )
+
+    visibility = bucket_config.get("visibility")
+
+    if not visibility:
+        return False
+
+    visibility_class = visibility.get("class")
+
+    if visibility_class != "tag_gated":
+        raise ValueError(
+            f"Visibility config for {project}/{bucket} has unknown class: "
+            f"{visibility_class!r}"
+        )
+
+    # s3:ExistingObjectTag applies to GetObject, not to PutObject or DeleteObject.
+    # Gating a bucket that grants sites write access would leave those ungated, so
+    # a site could still overwrite or delete an object it cannot read - a
+    # half-applied control that reads as a whole one. Refuse loudly instead.
+    bucket_policies = config_dict["configs"][project].get("bucket_policies", {})
+
+    for permission_set in (bucket_config.get("policy") or {}).values():
+        granted = set(bucket_policies.get(permission_set, []))
+        ungatable = granted & {"put", "delete"}
+
+        if ungatable:
+            raise ValueError(
+                f"Cannot tag-gate {project}/{bucket}: permission set "
+                f"{permission_set!r} grants {sorted(ungatable)}, which "
+                "s3:ExistingObjectTag cannot gate"
+            )
+
+    return True
+
+
 def generate_project_policy(
     bucket_name: str,
     bucket_arn: str,
@@ -633,6 +722,8 @@ def generate_project_policy(
             f"arn:aws:iam:::user/bryn-{site_slug}"
         )
 
+    tag_gated = _bucket_is_tag_gated(config_dict, project, bucket_name)
+
     for permission_set, site_arns in site_arns_by_permission_set.items():
         correct_perms = config_dict["configs"][project]["bucket_policies"][
             permission_set
@@ -653,6 +744,18 @@ def generate_project_policy(
 
             elif aws_perm in admin_bucket_actions_template:
                 site_bucket_statement["Action"].append(aws_perm)
+
+        # Conditional Allow, never a conditional Deny. If RGW does not enforce the
+        # condition an Allow degrades to an unconditional Allow - today's
+        # behaviour, everything visible, fails open. The same condition on a Deny
+        # would become an unconditional Deny and take every published file dark
+        # for every site at once. Deny also wins globally, so a Deny written to
+        # catch "tag absent" risks matching admin and could block the very
+        # PutObjectTagging the reconciler needs to undo it.
+        if tag_gated and site_obj_statement["Action"]:
+            site_obj_statement["Condition"] = {
+                "StringEquals": {OBJECT_VISIBILITY_CONDITION_KEY: VISIBILITY_VISIBLE}
+            }
 
         if site_obj_statement["Action"]:
             policy["Statement"].append(site_obj_statement)
@@ -1175,6 +1278,147 @@ def fetch_deployed_policy(bucket_arn: str, aws_credentials_dict: dict) -> dict |
         raise
 
 
+def snapshot_bucket_policies(
+    aws_credentials_dict: dict,
+    config_map: dict,
+    config_dict: dict,
+    out_path: str,
+) -> dict:
+    """Dump the currently-deployed policy of every tag-gated bucket to a file
+
+    This is the rollback artefact, and it must be written BEFORE the first
+    --force that applies a visibility condition.
+
+    Why this exists rather than "just re-run --force without the config block":
+    --force is the apply path, not the rollback path. It calls
+    check_bucket_exist_and_create first, which exits the whole process if bryn
+    returns anything other than 200/404 - so a bryn outage makes rollback
+    impossible even though every gated bucket is admin-owned and bryn has nothing
+    to do with it. put_site_policy is an unguarded requests.patch that can raise
+    partway through the loop, leaving one project rolled back and another still
+    gated. It needs a complete, current credentials file for every site. And it
+    re-pushes every bucket in the config, running a bucket_exists waiter before
+    each put, so it is minutes rather than seconds and it silently applies any
+    unrelated config drift accumulated since the last run.
+
+    Restoring from this file is instead one admin-credentialed put_bucket_policy
+    per gated bucket: seconds, bryn-independent, touches only the buckets that
+    were gated, and needs only the admin credentials.
+
+    Args:
+        aws_credentials_dict (dict): Credentials dict
+        config_map (dict): The config map as a dictionary
+        config_dict (dict): The config file as a dictionary
+        out_path (str): Where to write the snapshot JSON
+
+    Returns:
+        dict: {bucket_arn: policy_document_or_None} as written
+    """
+
+    snapshot: dict = {}
+
+    for project, project_config in config_map.items():
+        for bucket, bucket_arn in sorted(project_config["project_buckets"]):
+            if not _bucket_is_tag_gated(config_dict, project, bucket):
+                continue
+
+            snapshot[bucket_arn] = {
+                "project": project,
+                "bucket": bucket,
+                "policy": fetch_deployed_policy(bucket_arn, aws_credentials_dict),
+            }
+
+    payload = {
+        "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "buckets": snapshot,
+    }
+
+    with open(out_path, "w") as f:
+        json.dump(payload, f, indent=2)
+
+    print(
+        f"Wrote policy snapshot for {len(snapshot)} tag-gated bucket(s) to {out_path}",
+        file=sys.stdout,
+    )
+    print(
+        "ROLLBACK: restore with --restore-policies <this file>, which does one "
+        "admin-credentialed put_bucket_policy per bucket. Do NOT use --force to "
+        "roll back.",
+        file=sys.stdout,
+    )
+
+    return snapshot
+
+
+def restore_bucket_policies(
+    aws_credentials_dict: dict, snapshot_path: str, dry_run: bool = False
+) -> bool:
+    """Restore bucket policies from a snapshot written by snapshot_bucket_policies
+
+    One put_bucket_policy per bucket, admin-credentialed. No bryn calls, no
+    config dependency, no waiter, and it touches only the buckets in the file.
+
+    A bucket whose snapshot policy is None had no policy when captured. There is
+    no delete_bucket_policy path in this codebase and adding one here would be a
+    new destructive capability in the rollback path of all places, so such a
+    bucket is reported and skipped for a human to handle.
+
+    Args:
+        aws_credentials_dict (dict): Credentials dict
+        snapshot_path (str): Path to the snapshot JSON
+        dry_run (bool): If True, print what would be restored and change nothing
+
+    Returns:
+        bool: True if every bucket was restored (or would be), False otherwise
+    """
+
+    with open(snapshot_path) as f:
+        payload = json.load(f)
+
+    buckets = payload.get("buckets", {})
+
+    if not buckets:
+        print(f"Snapshot {snapshot_path} contains no buckets", file=sys.stderr)
+        return False
+
+    print(
+        f"Restoring {len(buckets)} bucket(s) from snapshot captured at "
+        f"{payload.get('captured_at', 'unknown time')}",
+        file=sys.stdout,
+    )
+
+    s3 = get_s3_client(aws_credentials_dict["admin"])
+
+    all_ok = True
+
+    for bucket_arn, entry in sorted(buckets.items()):
+        policy = entry.get("policy")
+
+        if policy is None:
+            print(
+                f"  {bucket_arn}: had NO policy when captured - not restoring "
+                "automatically, handle by hand",
+                file=sys.stderr,
+            )
+            all_ok = False
+            continue
+
+        if dry_run:
+            print(f"  {bucket_arn}: would restore captured policy", file=sys.stdout)
+            continue
+
+        try:
+            s3.put_bucket_policy(
+                Bucket=bucket_arn, Policy=json.dumps(policy, separators=(",", ":"))
+            )
+            print(f"  {bucket_arn}: restored", file=sys.stdout)
+        except ClientError as e:
+            print(f"  {bucket_arn}: FAILED to restore: {e}", file=sys.stderr)
+            all_ok = False
+
+    return all_ok
+
+
 def policy_to_grants(policy: dict | None) -> dict:
     """Reduce a policy document to {principal_arn: set(actions)} for its Allow statements
 
@@ -1602,6 +1846,109 @@ def select_canary_targets(config_map: dict) -> dict:
         targets[project] = (bucket, bucket_arn, owner_site, other_site)
 
     return targets
+
+
+def probe_tag_gated_enforcement(
+    aws_credentials_dict: dict,
+    config_map: dict,
+    config_dict: dict,
+    dry_run: bool = False,
+) -> dict:
+    """Functionally verify that tag-gated buckets actually deny untagged objects
+
+    This is the ONLY detector for the most dangerous failure of the visibility
+    control, and the failure is silent. policy_to_grants (and therefore
+    diff_bucket_policy_grants and _bucket_needs_fix) reads only Effect, Principal
+    and Action - Condition is discarded entirely. So if the condition is ever
+    stripped, by a manual edit, an RGW upgrade or an apply_policies run from an
+    older image, the document audit reports the bucket perfectly clean while
+    every suppressed object becomes readable again. It fails open and nothing
+    notices.
+
+    A document check could not catch that anyway: RGW may store a Condition it
+    does not enforce. So this probes behaviour, as a real site principal.
+
+    It reuses the "test" key that can_site_put_object already writes into buckets
+    during legacy audits, rather than introducing new canary objects into
+    production buckets. The key is untagged, so on a correctly gated bucket a
+    site GetObject must be denied. s3_matcher and the visibility reconciler both
+    skip "test" already.
+
+    Args:
+        aws_credentials_dict (dict): Credentials dict
+        config_map (dict): The config map as a dictionary
+        config_dict (dict): The config file as a dictionary
+        dry_run (bool, optional): If True, skip live calls
+
+    Returns:
+        dict: {bucket_arn: {"site": ..., "denied": bool, "ok": bool}}
+    """
+
+    results: dict = {}
+
+    if dry_run:
+        return results
+
+    admin_s3 = get_s3_client(aws_credentials_dict["admin"])
+
+    for project, project_config in config_map.items():
+        for bucket, bucket_arn in sorted(project_config["project_buckets"]):
+            if not _bucket_is_tag_gated(config_dict, project, bucket):
+                continue
+
+            bucket_policy_map = config_dict["configs"][project]["project_buckets"][
+                bucket
+            ]["policy"]
+
+            probe_site = next(
+                (
+                    site
+                    for site, role in sorted(
+                        config_dict["configs"][project]["sites"].items()
+                    )
+                    if role in bucket_policy_map
+                ),
+                None,
+            )
+
+            if probe_site is None:
+                # No site is granted anything on this bucket, so there is nothing
+                # for the condition to gate and nothing to probe.
+                continue
+
+            # The probe object must exist, or a NoSuchKey would be indistinguishable
+            # from a correct denial.
+            try:
+                admin_s3.put_object(Bucket=bucket_arn, Key="test", Body=b"")
+            except ClientError as e:
+                print(
+                    f"[canary] Could not place probe object in {bucket_arn}: {e}",
+                    file=sys.stderr,
+                )
+                continue
+
+            accessible = can_site_get_object(
+                bucket_arn, aws_credentials_dict, project, probe_site
+            )
+
+            ok = not accessible
+
+            results[bucket_arn] = {
+                "site": probe_site,
+                "denied": not accessible,
+                "ok": ok,
+            }
+
+            if not ok:
+                print(
+                    f"[canary] TAG GATE NOT ENFORCED on {bucket_arn}: site "
+                    f"{probe_site} could read the untagged 'test' object. Every "
+                    "unpublished and suppressed object in this bucket is readable. "
+                    "Check that the bucket policy still carries its Condition.",
+                    file=sys.stderr,
+                )
+
+    return results
 
 
 def run_canary_probes(
@@ -2064,7 +2411,346 @@ def audit_bucket_messaging(
     return to_fix
 
 
+# Rule Ids are fixed so a round-trip diff can match rules up by name.
+LIFECYCLE_RULE_RELEASED = "roz-released"
+LIFECYCLE_RULE_BACKSTOP = "roz-backstop"
+LIFECYCLE_RULE_FLAT = "roz-flat"
+
+
+def generate_lifecycle_configuration(
+    bucket: str, project: str, config_dict: dict, bucket_scope: str
+) -> dict | None:
+    """Build the lifecycle configuration for a bucket, or None if it has none.
+
+    Retention is strictly opt-in: a bucket with no "retention" block in config
+    gets no lifecycle configuration at all. This is what keeps published-data
+    buckets from ever acquiring an expiry by accident, and it is the single most
+    important safety property here - do not replace it with a default.
+
+    Two classes:
+      "ingest" - uploader buckets. Objects tagged roz-retention=release expire
+                 at released_days; everything else (held, untagged, junk) is
+                 caught by a bucket-wide backstop at backstop_days.
+      "flat"   - one whole-bucket rule at `days`, optionally narrowed to a
+                 prefix so objects written by someone other than roz are left
+                 alone.
+
+    Note that S3/RGW lifecycle Days counts from object creation, not from when
+    the tag was set, and that where several rules match an object the shortest
+    expiration wins. The backstop therefore doubles as the maximum hold
+    duration: a crashed worker cannot hold an object forever.
+
+    Args:
+        bucket (str): The logical bucket key (e.g. "ingest"), not the bucket name
+        project (str): The project the bucket belongs to
+        config_dict (dict): The config file as a dictionary
+        bucket_scope (str): "site_buckets" or "project_buckets"
+
+    Returns:
+        dict | None: A boto3 LifecycleConfiguration, or None if not configured
+
+    Raises:
+        ValueError: If the configuration is incoherent
+    """
+
+    bucket_config = (
+        config_dict["configs"][project].get(bucket_scope, {}).get(bucket, {})
+    )
+
+    retention = bucket_config.get("retention")
+
+    if not retention:
+        return None
+
+    retention_class = retention.get("class")
+
+    if retention_class == "ingest":
+        released_days = retention.get("released_days")
+        backstop_days = retention.get("backstop_days")
+
+        for name, value in (
+            ("released_days", released_days),
+            ("backstop_days", backstop_days),
+        ):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(
+                    f"Retention config for {project}/{bucket} has invalid {name}: {value!r}"
+                )
+
+        # If the backstop is not the longest rule it silently becomes the only
+        # effective one, and held objects get reaped on the short clock.
+        if backstop_days <= released_days:
+            raise ValueError(
+                f"Retention config for {project}/{bucket} has backstop_days "
+                f"({backstop_days}) <= released_days ({released_days}); the backstop "
+                "must outlive every other rule or it becomes the only rule in effect"
+            )
+
+        return {
+            "Rules": [
+                {
+                    "ID": LIFECYCLE_RULE_RELEASED,
+                    "Status": "Enabled",
+                    "Filter": {
+                        "Tag": {
+                            "Key": RETENTION_TAG_KEY,
+                            "Value": RETENTION_RELEASE,
+                        }
+                    },
+                    "Expiration": {"Days": released_days},
+                },
+                {
+                    "ID": LIFECYCLE_RULE_BACKSTOP,
+                    "Status": "Enabled",
+                    "Filter": {"Prefix": ""},
+                    "Expiration": {"Days": backstop_days},
+                },
+            ]
+        }
+
+    if retention_class == "flat":
+        days = retention.get("days")
+
+        if not isinstance(days, int) or isinstance(days, bool) or days < 1:
+            raise ValueError(
+                f"Retention config for {project}/{bucket} has invalid days: {days!r}"
+            )
+
+        prefix = retention.get("prefix", "")
+
+        if prefix:
+            prefix = prefix.format(project=project)
+
+        return {
+            "Rules": [
+                {
+                    "ID": LIFECYCLE_RULE_FLAT,
+                    "Status": "Enabled",
+                    "Filter": {"Prefix": prefix},
+                    "Expiration": {"Days": days},
+                }
+            ]
+        }
+
+    raise ValueError(
+        f"Retention config for {project}/{bucket} has unknown class: {retention_class!r}"
+    )
+
+
+def _normalise_lifecycle_rules(lifecycle: dict) -> dict:
+    """Reduce a lifecycle document to the fields we set, keyed by rule ID.
+
+    RGW and AWS both echo back extra fields, and rule order is not meaningful,
+    so a raw equality check on the round-tripped document is useless.
+    """
+
+    normalised = {}
+
+    for rule in lifecycle.get("Rules", []):
+        rule_filter = rule.get("Filter", {})
+
+        if "Tag" in rule_filter:
+            filter_repr = (
+                "tag",
+                rule_filter["Tag"].get("Key"),
+                rule_filter["Tag"].get("Value"),
+            )
+        else:
+            filter_repr = ("prefix", rule_filter.get("Prefix", ""))
+
+        normalised[rule.get("ID")] = {
+            "status": rule.get("Status"),
+            "filter": filter_repr,
+            "days": rule.get("Expiration", {}).get("Days"),
+        }
+
+    return normalised
+
+
+def setup_bucket_lifecycle(
+    aws_credentials_dict: dict,
+    bucket_name: str,
+    project: str,
+    site: str,
+    lifecycle: dict,
+) -> bool:
+    """Apply a lifecycle configuration to a bucket and verify it round-trips.
+
+    The verification is not optional ceremony. RGW has historically accepted a
+    lifecycle document and silently dropped filter elements it does not
+    implement, which would turn a tag-filtered rule into a bucket-wide one and
+    delete held objects on the short clock. An HTTP 200 is not evidence; the
+    read-back is.
+
+    Uses the owning site's credentials for site buckets, mirroring
+    setup_messaging, which sidesteps the question of whether a non-owner may set
+    lifecycle on a Bryn-created bucket.
+
+    Args:
+        aws_credentials_dict (dict): Credentials dict
+        bucket_name (str): The real bucket name
+        project (str): Project the bucket belongs to
+        site (str): Owning site, or "admin" for project buckets
+        lifecycle (dict): Configuration from generate_lifecycle_configuration()
+
+    Returns:
+        bool: True if applied and verified, False otherwise
+    """
+
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
+
+    s3_client = get_s3_client(credentials)
+
+    try:
+        s3_client.put_bucket_lifecycle_configuration(
+            Bucket=bucket_name,
+            LifecycleConfiguration=lifecycle,
+        )
+    except ClientError as e:
+        print(
+            f"Failed to put lifecycle configuration on {bucket_name}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+    try:
+        deployed = s3_client.get_bucket_lifecycle_configuration(Bucket=bucket_name)
+    except ClientError as e:
+        print(
+            f"Failed to read back lifecycle configuration from {bucket_name}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+    expected_rules = _normalise_lifecycle_rules(lifecycle)
+    deployed_rules = _normalise_lifecycle_rules(deployed)
+
+    if deployed_rules != expected_rules:
+        print(
+            f"Lifecycle configuration on {bucket_name} did not round-trip. "
+            f"Sent {expected_rules}, got back {deployed_rules}. "
+            "Refusing to treat this bucket as configured.",
+            file=sys.stderr,
+        )
+        return False
+
+    return True
+
+
+def remove_bucket_lifecycle(
+    aws_credentials_dict: dict, bucket_name: str, project: str, site: str
+) -> bool:
+    """Remove all lifecycle configuration from a bucket.
+
+    The rollback path. This exists so that there is a way to switch deletion off
+    again without hand-editing bucket state, and it should be exercised on a
+    -test bucket before --setup-lifecycle is ever pointed at production.
+    """
+
+    credentials = resolve_credentials(aws_credentials_dict, project, site)
+
+    s3_client = get_s3_client(credentials)
+
+    try:
+        s3_client.delete_bucket_lifecycle(Bucket=bucket_name)
+        return True
+    except ClientError as e:
+        print(
+            f"Failed to remove lifecycle configuration from {bucket_name}: {e}",
+            file=sys.stderr,
+        )
+        return False
+
+
+def resolve_bucket_lifecycles(config_map: dict, config_dict: dict) -> list:
+    """Work out which buckets have a retention policy and what it should be.
+
+    Pure: makes no S3 calls, so --dry-run can print exactly what would be
+    applied before anything touches a bucket.
+
+    Returns:
+        list: [(bucket, bucket_arn, project, site, lifecycle)]
+    """
+
+    resolved = []
+
+    for project, project_config in config_map.items():
+        for bucket, bucket_arn in sorted(project_config["project_buckets"]):
+            lifecycle = generate_lifecycle_configuration(
+                bucket=bucket,
+                project=project,
+                config_dict=config_dict,
+                bucket_scope="project_buckets",
+            )
+
+            if lifecycle is not None:
+                resolved.append((bucket, bucket_arn, project, "admin", lifecycle))
+
+        for site, site_config in sorted(project_config["sites"].items()):
+            for bucket, bucket_arn in sorted(site_config["site_buckets"]):
+                lifecycle = generate_lifecycle_configuration(
+                    bucket=bucket,
+                    project=project,
+                    config_dict=config_dict,
+                    bucket_scope="site_buckets",
+                )
+
+                if lifecycle is not None:
+                    resolved.append((bucket, bucket_arn, project, site, lifecycle))
+
+    return resolved
+
+
+def _print_lifecycle_plan(resolved: list) -> None:
+    """Print the full bucket -> rules mapping, so a config typo is visible."""
+
+    if not resolved:
+        print("No buckets have a retention policy configured", file=sys.stdout)
+        return
+
+    for bucket, bucket_arn, project, site, lifecycle in resolved:
+        print(f"{bucket_arn} (project: {project}, site: {site})", file=sys.stdout)
+
+        for rule in lifecycle["Rules"]:
+            rule_filter = rule.get("Filter", {})
+
+            if "Tag" in rule_filter:
+                filter_desc = (
+                    f"tag {rule_filter['Tag']['Key']}={rule_filter['Tag']['Value']}"
+                )
+            else:
+                filter_desc = f"prefix {rule_filter.get('Prefix', '')!r}"
+
+            print(
+                f"    {rule['ID']}: {filter_desc} -> expire after "
+                f"{rule['Expiration']['Days']} days",
+                file=sys.stdout,
+            )
+
+
 def run(args):
+    if args.restore_policies:
+        # Rollback path. Deliberately does none of the setup below: no bryn calls,
+        # no config dependency, no waiters, and it touches only the buckets in the
+        # snapshot. See snapshot_bucket_policies for why --force is not this.
+        with open(args.aws_credentials, "r") as f:
+            aws_credentials_dict = json.load(f)
+
+        ok = restore_bucket_policies(
+            aws_credentials_dict=aws_credentials_dict,
+            snapshot_path=args.restore_policies,
+            dry_run=args.dry_run,
+        )
+
+        sys.exit(0 if ok else 1)
+
+    if args.setup_lifecycle and args.remove_lifecycle:
+        print(
+            "--setup-lifecycle and --remove-lifecycle are mutually exclusive",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if args.setup_messaging:
         for env_var in [
             "AMQP_HOST",
@@ -2084,6 +2770,14 @@ def run(args):
         aws_credentials_dict = json.load(f)
 
     config_map = create_config_map(config_dict)
+
+    if args.snapshot_policies:
+        snapshot_bucket_policies(
+            aws_credentials_dict=aws_credentials_dict,
+            config_map=config_map,
+            config_dict=config_dict,
+            out_path=args.snapshot_policies,
+        )
 
     check_bucket_exist_and_create(
         aws_credentials_dict=aws_credentials_dict,
@@ -2115,6 +2809,23 @@ def run(args):
                 aws_credentials_dict=aws_credentials_dict, config_map=config_map
             )
 
+            # The document audit above cannot see Condition at all, so this is the
+            # only thing that would notice a tag gate having silently stopped
+            # being enforced.
+            tag_gate_results = probe_tag_gated_enforcement(
+                aws_credentials_dict=aws_credentials_dict,
+                config_map=config_map,
+                config_dict=config_dict,
+            )
+
+            if any(not r["ok"] for r in tag_gate_results.values()):
+                print(
+                    "[canary] One or more tag-gated buckets are NOT enforcing their "
+                    "visibility condition - see above. This is a live data-exposure "
+                    "condition, not drift.",
+                    file=sys.stderr,
+                )
+
         if args.audit_report:
             report_payload = {"to_fix": _json_safe(to_fix)}
 
@@ -2123,6 +2834,9 @@ def run(args):
             else:
                 report_payload["policy_audit_report"] = _json_safe(policy_audit_report)
                 report_payload["canary_results"] = _json_safe(canary_results)
+                report_payload["tag_gate_results"] = _json_safe(
+                    locals().get("tag_gate_results", {})
+                )
 
             with open(args.audit_report, "w") as f:
                 json.dump(report_payload, f, indent=2)
@@ -2211,6 +2925,67 @@ def run(args):
                     file=sys.stdout,
                 )
 
+    if args.setup_lifecycle or args.remove_lifecycle:
+        resolved_lifecycles = resolve_bucket_lifecycles(
+            config_map=config_map, config_dict=config_dict
+        )
+
+        if args.remove_lifecycle:
+            print(
+                "Would remove all lifecycle configuration from these buckets:",
+                file=sys.stdout,
+            )
+        else:
+            print("Lifecycle configuration to apply:", file=sys.stdout)
+
+        _print_lifecycle_plan(resolved_lifecycles)
+
+        if args.dry_run:
+            print("Dry run, not applying lifecycle configuration", file=sys.stdout)
+        elif not resolved_lifecycles:
+            pass
+        elif args.remove_lifecycle:
+            for bucket, bucket_arn, project, site, _ in resolved_lifecycles:
+                if remove_bucket_lifecycle(
+                    aws_credentials_dict=aws_credentials_dict,
+                    bucket_name=bucket_arn,
+                    project=project,
+                    site=site,
+                ):
+                    print(
+                        f"Removed lifecycle configuration from {bucket_arn}",
+                        file=sys.stdout,
+                    )
+                else:
+                    print(
+                        f"Failed to remove lifecycle configuration from {bucket_arn}",
+                        file=sys.stdout,
+                    )
+        else:
+            failed = []
+
+            for bucket, bucket_arn, project, site, lifecycle in resolved_lifecycles:
+                if setup_bucket_lifecycle(
+                    aws_credentials_dict=aws_credentials_dict,
+                    bucket_name=bucket_arn,
+                    project=project,
+                    site=site,
+                    lifecycle=lifecycle,
+                ):
+                    print(
+                        f"Applied lifecycle configuration to {bucket_arn}",
+                        file=sys.stdout,
+                    )
+                else:
+                    failed.append(f"{bucket_arn} ({project}/{site})")
+
+            if failed:
+                print(
+                    f"Failed to apply lifecycle configuration to {len(failed)} buckets: "
+                    + ", ".join(failed),
+                    file=sys.stdout,
+                )
+
     if (to_fix["site_buckets"] or to_fix["project_buckets"]) and not args.dry_run:
         if args.legacy_audit:
             retest_audit_dict = audit_all_buckets(
@@ -2276,6 +3051,26 @@ def main():
         "--aws-credentials",
         help="The AWS credentials file to use",
         type=str,
+    )
+    parser.add_argument(
+        "--snapshot-policies",
+        metavar="PATH",
+        help="Before doing anything else, dump the currently-deployed policy of every tag-gated bucket to PATH. Run this before the first --force that applies a visibility condition; it is the rollback artefact.",
+    )
+    parser.add_argument(
+        "--restore-policies",
+        metavar="PATH",
+        help="Rollback: restore bucket policies from a snapshot written by --snapshot-policies, one admin-credentialed put_bucket_policy per bucket. Does not touch bryn, config or any other bucket. Use this to roll back a visibility gate, never --force.",
+    )
+    parser.add_argument(
+        "--setup-lifecycle",
+        action="store_true",
+        help="Apply the configured object retention lifecycle rules to every bucket with a 'retention' block in config. Buckets without one are never touched.",
+    )
+    parser.add_argument(
+        "--remove-lifecycle",
+        action="store_true",
+        help="Remove all lifecycle configuration from every bucket with a 'retention' block in config. The rollback for --setup-lifecycle.",
     )
     parser.add_argument(
         "--setup-messaging",

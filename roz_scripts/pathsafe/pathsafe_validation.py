@@ -35,6 +35,9 @@ from roz_scripts.utils.utils import (
     pod_resources_from_args,
     PodResourceError,
     persist_publish_ack,
+    set_match_retention_state,
+    RETENTION_RELEASE,
+    make_published_objects_visible,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
@@ -119,7 +122,7 @@ class worker_pool_handler:
                     }
                 )
 
-            persist_publish_ack(
+            acked = persist_publish_ack(
                 self._varys_client,
                 message,
                 self._log,
@@ -129,6 +132,10 @@ class worker_pool_handler:
                 uuid=payload["uuid"],
                 heartbeat=self._health.heartbeat,
             )
+
+            # Published: uploader copies are done with.
+            if acked:
+                set_match_retention_state(payload, RETENTION_RELEASE, self._log)
 
         else:
             self._log.info(
@@ -192,7 +199,7 @@ class worker_pool_handler:
                     self._varys_client.nack_message(message)
 
             else:
-                persist_publish_ack(
+                acked = persist_publish_ack(
                     self._varys_client,
                     message,
                     self._log,
@@ -212,6 +219,14 @@ class worker_pool_handler:
                     uuid=payload["uuid"],
                     heartbeat=self._health.heartbeat,
                 )
+
+                # Permanently rejected (no rerun flag), so the uploads can age
+                # out. Deliberately NOT released in the 5-attempt dead-letter
+                # branch above: that one nacks with requeue and then raises to
+                # restart the pool, which rebuilds _retry_log empty and gives
+                # the delivery five fresh attempts - the files are still live.
+                if acked:
+                    set_match_retention_state(payload, RETENTION_RELEASE, self._log)
 
     def error_callback(self, exception):
         self._log.error(f"Worker failed with unhandled exception: {exception}")
@@ -873,6 +888,12 @@ def validate(
         payload["rerun"] = True
         time.sleep(args.retry_delay)
         return (False, payload, message)
+
+    # See the equivalent call in mscape_ingest_validation: best-effort, never
+    # raises, and the hourly visibility reconciler is the backstop.
+    make_published_objects_visible(
+        s3_client=s3_client, payload=payload, config=args.config, log=log
+    )
 
     payload["published"] = True
 

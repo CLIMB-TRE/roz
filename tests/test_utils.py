@@ -30,6 +30,10 @@ from roz_scripts.utils.utils import (
     JOB_CLEANUP_CONFIRM_CAP,
     JOB_CLEANUP_CONFIRM_FLOOR,
     RC_INFRASTRUCTURE,
+    set_match_retention_state,
+    RETENTION_TAG_KEY,
+    RETENTION_HOLD,
+    RETENTION_RELEASE,
 )
 
 from kubernetes.client.exceptions import ApiException
@@ -38,6 +42,7 @@ import moto
 import boto3
 import unittest
 from unittest.mock import patch, Mock
+from botocore.exceptions import ClientError
 import os
 import copy
 import json
@@ -1799,3 +1804,120 @@ class test_merge_onyx_error_messages(unittest.TestCase):
         errors = {}
         merge_onyx_error_messages(errors, ["weird"])
         self.assertEqual(errors["onyx_errors"], ["['weird']"])
+
+
+class test_set_match_retention_state(unittest.TestCase):
+    """The retention tagging helper must never raise.
+
+    It is called after persist_publish_ack has already published and acked. An
+    exception there is either useless or harmful - and if it were ever moved
+    into a persist, a tagging blip would requeue the whole message and re-run a
+    multi-hour validation. The swallowing is load-bearing, not defensive habit.
+    """
+
+    def setUp(self):
+        self.log = Mock()
+        self.payload = {
+            "uuid": "test-uuid",
+            "files": {
+                ".1.fastq.gz": {
+                    "uri": "s3://mscape-birm-illumina-prod/mscape.idx.run.1.fastq.gz",
+                    "key": "mscape.idx.run.1.fastq.gz",
+                },
+                ".csv": {
+                    "uri": "s3://mscape-birm-illumina-prod/mscape.idx.run.csv",
+                    "key": "mscape.idx.run.csv",
+                },
+            },
+        }
+
+    def test_tags_every_file_in_the_match(self):
+        client = Mock()
+
+        result = set_match_retention_state(
+            self.payload, RETENTION_RELEASE, self.log, s3_client=client
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(client.put_object_tagging.call_count, 2)
+
+        tagged = {
+            call.kwargs["Key"]: call.kwargs
+            for call in client.put_object_tagging.call_args_list
+        }
+
+        self.assertEqual(
+            set(tagged), {"mscape.idx.run.1.fastq.gz", "mscape.idx.run.csv"}
+        )
+
+        for kwargs in tagged.values():
+            self.assertEqual(kwargs["Bucket"], "mscape-birm-illumina-prod")
+            self.assertEqual(
+                kwargs["Tagging"],
+                {"TagSet": [{"Key": RETENTION_TAG_KEY, "Value": RETENTION_RELEASE}]},
+            )
+
+    def test_client_error_is_swallowed(self):
+        client = Mock()
+        client.put_object_tagging.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "nope"}}, "PutObjectTagging"
+        )
+
+        result = set_match_retention_state(
+            self.payload, RETENTION_RELEASE, self.log, s3_client=client
+        )
+
+        self.assertFalse(result)
+        self.log.error.assert_called()
+
+    def test_arbitrary_exception_is_swallowed(self):
+        client = Mock()
+        client.put_object_tagging.side_effect = RuntimeError("boom")
+
+        result = set_match_retention_state(
+            self.payload, RETENTION_RELEASE, self.log, s3_client=client
+        )
+
+        self.assertFalse(result)
+
+    def test_missing_object_is_not_a_failure(self):
+        """The site owns its ingest bucket and may delete its own uploads."""
+
+        client = Mock()
+        client.put_object_tagging.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey", "Message": "gone"}}, "PutObjectTagging"
+        )
+
+        result = set_match_retention_state(
+            self.payload, RETENTION_RELEASE, self.log, s3_client=client
+        )
+
+        self.assertTrue(result)
+
+    def test_keys_containing_dots_survive_bucket_derivation(self):
+        client = Mock()
+
+        set_match_retention_state(
+            self.payload, RETENTION_HOLD, self.log, s3_client=client
+        )
+
+        for call in client.put_object_tagging.call_args_list:
+            self.assertNotIn("/", call.kwargs["Key"])
+            self.assertTrue(call.kwargs["Key"].startswith("mscape.idx.run"))
+
+    def test_empty_payload_is_a_no_op(self):
+        client = Mock()
+
+        self.assertTrue(
+            set_match_retention_state({"uuid": "u"}, RETENTION_HOLD, self.log, client)
+        )
+        client.put_object_tagging.assert_not_called()
+
+    def test_malformed_file_entry_fails_without_raising(self):
+        client = Mock()
+        payload = {"uuid": "u", "files": {".csv": {"key": "no-uri.csv"}}}
+
+        self.assertFalse(
+            set_match_retention_state(payload, RETENTION_HOLD, self.log, client)
+        )
+        client.put_object_tagging.assert_not_called()

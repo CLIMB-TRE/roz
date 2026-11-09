@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from roz_scripts.utils.utils import RETENTION_RELEASE
 from collections import namedtuple
 from unittest.mock import MagicMock, call, patch
 
@@ -1637,6 +1638,81 @@ class TestLogPublishDelay(unittest.TestCase):
 
         self.log.error.assert_called_once()
 
+
+class TestRetentionRelease(unittest.TestCase):
+    """Uploader objects are released only at genuinely terminal states.
+
+    Releasing on a retryable branch would make the uploads eligible for the
+    short expiry while the artifact is still in flight, so the rerun branches
+    must stay held and let the backstop deal with them.
+    """
+
+    def setUp(self):
+        with patch("multiprocessing.Pool"):
+            self.handler = worker_pool_handler(
+                workers=2,
+                logger=MagicMock(),
+                varys_client=MagicMock(),
+                project="mscape",
+                health=MagicMock(),
+                config=MagicMock(),
+            )
+        self.message = make_message()
+
+    def _payload(self, **kwargs):
+        payload = base_payload(**kwargs)
+        payload["files"] = {
+            ".fastq.gz": {
+                "uri": "s3://mscape-birm-ont-prod/mscape.idx.run.fastq.gz",
+                "key": "mscape.idx.run.fastq.gz",
+            }
+        }
+        return payload
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.set_match_retention_state")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_success_releases(self, _put_result, _put_linkage, mock_release):
+        payload = self._payload()
+        self.handler.callback((True, False, [], payload, self.message))
+
+        mock_release.assert_called_once()
+        self.assertIs(mock_release.call_args.args[0], payload)
+        self.assertEqual(mock_release.call_args.args[1], RETENTION_RELEASE)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.set_match_retention_state")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_terminal_rejection_releases(self, _put_result, mock_release):
+        payload = self._payload()
+        self.handler.callback((False, False, ["failed"], payload, self.message))
+
+        mock_release.assert_called_once()
+        self.assertEqual(mock_release.call_args.args[1], RETENTION_RELEASE)
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.set_match_retention_state")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_rerun_requeue_does_not_release(self, _put_result, mock_release):
+        """Still in flight - releasing here is the bug this test exists to catch."""
+
+        payload = self._payload(rerun=True)
+        self.handler.callback((False, False, ["failed"], payload, self.message))
+
+        mock_release.assert_not_called()
+
+    @patch("roz_scripts.mscape.mscape_ingest_validation.set_match_retention_state")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_linkage_json")
+    @patch("roz_scripts.mscape.mscape_ingest_validation.put_result_json")
+    def test_rerun_of_published_does_not_release(
+        self, _put_result, _put_linkage, mock_release
+    ):
+        """Those files came from the published bucket via Onyx, not from an
+        uploader bucket - there is nothing of ours to release."""
+
+        payload = self._payload()
+        payload["rerun_of_published"] = True
+        self.handler.callback((True, False, [], payload, self.message))
+
+        mock_release.assert_not_called()
 
 class TestS3PublishObject(unittest.TestCase):
     """A cross-bucket multipart copy is refused by CLIMB's RGW, so anything

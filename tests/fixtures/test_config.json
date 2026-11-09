@@ -29,7 +29,12 @@
             "uploader": "site_ingest",
             "service": "site_ingest"
           },
-          "owner": "{site}"
+          "owner": "{site}",
+          "retention": {
+            "class": "ingest",
+            "released_days": 30,
+            "backstop_days": 180
+          }
         },
         "results": {
           "name_layout": "{project}-{site}-fakeresults",
@@ -38,7 +43,12 @@
             "uploader": "site_ingest",
             "service": "site_ingest"
           },
-          "owner": "{site}"
+          "owner": "{site}",
+          "retention": {
+            "class": "flat",
+            "days": 90,
+            "prefix": "{project}"
+          }
         }
       },
       "notification_bucket_configs": {
@@ -72,12 +82,18 @@
         "published_scylla_reports": {
           "name_layout": "{project}-fake-widget-epsilon",
           "policy": {"analysis": "project_read"},
-          "owner": "admin"
+          "owner": "admin",
+          "visibility": {"class": "tag_gated"}
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
           "policy": {"analysis": "project_ingest"},
-          "owner": "admin"
+          "owner": "admin",
+          "retention": {
+            "class": "ingest",
+            "released_days": 30,
+            "backstop_days": 180
+          }
         },
         "fake_widget_zeta": {
           "name_layout": "{project}-fake-widget-zeta",
@@ -97,7 +113,8 @@
         "chimera_reports": {
           "name_layout": "{project}-fake-widget-iota",
           "policy": {"analysis": "project_read_list"},
-          "owner": "admin"
+          "owner": "admin",
+          "visibility": {"class": "tag_gated"}
         },
         "fake_widget_kappa": {
           "name_layout": "{project}-fake-widget-kappa",
