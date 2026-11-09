@@ -35,7 +35,7 @@ from onyx.exceptions import (
 
 from varys import VarysPublishError
 
-from roz_scripts.utils.config import site_bucket
+from roz_scripts.utils.config import site_bucket, project_bucket
 
 from kubernetes import config as k8s_config
 from kubernetes.client import ApiClient
@@ -2321,6 +2321,266 @@ def ensure_file_unseen(
         "End of ensure_file_unseen func reached, this should never happen!"
     )
     return (True, True, True, payload)
+
+
+# Tag-gated visibility for the published buckets. The bucket policy condition
+# filters on exactly this key and value; see s3_controller for the policy side.
+# Distinct from RETENTION_TAG_KEY so the two schemes cannot interfere.
+PUBLICATION_VISIBILITY_TAG_KEY = "roz-visibility"
+PUBLICATION_VISIBLE = "visible"
+
+
+def build_publication_map(project: str, log: logging.Logger) -> tuple[bool, dict]:
+    """Build a complete {climb_id: is_published} map for a project in one scan
+
+    One bulk paginated filter, so the cost is O(records / page_size) per project
+    per pass rather than one query per object. Deliberately filters on nothing:
+    the visibility reconciler needs unpublished records too, which is exactly
+    what distinguishes it from ensure_file_unseen's is_published=True filter.
+
+    Follows the same error contract as the other Onyx helpers here: the first
+    element is a check-FAILED flag, kept strictly separate from "no records".
+    Conflating the two would make an Onyx outage look like "nothing is
+    published", and the caller would then hide every published object.
+
+    Args:
+        project (str): The project to scan
+        log (logging.Logger): Logger object
+
+    Returns:
+        tuple[bool, dict]: (check_failed, {climb_id: is_published})
+    """
+
+    onyx_config = get_onyx_credentials()
+
+    with OnyxClient(config=onyx_config) as client:
+        reconnect_count = 0
+
+        while reconnect_count <= 3:
+            try:
+                publication_map = {}
+
+                for record in client.filter(
+                    project=project, include=["climb_id", "is_published"]
+                ):
+                    climb_id = record.get("climb_id")
+
+                    if climb_id:
+                        publication_map[climb_id] = bool(record.get("is_published"))
+
+                return (False, publication_map)
+
+            except OnyxConnectionError as e:
+                if reconnect_count < 3:
+                    reconnect_count += 1
+                    log.error(
+                        f"Failed to connect to Onyx {reconnect_count} times with error: {e}. Retrying in 3 seconds"
+                    )
+                    time.sleep(3)
+                    continue
+
+                log.error(f"Failed to connect to Onyx for project {project}: {e}")
+                return (True, {})
+
+            except OnyxRequestError as e:
+                log.error(f"Onyx filter failed for project {project}. Error: {e}")
+                return (True, {})
+
+            except Exception as e:
+                log.error(f"Unhandled build_publication_map error: {e}")
+                return (True, {})
+
+    log.error("End of build_publication_map reached, this should never happen!")
+    return (True, {})
+
+
+def set_object_visibility(
+    s3_client: BaseClient,
+    bucket: str,
+    key: str,
+    visible: bool,
+    log: logging.Logger,
+) -> bool:
+    """Show or hide a single published-bucket object by setting/removing its tag
+
+    Showing is put_object_tagging; hiding is delete_object_tagging. Removing the
+    tag is the correct way to hide: under the visibility policy an untagged
+    object matches no Allow and is denied, so absence is the safe default and
+    there is no residual tag set to maintain.
+
+    Never raises. A failure here costs at most visibility until the next
+    reconciler pass, and raising in the publish path would be far worse than
+    that.
+
+    Args:
+        s3_client (BaseClient): Boto3 S3 client
+        bucket (str): Bucket name
+        key (str): Object key
+        visible (bool): True to show the object, False to hide it
+        log (logging.Logger): Logger object
+
+    Returns:
+        bool: True if the tag now reflects the requested state
+    """
+
+    try:
+        if visible:
+            s3_client.put_object_tagging(
+                Bucket=bucket,
+                Key=key,
+                Tagging={
+                    "TagSet": [
+                        {
+                            "Key": PUBLICATION_VISIBILITY_TAG_KEY,
+                            "Value": PUBLICATION_VISIBLE,
+                        }
+                    ]
+                },
+            )
+        else:
+            s3_client.delete_object_tagging(Bucket=bucket, Key=key)
+
+        return True
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+
+        if error_code in ("NoSuchKey", "404"):
+            log.info(f"Object s3://{bucket}/{key} is gone, nothing to re-tag")
+            return True
+
+        log.error(f"Failed to set visibility on s3://{bucket}/{key}: {e}")
+        return False
+
+    except Exception as e:
+        log.error(f"Failed to set visibility on s3://{bucket}/{key}: {e}")
+        return False
+
+
+def make_published_objects_visible(
+    s3_client: BaseClient,
+    payload: dict,
+    config: dict,
+    log: logging.Logger,
+) -> None:
+    """Tag this artifact's published objects visible, right after the is_published flip
+
+    Without this a newly published artifact stays invisible to sites until the
+    next hourly reconciler pass. With it, visibility follows publication.
+
+    Call ONLY after onyx_update(is_published=True) has succeeded. Before the flip
+    the record genuinely is unpublished, and tagging then would be a claim that
+    outlives a failed publish.
+
+    Finds the objects by listing each tag-gated bucket under the climb_id prefix,
+    rather than threading a tagging argument through all fourteen upload sites.
+    Every published key begins with the climb_id, so one prefix listing per
+    bucket finds them all - including the flat {climb_id}.ext and
+    {climb_id}_suffix layouts, which a prefix match still covers. The parsed
+    climb_id is re-checked per key because the prefix "C-123" would also match
+    "C-1234...".
+
+    Best-effort by design and safe to be so: the hourly reconciler recomputes
+    visibility from Onyx and repairs anything missed. **Never raises** - it runs
+    in the publish path, where an exception would requeue a multi-hour ingest.
+
+    Args:
+        s3_client (BaseClient): Boto3 S3 client (admin-credentialed)
+        payload (dict): The artifact payload; needs "project" and "climb_id"
+        config (dict): The loaded roz config, from load_config()
+        log (logging.Logger): Logger object
+    """
+
+    try:
+        project = payload["project"]
+        climb_id = payload["climb_id"]
+
+        if not climb_id:
+            return
+
+        project_buckets = (
+            config.get("configs", {}).get(project, {}).get("project_buckets", {})
+        )
+
+        gated = [
+            bucket
+            for bucket, bucket_config in project_buckets.items()
+            if (bucket_config.get("visibility") or {}).get("class") == "tag_gated"
+        ]
+
+        if not gated:
+            return
+
+        tagged = 0
+        failures = 0
+
+        for bucket in gated:
+            try:
+                bucket_name = project_bucket(config, project, bucket)
+            except Exception as e:
+                log.error(f"Could not resolve bucket {bucket} for {project}: {e}")
+                continue
+
+            try:
+                paginator = s3_client.get_paginator("list_objects_v2")
+
+                for page in paginator.paginate(Bucket=bucket_name, Prefix=climb_id):
+                    for obj in page.get("Contents", []):
+                        key = obj["Key"]
+
+                        # "C-123" is a prefix of "C-1234", so confirm the key
+                        # really belongs to this record before touching it.
+                        if _climb_id_of_key(key) != climb_id:
+                            continue
+
+                        if set_object_visibility(
+                            s3_client, bucket_name, key, True, log
+                        ):
+                            tagged += 1
+                        else:
+                            failures += 1
+
+            except ClientError as e:
+                log.error(
+                    f"Could not list {bucket_name} under prefix {climb_id}: {e}"
+                )
+                failures += 1
+
+        if failures:
+            log.error(
+                f"Made {tagged} object(s) visible for {climb_id} but {failures} "
+                "operation(s) failed; the visibility reconciler will repair this"
+            )
+        else:
+            log.info(f"Made {tagged} published object(s) visible for {climb_id}")
+
+    except Exception as e:
+        # Never propagate into the publish path.
+        log.error(f"make_published_objects_visible failed for payload: {e}")
+
+
+def _climb_id_of_key(key: str) -> str | None:
+    """Leading climb_id of a published-bucket key, or None
+
+    Kept here (rather than imported from s3_publication_visibility) so the
+    publish path does not import the reconciler. The reconciler's own copy is
+    the one under test; this one must agree with it.
+    """
+
+    if not key:
+        return None
+
+    candidate = key
+
+    for index, char in enumerate(key):
+        if char in "/._":
+            candidate = key[:index]
+            break
+
+    if re.fullmatch(r"C-[A-Za-z0-9]{1,10}", candidate):
+        return candidate
+
+    return None
 
 
 def check_artifact_published(

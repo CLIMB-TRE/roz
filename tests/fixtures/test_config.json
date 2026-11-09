@@ -82,7 +82,8 @@
         "published_scylla_reports": {
           "name_layout": "{project}-fake-widget-epsilon",
           "policy": {"analysis": "project_read"},
-          "owner": "admin"
+          "owner": "admin",
+          "visibility": {"class": "tag_gated"}
         },
         "ingest": {
           "name_layout": "{project}-public-{platform}-{test_flag}",
@@ -112,7 +113,8 @@
         "chimera_reports": {
           "name_layout": "{project}-fake-widget-iota",
           "policy": {"analysis": "project_read_list"},
-          "owner": "admin"
+          "owner": "admin",
+          "visibility": {"class": "tag_gated"}
         },
         "fake_widget_kappa": {
           "name_layout": "{project}-fake-widget-kappa",

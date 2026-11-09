@@ -1486,3 +1486,342 @@ class TestSetupBucketLifecycle(unittest.TestCase):
             )
 
         resolve.assert_called_once_with(self.creds, "mscape", "birm.mscape")
+
+
+class TestTagGatedVisibility(unittest.TestCase):
+    """Tag-gated visibility conditions on published-bucket policies.
+
+    The failure that matters here is a Condition that silently stops being
+    enforced: policy_to_grants reads only Effect/Principal/Action, so a stripped
+    Condition is invisible to the drift audit and fails OPEN. These tests pin the
+    shape of the generated document; probe_tag_gated_enforcement covers the
+    behaviour the document cannot.
+    """
+
+    def setUp(self):
+        with open(os.path.join(DIR, "fixtures", "test_config.json")) as f:
+            self.config_dict = json.load(f)
+
+        self.creds = {
+            "admin": {
+                "aws_access_key_id": "k",
+                "aws_secret_access_key": "s",
+                "username": "admin",
+            },
+            "mscape": {
+                site: {
+                    "aws_access_key_id": "k",
+                    "aws_secret_access_key": "s",
+                    "username": site.replace(".", "-"),
+                }
+                for site in self.config_dict["configs"]["mscape"]["sites"]
+            },
+        }
+
+    def _policy(self, bucket, config_dict=None):
+        return s3_controller.generate_project_policy(
+            bucket_name=bucket,
+            bucket_arn=f"mscape-{bucket}",
+            project="mscape",
+            config_dict=config_dict or self.config_dict,
+            aws_credentials_dict=self.creds,
+        )
+
+    def _site_statements(self, policy):
+        admin_arn = f"arn:aws:iam:::user/{self.creds['admin']['username']}"
+        return [
+            s
+            for s in policy["Statement"]
+            if isinstance(s.get("Principal"), dict)
+            and s["Principal"].get("AWS") != [admin_arn]
+        ]
+
+    def test_condition_on_object_statement_only(self):
+        policy = self._policy("chimera_reports")
+
+        obj = [
+            s
+            for s in self._site_statements(policy)
+            if s["Resource"] == ["arn:aws:s3:::mscape-chimera_reports/*"]
+        ]
+        self.assertTrue(obj)
+
+        for statement in obj:
+            self.assertEqual(
+                statement["Condition"],
+                {
+                    "StringEquals": {
+                        "s3:ExistingObjectTag/roz-visibility": "visible"
+                    }
+                },
+            )
+
+    def test_bucket_statement_has_no_condition(self):
+        """s3:ListBucket cannot be gated by an object tag.
+
+        Attaching the condition here would make the statement never match and
+        silently withdraw list access as a side effect. The accepted consequence
+        is that key names stay visible for hidden objects.
+        """
+
+        policy = self._policy("chimera_reports")
+
+        bucket_statements = [
+            s
+            for s in self._site_statements(policy)
+            if s["Resource"] == ["arn:aws:s3:::mscape-chimera_reports"]
+        ]
+
+        self.assertTrue(bucket_statements, "fixture bucket should grant list")
+
+        for statement in bucket_statements:
+            self.assertNotIn("Condition", statement)
+            self.assertIn("s3:ListBucket", statement["Action"])
+
+    def test_admin_statements_never_carry_the_condition(self):
+        """Asserted by principal, not by position.
+
+        If admin's grants were ever gated, roz would lock itself out of the
+        buckets it has to write to and repair.
+        """
+
+        admin_arn = f"arn:aws:iam:::user/{self.creds['admin']['username']}"
+
+        for bucket in ("chimera_reports", "published_scylla_reports"):
+            policy = self._policy(bucket)
+
+            admin_statements = [
+                s
+                for s in policy["Statement"]
+                if isinstance(s.get("Principal"), dict)
+                and s["Principal"].get("AWS") == [admin_arn]
+            ]
+
+            self.assertTrue(admin_statements)
+
+            for statement in admin_statements:
+                self.assertNotIn("Condition", statement)
+
+    def test_no_deny_statement_carries_an_existing_object_tag_condition(self):
+        """The guard against someone 'helpfully' adding a Deny.
+
+        An ignored Condition on an Allow fails open - today's behaviour. The same
+        condition on a Deny becomes an unconditional Deny and takes every
+        published file dark for every site at once.
+        """
+
+        for bucket in ("chimera_reports", "published_scylla_reports"):
+            policy = self._policy(bucket)
+
+            for statement in policy["Statement"]:
+                if statement.get("Effect") != "Deny":
+                    continue
+
+                self.assertNotIn(
+                    "ExistingObjectTag",
+                    json.dumps(statement.get("Condition", {})),
+                )
+
+    def test_ungated_bucket_policy_is_unchanged(self):
+        """A bucket without a visibility block must generate exactly what it did before."""
+
+        policy = self._policy("published_binned_reads")
+
+        # Every policy carries the SSL-only Deny, which legitimately has its own
+        # Condition - so assert on the visibility condition specifically rather
+        # than on the mere presence of any Condition.
+        self.assertNotIn("ExistingObjectTag", json.dumps(policy))
+
+        for statement in self._site_statements(policy):
+            self.assertNotIn("Condition", statement)
+
+    def test_unknown_visibility_class_raises(self):
+        config = copy.deepcopy(self.config_dict)
+        config["configs"]["mscape"]["project_buckets"]["chimera_reports"][
+            "visibility"
+        ] = {"class": "nonsense"}
+
+        with self.assertRaises(ValueError):
+            s3_controller._bucket_is_tag_gated(config, "mscape", "chimera_reports")
+
+    def test_gating_a_write_granting_bucket_raises(self):
+        """s3:ExistingObjectTag cannot gate PutObject or DeleteObject.
+
+        Gating such a bucket would leave writes ungated - a half-applied control
+        that reads as a whole one.
+        """
+
+        config = copy.deepcopy(self.config_dict)
+        buckets = config["configs"]["mscape"]["project_buckets"]
+
+        target = next(
+            bucket
+            for bucket, bucket_config in buckets.items()
+            if any(
+                set(config["configs"]["mscape"]["bucket_policies"].get(ps, []))
+                & {"put", "delete"}
+                for ps in (bucket_config.get("policy") or {}).values()
+            )
+        )
+
+        buckets[target]["visibility"] = {"class": "tag_gated"}
+
+        with self.assertRaises(ValueError):
+            s3_controller._bucket_is_tag_gated(config, "mscape", target)
+
+    def test_bucket_without_visibility_block_is_not_gated(self):
+        self.assertFalse(
+            s3_controller._bucket_is_tag_gated(
+                self.config_dict, "mscape", "published_binned_reads"
+            )
+        )
+        self.assertTrue(
+            s3_controller._bucket_is_tag_gated(
+                self.config_dict, "mscape", "chimera_reports"
+            )
+        )
+
+
+class TestPolicySnapshotRestore(unittest.TestCase):
+    """The rollback artefact.
+
+    --force is the apply path, not the rollback path: it calls bryn first and
+    exits the process on a non-200/404, re-pushes every bucket in the config, and
+    runs a waiter before each put. Restoring from a snapshot is instead one
+    admin-credentialed put_bucket_policy per gated bucket.
+    """
+
+    def setUp(self):
+        with open(os.path.join(DIR, "fixtures", "test_config.json")) as f:
+            self.config_dict = json.load(f)
+
+        self.creds = {
+            "admin": {
+                "aws_access_key_id": "k",
+                "aws_secret_access_key": "s",
+                "username": "admin",
+            }
+        }
+
+        self.tmp = os.path.join(
+            os.getenv("TMPDIR", "/tmp"), f"roz-snap-{os.getpid()}.json"
+        )
+
+    def tearDown(self):
+        if os.path.exists(self.tmp):
+            os.remove(self.tmp)
+
+    def test_snapshot_covers_only_gated_buckets(self):
+        config_map = s3_controller.create_config_map(self.config_dict)
+
+        with patch.object(
+            s3_controller, "fetch_deployed_policy", return_value={"Statement": []}
+        ):
+            snapshot = s3_controller.snapshot_bucket_policies(
+                aws_credentials_dict=self.creds,
+                config_map=config_map,
+                config_dict=self.config_dict,
+                out_path=self.tmp,
+            )
+
+        self.assertTrue(snapshot)
+
+        covered = {entry["bucket"] for entry in snapshot.values()}
+        self.assertEqual(covered, {"published_scylla_reports", "chimera_reports"})
+
+        with open(self.tmp) as f:
+            written = json.load(f)
+
+        self.assertIn("captured_at", written)
+        self.assertEqual(set(written["buckets"]), set(snapshot))
+
+    def test_restore_puts_each_captured_policy(self):
+        policy = {"Version": "2012-10-17", "Statement": []}
+
+        with open(self.tmp, "w") as f:
+            json.dump(
+                {
+                    "captured_at": "2026-10-30T00:00:00+00:00",
+                    "buckets": {
+                        "bucket-a": {
+                            "project": "mscape",
+                            "bucket": "chimera_reports",
+                            "policy": policy,
+                        }
+                    },
+                },
+                f,
+            )
+
+        client = Mock()
+
+        with patch.object(s3_controller, "get_s3_client", return_value=client):
+            ok = s3_controller.restore_bucket_policies(
+                aws_credentials_dict=self.creds, snapshot_path=self.tmp
+            )
+
+        self.assertTrue(ok)
+        client.put_bucket_policy.assert_called_once()
+        self.assertEqual(
+            client.put_bucket_policy.call_args.kwargs["Bucket"], "bucket-a"
+        )
+
+    def test_restore_does_not_invent_a_delete_for_a_bucket_that_had_no_policy(self):
+        """There is no delete_bucket_policy path in this codebase.
+
+        Adding one in the rollback path of all places would be a new destructive
+        capability; report and skip instead.
+        """
+
+        with open(self.tmp, "w") as f:
+            json.dump(
+                {
+                    "captured_at": "2026-10-30T00:00:00+00:00",
+                    "buckets": {
+                        "bucket-a": {
+                            "project": "mscape",
+                            "bucket": "chimera_reports",
+                            "policy": None,
+                        }
+                    },
+                },
+                f,
+            )
+
+        client = Mock()
+
+        with patch.object(s3_controller, "get_s3_client", return_value=client):
+            ok = s3_controller.restore_bucket_policies(
+                aws_credentials_dict=self.creds, snapshot_path=self.tmp
+            )
+
+        self.assertFalse(ok)
+        client.put_bucket_policy.assert_not_called()
+        client.delete_bucket_policy.assert_not_called()
+
+    def test_restore_dry_run_writes_nothing(self):
+        with open(self.tmp, "w") as f:
+            json.dump(
+                {
+                    "captured_at": "2026-10-30T00:00:00+00:00",
+                    "buckets": {
+                        "bucket-a": {
+                            "project": "mscape",
+                            "bucket": "chimera_reports",
+                            "policy": {"Statement": []},
+                        }
+                    },
+                },
+                f,
+            )
+
+        client = Mock()
+
+        with patch.object(s3_controller, "get_s3_client", return_value=client):
+            s3_controller.restore_bucket_policies(
+                aws_credentials_dict=self.creds,
+                snapshot_path=self.tmp,
+                dry_run=True,
+            )
+
+        client.put_bucket_policy.assert_not_called()

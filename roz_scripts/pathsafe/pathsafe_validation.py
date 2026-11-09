@@ -37,6 +37,7 @@ from roz_scripts.utils.utils import (
     persist_publish_ack,
     set_match_retention_state,
     RETENTION_RELEASE,
+    make_published_objects_visible,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
@@ -887,6 +888,12 @@ def validate(
         payload["rerun"] = True
         time.sleep(args.retry_delay)
         return (False, payload, message)
+
+    # See the equivalent call in mscape_ingest_validation: best-effort, never
+    # raises, and the hourly visibility reconciler is the backstop.
+    make_published_objects_visible(
+        s3_client=s3_client, payload=payload, config=args.config, log=log
+    )
 
     payload["published"] = True
 

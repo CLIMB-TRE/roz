@@ -48,6 +48,7 @@ from roz_scripts.utils.utils import (
     persist_publish_ack,
     set_match_retention_state,
     RETENTION_RELEASE,
+    make_published_objects_visible,
 )
 from roz_scripts.utils.health import HealthState, JobHeartbeat, get_health_dir
 from roz_scripts.utils.config import load_config, project_bucket, ConfigError
@@ -2638,6 +2639,14 @@ def validate(
         payload["rerun"] = True
         time.sleep(args.retry_delay)
         return (False, alert, hcid_alerts, payload, message)
+
+    # The record is now published, so its files should be visible to sites.
+    # Best-effort and never raises: the hourly visibility reconciler recomputes
+    # this from Onyx and repairs anything missed here. Without it the artifact
+    # would stay invisible until that pass, up to an hour later.
+    make_published_objects_visible(
+        s3_client=s3_client, payload=payload, config=args.config, log=log
+    )
 
     log_publish_delay(payload=payload, args=args, log=log)
 
